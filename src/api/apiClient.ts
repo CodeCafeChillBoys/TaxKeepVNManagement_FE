@@ -1,0 +1,72 @@
+import axios from 'axios';
+import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+import { config } from '../constants/config';
+
+// Hỗ trợ lưu token an toàn: trên thiết bị dùng SecureStore, trên Web dùng localStorage
+export const storageHelper = {
+  async getItem(key: string): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    }
+    return await SecureStore.getItemAsync(key);
+  },
+
+  async setItem(key: string, value: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      try {
+        localStorage.setItem(key, value);
+      } catch {}
+      return;
+    }
+    await SecureStore.setItemAsync(key, value);
+  },
+
+  async removeItem(key: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      try {
+        localStorage.removeItem(key);
+      } catch {}
+      return;
+    }
+    await SecureStore.deleteItemAsync(key);
+  },
+};
+
+export const apiClient = axios.create({
+  baseURL: config.apiBaseUrl,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 15000,
+});
+
+// Request Interceptor: Đính kèm Bearer Token nếu có
+apiClient.interceptors.request.use(
+  async (reqConfig) => {
+    const token = await storageHelper.getItem(config.storageKeys.accessToken);
+    if (token && reqConfig.headers) {
+      reqConfig.headers.Authorization = `Bearer ${token}`;
+    }
+    return reqConfig;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response Interceptor: Xử lý lỗi hệ thống & token hết hạn (401)
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      // Hết phiên đăng nhập -> Xoá token
+      await storageHelper.removeItem(config.storageKeys.accessToken);
+      await storageHelper.removeItem(config.storageKeys.refreshToken);
+      await storageHelper.removeItem(config.storageKeys.userData);
+    }
+    return Promise.reject(error);
+  }
+);

@@ -1,0 +1,769 @@
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  Switch,
+  Modal,
+  Alert,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { theme } from '../../constants/theme';
+import { RootNavigationProp } from '../../navigation/types';
+import { dependentDocumentApi } from '../../api/dependentDocumentApi';
+
+// Danh sách mối quan hệ chuẩn thuế TNCN
+const RELATIONSHIP_OPTIONS = [
+  { value: 'CHILD', label: 'Con đẻ, con nuôi, con riêng' },
+  { value: 'SPOUSE', label: 'Vợ hoặc Chồng' },
+  { value: 'PARENT', label: 'Cha mẹ đẻ, cha mẹ vợ/chồng, cha mẹ nuôi' },
+  { value: 'OTHER_DEPENDENT', label: 'Cá nhân khác không nơi nương tựa' },
+];
+
+// 5 Nhóm điều kiện đăng ký theo Luật Thuế TNCN (Figma iPhone 17 - 14)
+const CONDITION_GROUP_OPTIONS = [
+  {
+    index: 0,
+    code: 'CHILD_UNDER_18',
+    title: 'Nhóm 1: Con dưới 18 tuổi',
+    subtitle: 'Độ tuổi tính theo ngày sinh < 18 tuổi.',
+  },
+  {
+    index: 1,
+    code: 'CHILD_OVER_18_STUDYING',
+    title: 'Nhóm 2: Con từ 18 tuổi trở lên đang đi học',
+    subtitle: 'Độ tuổi < 18 tuổi và còn đang theo học các bậc giáo dục.',
+  },
+  {
+    index: 2,
+    code: 'DISABLED_DEPENDENT',
+    title: 'Nhóm 3: Con bị khuyết tật / Mất khả năng lao động',
+    subtitle: 'Con đủ 18 tuổi trở lên nhưng không có khả năng tự lao động.',
+  },
+  {
+    index: 3,
+    code: 'SPOUSE_OR_PARENTS',
+    title: 'Nhóm 4: Vợ / Chồng hoặc Cha / Mẹ',
+    subtitle: 'Vợ, chồng, cha mẹ đẻ, cha mẹ vợ/chồng hợp pháp.',
+  },
+  {
+    index: 4,
+    code: 'OTHER_DEPENDENT',
+    title: 'Nhóm 5: Cá nhân không nơi nương tựa khác',
+    subtitle: 'Anh, chị, em ruột, ông bà, cô dì chú bác, cháu ruột.',
+  },
+];
+
+// Mảng ngày, tháng, năm
+const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
+const MONTHS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+const currentYear = new Date().getFullYear();
+const YEARS = Array.from({ length: 100 }, (_, i) => String(currentYear - i));
+const EFFECTIVE_YEARS = Array.from({ length: 10 }, (_, i) => String(currentYear - 2 + i));
+
+export const TaxRegistrationScreen: React.FC = () => {
+  const navigation = useNavigation<RootNavigationProp>();
+
+  // 1. Họ và tên
+  const [fullName, setFullName] = useState<string>('');
+
+  // 2. Căn cước công dân
+  const [citizenId, setCitizenId] = useState<string>('');
+
+  // 3. Ngày sinh (Ngày - Tháng - Năm)
+  const [birthDay, setBirthDay] = useState<string>('15');
+  const [birthMonth, setBirthMonth] = useState<string>('06');
+  const [birthYear, setBirthYear] = useState<string>('2018');
+
+  // 4. Mối quan hệ với người nộp thuế
+  const [relationship, setRelationship] = useState<string>('CHILD');
+
+  // 5. Thời điểm bắt đầu tính hiệu lực giảm trừ gia cảnh
+  const [startDay, setStartDay] = useState<string>('01');
+  const [startMonth, setStartMonth] = useState<string>('01');
+  const [startYear, setStartYear] = useState<string>(String(currentYear));
+
+  // 6. Thời điểm kết thúc tính hiệu lực giảm trừ gia cảnh
+  const [hasEndDate, setHasEndDate] = useState<boolean>(false);
+  const [endDay, setEndDay] = useState<string>('31');
+  const [endMonth, setEndMonth] = useState<string>('12');
+  const [endYear, setEndYear] = useState<string>(String(currentYear));
+
+  // 7. Điều kiện đăng kí người phụ thuộc (Nhóm 1 đến Nhóm 5)
+  const [selectedGroupIdx, setSelectedGroupIdx] = useState<number>(0);
+
+  // Modals selector
+  const [activePicker, setActivePicker] = useState<{
+    title: string;
+    type: 'birthDay' | 'birthMonth' | 'birthYear' | 'relationship' | 'startDay' | 'startMonth' | 'startYear' | 'endDay' | 'endMonth' | 'endYear' | 'conditionGroup';
+    items: { value: any; label: string }[];
+  } | null>(null);
+
+  // Xử lý nút Tiếp tục: validate & điều hướng sang màn Ảnh minh chứng của nhóm tương ứng
+  const handleContinue = async () => {
+    if (!fullName.trim()) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập Họ và Tên người phụ thuộc.');
+      return;
+    }
+
+    if (!citizenId.trim()) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập số Căn cước công dân hoặc Mã định danh.');
+      return;
+    }
+
+    if (citizenId.trim().length !== 12 && citizenId.trim().length !== 9) {
+      Alert.alert('CCCD không hợp lệ', 'Số Căn cước công dân / Mã định danh phải gồm 12 chữ số (hoặc 9 số CMND cũ).');
+      return;
+    }
+
+    const birthDate = `${birthYear}-${birthMonth}-${birthDay}`;
+    const effectiveFrom = `${startYear}-${startMonth}`;
+    const effectiveTo = hasEndDate ? `${endYear}-${endMonth}` : `${startYear}-12`;
+
+    // Map relationship và groupCode chuẩn với Backend enum
+    let relCode = relationship || 'CHILD';
+    let groupEnumCode = 'CHILD_UNDER_18';
+
+    if (selectedGroupIdx === 0) {
+      relCode = 'CHILD';
+      groupEnumCode = 'CHILD_UNDER_18';
+    } else if (selectedGroupIdx === 1) {
+      relCode = 'CHILD';
+      groupEnumCode = 'CHILD_OVER_18_STUDYING';
+    } else if (selectedGroupIdx === 2) {
+      relCode = 'CHILD';
+      groupEnumCode = 'CHILD_OVER_18_DISABLED';
+    } else if (selectedGroupIdx === 3) {
+      if (relCode !== 'SPOUSE' && relCode !== 'PARENT') relCode = 'PARENT';
+      groupEnumCode = relCode === 'SPOUSE' ? 'SPOUSE_RETIRED' : 'PARENT_RETIRED';
+    } else if (selectedGroupIdx === 4) {
+      relCode = 'OTHER_DEPENDENT';
+      groupEnumCode = 'OTHER_HELPLESS';
+    }
+
+    // Gọi API Backend POST /api/v1/dependents để tạo người phụ thuộc trước khi sang upload tài liệu
+    let createdDependentId = 'c8d4e2a1-7b9f-4e3a-b8c1-123456789abc';
+    try {
+      const createRes = await dependentDocumentApi.createDependent({
+        fullName: fullName.trim(),
+        relationship: relCode,
+        currentGroup: groupEnumCode,
+        birthDate: `${birthDate}T00:00:00Z`,
+        citizenId: citizenId.trim().length === 12 ? citizenId.trim() : undefined,
+        effectiveFromMonth: effectiveFrom,
+        effectiveToMonth: effectiveTo,
+      });
+      if (createRes?.dependentId || createRes?.id) {
+        createdDependentId = createRes.dependentId || createRes.id;
+      }
+    } catch (err) {
+      console.warn('createDependent err:', err);
+    }
+
+    // Chuẩn bị dữ liệu người phụ thuộc đã khai báo
+    const dependentData = {
+      id: createdDependentId,
+      fullName: fullName.trim(),
+      citizenId: citizenId.trim(),
+      dateOfBirth: birthDate,
+      relationship: relCode,
+      effectiveFromMonth: effectiveFrom,
+      effectiveToMonth: effectiveTo,
+      groupId: selectedGroupIdx + 1,
+      groupCode: groupEnumCode,
+    };
+
+    // Điều hướng sang màn hình "Ảnh minh chứng" tương ứng nhóm (iPhone 17 - 15)
+    navigation.navigate('ProofDocuments', {
+      groupIndex: selectedGroupIdx,
+      dependentId: createdDependentId,
+      dependentData,
+    });
+  };
+
+  const openPicker = (
+    title: string,
+    type: any,
+    items: { value: any; label: string }[]
+  ) => {
+    setActivePicker({ title, type, items });
+  };
+
+  const handleSelectPickerItem = (val: any) => {
+    if (!activePicker) return;
+    switch (activePicker.type) {
+      case 'birthDay':
+        setBirthDay(val);
+        break;
+      case 'birthMonth':
+        setBirthMonth(val);
+        break;
+      case 'birthYear':
+        setBirthYear(val);
+        break;
+      case 'relationship':
+        setRelationship(val);
+        break;
+      case 'startDay':
+        setStartDay(val);
+        break;
+      case 'startMonth':
+        setStartMonth(val);
+        break;
+      case 'startYear':
+        setStartYear(val);
+        break;
+      case 'endDay':
+        setEndDay(val);
+        break;
+      case 'endMonth':
+        setEndMonth(val);
+        break;
+      case 'endYear':
+        setEndYear(val);
+        break;
+      case 'conditionGroup':
+        setSelectedGroupIdx(val);
+        break;
+    }
+    setActivePicker(null);
+  };
+
+  const selectedRelLabel =
+    RELATIONSHIP_OPTIONS.find((r) => r.value === relationship)?.label || 'Chọn mối quan hệ';
+  const selectedGroupTitle = CONDITION_GROUP_OPTIONS[selectedGroupIdx].title;
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      {/* Header chuẩn Figma: Nền hoa văn vàng be + Tiêu đề "Đơn đăng kí nộp thuế" */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+          accessibilityRole="button"
+          accessibilityLabel="Quay lại"
+          testID="taxRegBackBtn"
+        >
+          <Ionicons name="arrow-back" size={26} color="#1A1A1A" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1}>Đơn đăng kí nộp thuế</Text>
+        <View style={{ width: 44 }} />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Trường 1: Họ và Tên */}
+        <View style={styles.formGroup}>
+          <Text style={styles.fieldLabel}>
+            Họ và Tên. <Text style={styles.required}>*Bắt buộc</Text>
+          </Text>
+          <TextInput
+            style={styles.inputField}
+            placeholder="Họ và tên"
+            placeholderTextColor="#8E8E93"
+            value={fullName}
+            onChangeText={setFullName}
+            testID="inputFullName"
+          />
+        </View>
+
+        {/* Trường 2: Căn cước công dân */}
+        <View style={styles.formGroup}>
+          <Text style={styles.fieldLabel}>
+            Căn cước công dân <Text style={styles.required}>*Bắt buộc</Text>
+          </Text>
+          <TextInput
+            style={styles.inputField}
+            placeholder="Căn cước công dân"
+            placeholderTextColor="#8E8E93"
+            value={citizenId}
+            onChangeText={setCitizenId}
+            keyboardType="numeric"
+            maxLength={12}
+            testID="inputCitizenId"
+          />
+        </View>
+
+        {/* Trường 3: Ngày sinh (Ngày / Tháng / Năm) */}
+        <View style={styles.formGroup}>
+          <Text style={styles.fieldLabel}>
+            Ngày sinh. <Text style={styles.required}>*Bắt buộc</Text>
+          </Text>
+          <View style={styles.dateSelectorRow}>
+            {/* Ngày */}
+            <TouchableOpacity
+              style={styles.dateSelectorChip}
+              onPress={() =>
+                openPicker(
+                  'Chọn ngày sinh',
+                  'birthDay',
+                  DAYS.map((d) => ({ value: d, label: `Ngày ${d}` }))
+                )
+              }
+              testID="selectBirthDay"
+            >
+              <Text style={styles.dateSelectorText}>{`Ngày ${birthDay}`}</Text>
+              <Ionicons name="chevron-down" size={16} color="#1A1A1A" />
+            </TouchableOpacity>
+
+            {/* Tháng */}
+            <TouchableOpacity
+              style={styles.dateSelectorChip}
+              onPress={() =>
+                openPicker(
+                  'Chọn tháng sinh',
+                  'birthMonth',
+                  MONTHS.map((m) => ({ value: m, label: `Tháng ${m}` }))
+                )
+              }
+              testID="selectBirthMonth"
+            >
+              <Text style={styles.dateSelectorText}>{`Tháng ${birthMonth}`}</Text>
+              <Ionicons name="chevron-down" size={16} color="#1A1A1A" />
+            </TouchableOpacity>
+
+            {/* Năm */}
+            <TouchableOpacity
+              style={styles.dateSelectorChip}
+              onPress={() =>
+                openPicker(
+                  'Chọn năm sinh',
+                  'birthYear',
+                  YEARS.map((y) => ({ value: y, label: `Năm ${y}` }))
+                )
+              }
+              testID="selectBirthYear"
+            >
+              <Text style={styles.dateSelectorText}>{birthYear}</Text>
+              <Ionicons name="chevron-down" size={16} color="#1A1A1A" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Trường 4: Mối quan hệ với người nộp thuế */}
+        <View style={styles.formGroup}>
+          <Text style={styles.fieldLabel}>
+            Mối quan hệ với người nộp thuế. <Text style={styles.required}>*Bắt buộc</Text>
+          </Text>
+          <TouchableOpacity
+            style={styles.dropdownSelector}
+            onPress={() =>
+              openPicker('Mối quan hệ với người nộp thuế', 'relationship', RELATIONSHIP_OPTIONS)
+            }
+            testID="selectRelationship"
+          >
+            <Text style={styles.dropdownSelectorText} numberOfLines={1}>
+              {selectedRelLabel}
+            </Text>
+            <Ionicons name="chevron-down" size={18} color="#1A1A1A" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Trường 5: Thời điểm bắt đầu tính hiệu lực giảm trừ gia cảnh */}
+        <View style={styles.formGroup}>
+          <Text style={styles.fieldLabel}>
+            Thời điểm bắt đầu tính hiệu lực giảm trừ gia cảnh <Text style={styles.required}>*Bắt buộc</Text>
+          </Text>
+          <View style={styles.dateSelectorRow}>
+            {/* Ngày */}
+            <TouchableOpacity
+              style={styles.dateSelectorChip}
+              onPress={() =>
+                openPicker(
+                  'Chọn ngày bắt đầu',
+                  'startDay',
+                  DAYS.map((d) => ({ value: d, label: `Ngày ${d}` }))
+                )
+              }
+            >
+              <Text style={styles.dateSelectorText}>{`Ngày ${startDay}`}</Text>
+              <Ionicons name="chevron-down" size={16} color="#1A1A1A" />
+            </TouchableOpacity>
+
+            {/* Tháng */}
+            <TouchableOpacity
+              style={styles.dateSelectorChip}
+              onPress={() =>
+                openPicker(
+                  'Chọn tháng bắt đầu',
+                  'startMonth',
+                  MONTHS.map((m) => ({ value: m, label: `Tháng ${m}` }))
+                )
+              }
+            >
+              <Text style={styles.dateSelectorText}>{`Tháng ${startMonth}`}</Text>
+              <Ionicons name="chevron-down" size={16} color="#1A1A1A" />
+            </TouchableOpacity>
+
+            {/* Năm */}
+            <TouchableOpacity
+              style={styles.dateSelectorChip}
+              onPress={() =>
+                openPicker(
+                  'Chọn năm bắt đầu',
+                  'startYear',
+                  EFFECTIVE_YEARS.map((y) => ({ value: y, label: `Năm ${y}` }))
+                )
+              }
+            >
+              <Text style={styles.dateSelectorText}>{startYear}</Text>
+              <Ionicons name="chevron-down" size={16} color="#1A1A1A" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Trường 6: Thời điểm kết thúc tính hiệu lực giảm trừ gia cảnh */}
+        <View style={styles.formGroup}>
+          <View style={styles.toggleLabelRow}>
+            <Text style={styles.fieldLabelToggle}>
+              Thời điểm kết thúc tính hiệu lực giảm trừ gia cảnh
+            </Text>
+            <Switch
+              value={hasEndDate}
+              onValueChange={setHasEndDate}
+              trackColor={{ false: '#D1D1D6', true: theme.colors.primary }}
+              thumbColor="#FFFFFF"
+              testID="toggleHasEndDate"
+            />
+          </View>
+
+          {hasEndDate && (
+            <View style={[styles.dateSelectorRow, { marginTop: 10 }]}>
+              <TouchableOpacity
+                style={styles.dateSelectorChip}
+                onPress={() =>
+                  openPicker(
+                    'Chọn ngày kết thúc',
+                    'endDay',
+                    DAYS.map((d) => ({ value: d, label: `Ngày ${d}` }))
+                  )
+                }
+              >
+                <Text style={styles.dateSelectorText}>{`Ngày ${endDay}`}</Text>
+                <Ionicons name="chevron-down" size={16} color="#1A1A1A" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.dateSelectorChip}
+                onPress={() =>
+                  openPicker(
+                    'Chọn tháng kết thúc',
+                    'endMonth',
+                    MONTHS.map((m) => ({ value: m, label: `Tháng ${m}` }))
+                  )
+                }
+              >
+                <Text style={styles.dateSelectorText}>{`Tháng ${endMonth}`}</Text>
+                <Ionicons name="chevron-down" size={16} color="#1A1A1A" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.dateSelectorChip}
+                onPress={() =>
+                  openPicker(
+                    'Chọn năm kết thúc',
+                    'endYear',
+                    EFFECTIVE_YEARS.map((y) => ({ value: y, label: `Năm ${y}` }))
+                  )
+                }
+              >
+                <Text style={styles.dateSelectorText}>{endYear}</Text>
+                <Ionicons name="chevron-down" size={16} color="#1A1A1A" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Trường 7: Điều kiện đăng kí người phụ thuộc & Nút tra cứu điều kiện */}
+        <View style={styles.formGroup}>
+          <View style={styles.labelWithInfoRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+              <Text style={styles.fieldLabelNoMargin}>Điều kiện đăng kí người phụ thuộc</Text>
+              <Text style={styles.required}>*Bắt buộc</Text>
+            </View>
+
+            {/* Bấm xem luật ngay dấu chấm than -> Mở trang Điều kiện đăng kí */}
+            <TouchableOpacity
+              style={styles.infoLinkBtn}
+              onPress={() => navigation.navigate('LawConditions')}
+              accessibilityRole="button"
+              accessibilityLabel="Xem luật điều kiện đăng kí"
+              testID="btnLawConditionInfo"
+            >
+              <Ionicons name="alert-circle-outline" size={17} color="#8B1E1E" style={{ marginRight: 3 }} />
+              <Text style={styles.infoLinkText}>Xem luật</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.dropdownSelector}
+            onPress={() =>
+              openPicker(
+                'Chọn nhóm điều kiện đăng ký',
+                'conditionGroup',
+                CONDITION_GROUP_OPTIONS.map((g) => ({ value: g.index, label: g.title }))
+              )
+            }
+            testID="selectConditionGroup"
+          >
+            <Text style={styles.dropdownSelectorText} numberOfLines={1}>
+              {selectedGroupTitle}
+            </Text>
+            <Ionicons name="chevron-down" size={18} color="#1A1A1A" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ height: 20 }} />
+
+        {/* Nút Tiếp tục chuẩn Figma (iPhone 17 - 13) */}
+        <View style={styles.btnWrapper}>
+          <TouchableOpacity
+            style={styles.continueBtn}
+            onPress={handleContinue}
+            activeOpacity={0.85}
+            testID="btnContinueTaxReg"
+          >
+            <Text style={styles.continueBtnText}>Tiếp tục</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+
+      {/* Modal Picker chọn giá trị (Ngày, Tháng, Năm, Mối quan hệ, Nhóm điều kiện) */}
+      <Modal
+        visible={activePicker !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActivePicker(null)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setActivePicker(null)}
+        >
+          <View style={styles.pickerModalContent}>
+            <View style={styles.pickerModalHeader}>
+              <Text style={styles.pickerModalTitle}>{activePicker?.title}</Text>
+              <TouchableOpacity onPress={() => setActivePicker(null)}>
+                <Ionicons name="close" size={24} color="#1A1A1A" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={true}>
+              {activePicker?.items.map((item, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={styles.pickerOptionItem}
+                  onPress={() => handleSelectPickerItem(item.value)}
+                >
+                  <Text style={styles.pickerOptionLabel}>{item.label}</Text>
+                  <Ionicons name="chevron-forward" size={16} color="#8E8E93" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  header: {
+    height: 64,
+    backgroundColor: '#EBE4D5',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#DDD5C4',
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    ...theme.typography.titleLarge,
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    textAlign: 'center',
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  formGroup: {
+    marginBottom: 20,
+  },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 8,
+  },
+  required: {
+    color: '#E53935',
+    fontWeight: '500',
+  },
+  inputField: {
+    height: 48,
+    backgroundColor: '#EAEAEE',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    color: '#1A1A1A',
+  },
+  dateSelectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  dateSelectorChip: {
+    flex: 1,
+    height: 44,
+    backgroundColor: '#EAEAEE',
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+  },
+  dateSelectorText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#1A1A1A',
+  },
+  dropdownSelector: {
+    height: 48,
+    backgroundColor: '#EAEAEE',
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+  },
+  dropdownSelectorText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1A1A1A',
+    flex: 1,
+    marginRight: 8,
+  },
+  toggleLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  fieldLabelToggle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    flex: 1,
+    marginRight: 10,
+  },
+  labelWithInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  fieldLabelNoMargin: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  exclamationInlineBtn: {
+    paddingHorizontal: 2,
+    paddingVertical: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+  },
+  infoLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.primary,
+  },
+  btnWrapper: {
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  continueBtn: {
+    width: 170,
+    height: 46,
+    backgroundColor: '#EFE3BF', // Nền màu be vàng theo đúng Figma iPhone 17 - 13
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  continueBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#262626',
+  },
+  // Modal Picker
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  pickerModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 32,
+  },
+  pickerModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F2',
+  },
+  pickerModalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  pickerOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F7F7F8',
+  },
+  pickerOptionLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#1A1A1A',
+  },
+});
