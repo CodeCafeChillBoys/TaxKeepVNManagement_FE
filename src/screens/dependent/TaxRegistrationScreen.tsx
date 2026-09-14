@@ -9,6 +9,7 @@ import {
   Switch,
   Modal,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -69,16 +70,38 @@ const EFFECTIVE_YEARS = Array.from({ length: 10 }, (_, i) => String(currentYear 
 export const TaxRegistrationScreen: React.FC = () => {
   const navigation = useNavigation<RootNavigationProp>();
 
+  // Trạng thái gửi dữ liệu lên Backend
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
   // 1. Họ và tên
   const [fullName, setFullName] = useState<string>('');
 
-  // 2. Căn cước công dân
+  // 2. Định danh: Căn cước công dân (khi >= 14 tuổi) hoặc Giấy khai sinh (khi < 14 tuổi)
   const [citizenId, setCitizenId] = useState<string>('');
+  const [birthCertNumber, setBirthCertNumber] = useState<string>('');
 
   // 3. Ngày sinh (Ngày - Tháng - Năm)
   const [birthDay, setBirthDay] = useState<string>('15');
   const [birthMonth, setBirthMonth] = useState<string>('06');
   const [birthYear, setBirthYear] = useState<string>('2018');
+
+  // Tính tuổi dựa trên ngày sinh đã chọn
+  const calculateAge = (day: string, month: string, year: string): number => {
+    const bDay = parseInt(day, 10);
+    const bMonth = parseInt(month, 10);
+    const bYear = parseInt(year, 10);
+    if (isNaN(bDay) || isNaN(bMonth) || isNaN(bYear)) return 0;
+    const today = new Date();
+    let age = today.getFullYear() - bYear;
+    const m = today.getMonth() + 1 - bMonth;
+    if (m < 0 || (m === 0 && today.getDate() < bDay)) {
+      age--;
+    }
+    return age;
+  };
+
+  const currentAge = calculateAge(birthDay, birthMonth, birthYear);
+  const isAge14OrOlder = currentAge >= 14;
 
   // 4. Mối quan hệ với người nộp thuế
   const [relationship, setRelationship] = useState<string>('CHILD');
@@ -111,14 +134,20 @@ export const TaxRegistrationScreen: React.FC = () => {
       return;
     }
 
-    if (!citizenId.trim()) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập số Căn cước công dân hoặc Mã định danh.');
-      return;
-    }
-
-    if (citizenId.trim().length !== 12 && citizenId.trim().length !== 9) {
-      Alert.alert('CCCD không hợp lệ', 'Số Căn cước công dân / Mã định danh phải gồm 12 chữ số (hoặc 9 số CMND cũ).');
-      return;
+    if (isAge14OrOlder) {
+      if (!citizenId.trim()) {
+        Alert.alert('Thiếu thông tin', 'Người phụ thuộc từ đủ 14 tuổi trở lên bắt buộc phải có Căn cước công dân.');
+        return;
+      }
+      if (citizenId.trim().length !== 12 && citizenId.trim().length !== 9) {
+        Alert.alert('CCCD không hợp lệ', 'Số Căn cước công dân phải gồm 12 chữ số (hoặc 9 số CMND cũ).');
+        return;
+      }
+    } else {
+      if (!birthCertNumber.trim()) {
+        Alert.alert('Thiếu thông tin', 'Người phụ thuộc dưới 14 tuổi vui lòng nhập Số giấy khai sinh / Mã định danh.');
+        return;
+      }
     }
 
     const birthDate = `${birthYear}-${birthMonth}-${birthDay}`;
@@ -147,29 +176,40 @@ export const TaxRegistrationScreen: React.FC = () => {
     }
 
     // Gọi API Backend POST /api/v1/dependents để tạo người phụ thuộc trước khi sang upload tài liệu
-    let createdDependentId = 'c8d4e2a1-7b9f-4e3a-b8c1-123456789abc';
+    let createdDependentId = '';
     try {
+      setIsSubmitting(true);
       const createRes = await dependentDocumentApi.createDependent({
         fullName: fullName.trim(),
         relationship: relCode,
         currentGroup: groupEnumCode,
         birthDate: `${birthDate}T00:00:00Z`,
-        citizenId: citizenId.trim().length === 12 ? citizenId.trim() : undefined,
+        citizenId: isAge14OrOlder ? citizenId.trim() : undefined,
+        birthCertNumber: !isAge14OrOlder ? birthCertNumber.trim() : undefined,
         effectiveFromMonth: effectiveFrom,
         effectiveToMonth: effectiveTo,
       });
-      if (createRes?.dependentId || createRes?.id) {
-        createdDependentId = createRes.dependentId || createRes.id;
+      createdDependentId = createRes?.dependentId || createRes?.id;
+      if (!createdDependentId) {
+        throw new Error('Máy chủ không trả về mã hồ sơ người phụ thuộc.');
       }
-    } catch (err) {
-      console.warn('createDependent err:', err);
+    } catch (err: any) {
+      setIsSubmitting(false);
+      Alert.alert(
+        'Không thể đăng ký người phụ thuộc',
+        err?.message || 'Có lỗi xảy ra khi lưu thông tin người phụ thuộc. Vui lòng kiểm tra lại.'
+      );
+      return; // Dừng lại ở Màn 1 để người dùng chỉnh sửa thông tin, không chuyển sang Màn 2
+    } finally {
+      setIsSubmitting(false);
     }
 
     // Chuẩn bị dữ liệu người phụ thuộc đã khai báo
     const dependentData = {
       id: createdDependentId,
       fullName: fullName.trim(),
-      citizenId: citizenId.trim(),
+      citizenId: isAge14OrOlder ? citizenId.trim() : '',
+      birthCertNumber: !isAge14OrOlder ? birthCertNumber.trim() : '',
       dateOfBirth: birthDate,
       relationship: relCode,
       effectiveFromMonth: effectiveFrom,
@@ -240,7 +280,7 @@ export const TaxRegistrationScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header chuẩn Figma: Nền hoa văn vàng be + Tiêu đề "Đơn đăng kí nộp thuế" */}
+      {/* Header chuẩn Figma: Nền hoa văn vàng be + Tiêu đề "Đơn đăng ký người phụ thuộc" */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
@@ -251,7 +291,7 @@ export const TaxRegistrationScreen: React.FC = () => {
         >
           <Ionicons name="arrow-back" size={26} color="#1A1A1A" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>Đơn đăng kí nộp thuế</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>Đơn đăng ký người phụ thuộc</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -271,28 +311,19 @@ export const TaxRegistrationScreen: React.FC = () => {
           />
         </View>
 
-        {/* Trường 2: Căn cước công dân */}
+        {/* Trường 2: Ngày sinh (Được đưa lên trên theo yêu cầu luật 14 tuổi) */}
         <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>
-            Căn cước công dân <Text style={styles.required}>*Bắt buộc</Text>
-          </Text>
-          <TextInput
-            style={styles.inputField}
-            placeholder="Căn cước công dân"
-            placeholderTextColor="#8E8E93"
-            value={citizenId}
-            onChangeText={setCitizenId}
-            keyboardType="numeric"
-            maxLength={12}
-            testID="inputCitizenId"
-          />
-        </View>
+          <View style={styles.labelWithBadgeRow}>
+            <Text style={styles.fieldLabel}>
+              Ngày sinh. <Text style={styles.required}>*Bắt buộc</Text>
+            </Text>
+            <View style={[styles.ageBadge, isAge14OrOlder ? styles.ageBadgeAdult : styles.ageBadgeChild]}>
+              <Text style={[styles.ageBadgeText, isAge14OrOlder ? styles.ageBadgeTextAdult : styles.ageBadgeTextChild]}>
+                {currentAge} tuổi ({isAge14OrOlder ? '≥ 14 tuổi' : '< 14 tuổi'})
+              </Text>
+            </View>
+          </View>
 
-        {/* Trường 3: Ngày sinh (Ngày / Tháng / Năm) */}
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>
-            Ngày sinh. <Text style={styles.required}>*Bắt buộc</Text>
-          </Text>
           <View style={styles.dateSelectorRow}>
             {/* Ngày */}
             <TouchableOpacity
@@ -343,6 +374,43 @@ export const TaxRegistrationScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Trường 3: Xử lý theo Luật 14 tuổi:
+            - Nếu người phụ thuộc >= 14 tuổi: Hiển thị trường "Căn cước công dân"
+            - Nếu người phụ thuộc < 14 tuổi: Ẩn CCCD, đổi thành trường "Giấy khai sinh" (birthCertNumber) */}
+        {isAge14OrOlder ? (
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>
+              Căn cước công dân <Text style={styles.required}>*Bắt buộc</Text>
+            </Text>
+            <TextInput
+              style={styles.inputField}
+              placeholder="Căn cước công dân (12 số)"
+              placeholderTextColor="#8E8E93"
+              value={citizenId}
+              onChangeText={setCitizenId}
+              keyboardType="numeric"
+              maxLength={12}
+              testID="inputCitizenId"
+            />
+            <Text style={styles.fieldHintText}>Công dân từ đủ 14 tuổi bắt buộc cung cấp Căn cước công dân.</Text>
+          </View>
+        ) : (
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>
+              Số giấy khai sinh <Text style={styles.required}>*Bắt buộc</Text>
+            </Text>
+            <TextInput
+              style={styles.inputField}
+              placeholder="Số giấy khai sinh / Mã định danh cá nhân"
+              placeholderTextColor="#8E8E93"
+              value={birthCertNumber}
+              onChangeText={setBirthCertNumber}
+              testID="inputBirthCertNumber"
+            />
+            <Text style={styles.fieldHintText}>Trẻ em dưới 14 tuổi chưa cấp CCCD sử dụng Số Giấy khai sinh theo quy định.</Text>
+          </View>
+        )}
 
         {/* Trường 4: Mối quan hệ với người nộp thuế */}
         <View style={styles.formGroup}>
@@ -522,12 +590,17 @@ export const TaxRegistrationScreen: React.FC = () => {
         {/* Nút Tiếp tục chuẩn Figma (iPhone 17 - 13) */}
         <View style={styles.btnWrapper}>
           <TouchableOpacity
-            style={styles.continueBtn}
+            style={[styles.continueBtn, isSubmitting && { opacity: 0.7 }]}
             onPress={handleContinue}
+            disabled={isSubmitting}
             activeOpacity={0.85}
             testID="btnContinueTaxReg"
           >
-            <Text style={styles.continueBtnText}>Tiếp tục</Text>
+            {isSubmitting ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.continueBtnText}>Tiếp tục</Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -765,5 +838,38 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
     color: '#1A1A1A',
+  },
+  labelWithBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  ageBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  ageBadgeAdult: {
+    backgroundColor: '#E8F5E9',
+  },
+  ageBadgeChild: {
+    backgroundColor: '#FFF3E0',
+  },
+  ageBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  ageBadgeTextAdult: {
+    color: '#2E7D32',
+  },
+  ageBadgeTextChild: {
+    color: '#E65100',
+  },
+  fieldHintText: {
+    fontSize: 12,
+    color: '#666666',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
 });

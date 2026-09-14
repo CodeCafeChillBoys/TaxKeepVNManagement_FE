@@ -487,112 +487,52 @@ export const ProofDocumentsScreen: React.FC = () => {
     }
   };
 
-  // 4. Chọn ảnh mẫu nhanh (tiện cho emulator khi chưa có ảnh thật trong máy)
-  const handlePickSampleFast = () => {
-    setPickerModalVisible(false);
-    if (!activePickingDoc) return;
-
-    const docKey = activePickingDoc.key;
-    const defaultName = activePickingDoc.docType;
-
-    setSelectedFiles((prev) => ({
-      ...prev,
-      [docKey]: {
-        name: `${defaultName.toLowerCase()}_${Date.now().toString().slice(-4)}.pdf`,
-        sizeText: '420 KB',
-        type: 'application/pdf',
-        uri: 'file:///sample/' + defaultName + '.pdf',
-        blob: Platform.OS === 'web' ? new Blob(['%PDF-1.4 sample content'], { type: 'application/pdf' }) : undefined,
-      },
-    }));
-  };
-
-  // Nút Quét thông minh (Smart scan theo Figma)
-  const handleSmartScan = async () => {
-    const newFiles = { ...selectedFiles };
-    let capturedPhotoUri: string | undefined = undefined;
-
-    if (Platform.OS !== 'web') {
-      // Trên thiết bị thật: mở camera chụp trực tiếp giấy tờ để nhận diện
-      try {
-        const permission = await ImagePicker.requestCameraPermissionsAsync();
-        if (permission.granted) {
-          const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            quality: 0.9,
-          });
-
-          if (!result.canceled && result.assets && result.assets[0]) {
-            const asset = result.assets[0];
-            capturedPhotoUri = asset.uri;
-            const firstDoc = activeDocs[0];
-            newFiles[firstDoc.key] = {
-              name: `scan_smart_${firstDoc.docType.toLowerCase()}.jpg`,
-              sizeText: asset.fileSize ? `${Math.round(asset.fileSize / 1024)} KB` : '1.8 MB',
-              type: asset.mimeType || 'image/jpeg',
-              uri: asset.uri,
-            };
-          }
-        }
-      } catch (err) {
-        console.warn('Camera launch error:', err);
-      }
-    }
-
-    // Tự động chuẩn bị tài liệu quét thông minh vào các ô trống nếu chưa có
-    activeDocs.forEach((doc, idx) => {
-      if (!newFiles[doc.key]) {
-        newFiles[doc.key] = {
-          name: `scan_${doc.docType.toLowerCase()}_${Date.now().toString().slice(-4)}.jpg`,
-          sizeText: `${(1.2 + idx * 0.4).toFixed(1)} MB`,
-          type: 'image/jpeg',
-          blob: Platform.OS === 'web' ? new Blob(['smart_scan_image_data_pit_compliance'], { type: 'image/jpeg' }) : undefined,
-          uri: capturedPhotoUri || (Platform.OS === 'web' ? undefined : 'file:///scans/' + doc.docType + '.jpg'),
-        };
-      }
-    });
-    setSelectedFiles(newFiles);
-
-    // GỌI TRỰC TIẾP API BACKEND: POST /api/v1/dependents/{dependentId}/documents
+  // Lưu thông tin hồ sơ người phụ thuộc & giấy tờ minh chứng (thay thế Quét thông minh)
+  const handleSaveAndContinue = async () => {
     const activeDocKeys = activeDocs.map((d) => d.key);
-    const entriesToUpload = Object.entries(newFiles).filter(([k]) => activeDocKeys.includes(k));
+    const entriesToUpload = Object.entries(selectedFiles).filter(([k]) => activeDocKeys.includes(k));
 
     const dependentId =
       route.params?.dependentId ||
       (route.params?.dependentData as any)?.id ||
-      selectedDependent?.id ||
-      'c8d4e2a1-7b9f-4e3a-b8c1-123456789abc';
+      selectedDependent?.id;
+
+    if (!dependentId) {
+      Alert.alert('Chưa có hồ sơ', 'Không tìm thấy thông tin hồ sơ người phụ thuộc để lưu.');
+      return;
+    }
 
     try {
       setUploading(true);
-      let lastRes: any = null;
       let uploadCount = 0;
 
       for (const [key, fileObj] of entriesToUpload) {
         const docSpec = activeDocs.find((d) => d.key === key);
         const docType = docSpec?.docType || 'BIRTH_CERTIFICATE';
 
-        // Gọi API DependentDocument
-        const res = await dependentDocumentApi.uploadDocument(dependentId, docType, fileObj);
-        lastRes = res;
+        // Gọi API DependentDocument uploadDocument
+        await dependentDocumentApi.uploadDocument(dependentId, docType, fileObj);
         uploadCount++;
         setUploadedKeys((prev) => ({ ...prev, [key]: true }));
       }
 
       setUploading(false);
 
-      const msg = lastRes?.isProfileComplete
-        ? `Quét thông minh và lưu trữ thành công ${uploadCount} chứng từ! Hồ sơ người phụ thuộc đã đầy đủ điều kiện giảm trừ gia cảnh.`
-        : `Quét thông minh hoàn tất! Đã lưu trữ ${uploadCount} chứng từ lên hệ thống quản lý thuế.`;
+      const msg = uploadCount > 0
+        ? `Đã lưu hồ sơ và tải lên thành công ${uploadCount} giấy tờ minh chứng!`
+        : 'Đã lưu thông tin hồ sơ người phụ thuộc thành công!';
 
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        Alert.alert('Quét thông minh', msg);
-      }
+      Alert.alert('Thành công', msg, [
+        {
+          text: 'Xem danh sách người phụ thuộc',
+          onPress: () => {
+            navigation.navigate('DependentList');
+          },
+        },
+      ]);
     } catch (err: any) {
       setUploading(false);
-      Alert.alert('Lỗi tải lên chứng từ', err?.message || 'Không thể kết nối đến máy chủ.');
+      Alert.alert('Lỗi lưu giấy tờ minh chứng', err?.message || 'Không thể tải lên giấy tờ minh chứng. Vui lòng thử lại.');
     }
   };
 
@@ -606,7 +546,15 @@ export const ProofDocumentsScreen: React.FC = () => {
       return;
     }
 
-    const dependentId = selectedDependent?.id || 'c8d4e2a1-7b9f-4e3a-b8c1-123456789abc';
+    const dependentId =
+      route.params?.dependentId ||
+      (route.params?.dependentData as any)?.id ||
+      selectedDependent?.id;
+
+    if (!dependentId) {
+      Alert.alert('Chưa có hồ sơ', 'Không tìm thấy hồ sơ người phụ thuộc để tải lên.');
+      return;
+    }
 
     try {
       setUploading(true);
@@ -663,7 +611,12 @@ export const ProofDocumentsScreen: React.FC = () => {
           <View style={styles.applicantBadge} testID="dependentInfoBanner">
             <Ionicons name="person-circle" size={22} color={theme.colors.primary} />
             <Text style={styles.applicantText} numberOfLines={1}>
-              Hồ sơ: <Text style={{ fontWeight: '700' }}>{route.params.dependentData.fullName}</Text> (CCCD: {route.params.dependentData.citizenId})
+              Hồ sơ: <Text style={{ fontWeight: '700' }}>{route.params.dependentData.fullName}</Text>{' '}
+              {route.params.dependentData.citizenId
+                ? `(CCCD: ${route.params.dependentData.citizenId})`
+                : route.params.dependentData.birthCertNumber
+                ? `(Số GKS: ${route.params.dependentData.birthCertNumber})`
+                : ''}
             </Text>
           </View>
         )}
@@ -750,19 +703,22 @@ export const ProofDocumentsScreen: React.FC = () => {
         {/* Khoảng cách trước thanh nút bấm */}
         <View style={{ height: 20 }} />
 
-        {/* Nút Quét thông minh duy nhất theo đúng Figma (không có nút nộp hồ sơ) */}
+        {/* Nút Lưu thông tin & Hoàn tất (Bỏ quét thông minh do chưa có AI) */}
         <View style={styles.actionRow}>
           <TouchableOpacity
-            style={styles.smartScanBtn}
-            onPress={handleSmartScan}
+            style={styles.saveInfoBtn}
+            onPress={handleSaveAndContinue}
             activeOpacity={0.8}
             disabled={uploading}
-            testID="smartScanBtn"
+            testID="saveAndContinueBtn"
           >
             {uploading ? (
-              <ActivityIndicator size="small" color="#1A1A1A" />
+              <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.smartScanBtnText}>Quét thông minh</Text>
+              <>
+                <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.saveInfoBtnText}>Lưu thông tin hồ sơ</Text>
+              </>
             )}
           </TouchableOpacity>
         </View>
@@ -822,16 +778,7 @@ export const ProofDocumentsScreen: React.FC = () => {
               <Ionicons name="chevron-forward" size={18} color="#8E8E93" />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sheetOption} onPress={handlePickSampleFast}>
-              <View style={[styles.sheetIconBox, { backgroundColor: '#F3E5F5' }]}>
-                <Ionicons name="flash" size={22} color="#7B1FA2" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sheetOptionTitle}>Dùng tệp mẫu test nhanh</Text>
-                <Text style={styles.sheetOptionDesc}>Dành cho giả lập khi không có ảnh thật</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#8E8E93" />
-            </TouchableOpacity>
+
 
             <TouchableOpacity
               style={styles.sheetCancelBtn}
@@ -1068,18 +1015,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  smartScanBtn: {
-    height: 46,
-    paddingHorizontal: 32,
-    backgroundColor: '#E5E5EA',
+  saveInfoBtn: {
+    height: 48,
+    paddingHorizontal: 28,
+    backgroundColor: theme.colors.primary,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    minWidth: 220,
+    ...theme.shadows.button,
   },
-  smartScanBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1A1A1A',
+  saveInfoBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   // Styles Modal đọc chi tiết quy định luật (chuẩn Frame 262, 263, 264)
   lawModalOverlay: {

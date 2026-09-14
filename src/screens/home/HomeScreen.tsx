@@ -250,23 +250,38 @@ export const HomeScreen: React.FC = () => {
         </View>
 
         <View style={styles.gridContainer}>
-          {/* Nút vào màn Đơn đăng ký nộp thuế (iPhone 17 - 13) */}
+          {/* Nút vào màn Đơn đăng ký người phụ thuộc (iPhone 17 - 13) */}
           <TouchableOpacity
             style={styles.gridCardHighlight}
             activeOpacity={0.8}
             onPress={() => navigation.navigate('TaxRegistration')}
             testID="homeTaxRegistrationCard"
             accessibilityRole="button"
-            accessibilityLabel="Đơn đăng kí nộp thuế"
+            accessibilityLabel="Đơn đăng ký người phụ thuộc"
           >
             <View style={styles.gridIconCircleHighlight}>
               <Ionicons name="document-text" size={24} color="#FFFFFF" />
             </View>
-            <Text style={styles.gridTitleHighlight}>Đơn đăng kí nộp thuế</Text>
+            <Text style={styles.gridTitleHighlight}>Đơn đăng ký người phụ thuộc</Text>
             <Text style={styles.gridSubtitleHighlight}>Khai người phụ thuộc theo luật</Text>
           </TouchableOpacity>
 
-          {/* Tiện ích 2 */}
+          {/* Tiện ích 2: Danh sách người phụ thuộc */}
+          <TouchableOpacity
+            style={styles.gridCard}
+            onPress={() => navigation.navigate('DependentList')}
+            accessibilityRole="button"
+            accessibilityLabel="Danh sách người phụ thuộc"
+            testID="homeDependentListCard"
+          >
+            <View style={styles.gridIconCircle}>
+              <Ionicons name="people-outline" size={22} color={theme.colors.primary} />
+            </View>
+            <Text style={styles.gridTitle}>Danh sách NPT</Text>
+            <Text style={styles.gridSubtitle}>Quản lý hồ sơ</Text>
+          </TouchableOpacity>
+
+          {/* Tiện ích 3: Điều kiện luật */}
           <TouchableOpacity
             style={styles.gridCard}
             onPress={() => navigation.navigate('LawConditions')}
@@ -279,18 +294,6 @@ export const HomeScreen: React.FC = () => {
             </View>
             <Text style={styles.gridTitle}>Điều kiện luật</Text>
             <Text style={styles.gridSubtitle}>5 nhóm giảm trừ</Text>
-          </TouchableOpacity>
-
-          {/* Tiện ích 3 */}
-          <TouchableOpacity
-            style={styles.gridCard}
-            onPress={() => Alert.alert('Quét CCCD', 'Component quét camera căn cước công dân (1.1.T4).')}
-          >
-            <View style={styles.gridIconCircle}>
-              <Ionicons name="scan-outline" size={22} color={theme.colors.primary} />
-            </View>
-            <Text style={styles.gridTitle}>Quét căn cước</Text>
-            <Text style={styles.gridSubtitle}>Nhận diện tự động</Text>
           </TouchableOpacity>
 
           {/* Tiện ích 4: Hồ sơ cá nhân (Task 1.3.T3) */}

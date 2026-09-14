@@ -14,7 +14,8 @@ export type RootStackParamList = {
         dependentId?: string;
         dependentData?: {
           fullName: string;
-          citizenId: string;
+          citizenId?: string;
+          birthCertNumber?: string;
           dateOfBirth: string;
           relationship: string;
           effectiveFromMonth: string;
@@ -27,6 +28,7 @@ export type RootStackParamList = {
   IncomeSourceList: undefined;
   ChangePassword: undefined;
   LawConditions: undefined;
+  DependentList: undefined;
 };
 
 export type RootNavigationProp = NativeStackNavigationProp<RootStackParamList>;

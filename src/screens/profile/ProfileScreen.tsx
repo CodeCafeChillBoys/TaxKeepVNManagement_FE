@@ -259,8 +259,8 @@ export const ProfileScreen: React.FC = () => {
 
           <TouchableOpacity
             style={styles.quickLinkRow}
-            onPress={() => navigation.navigate('ProofDocuments')}
-            testID="quickLinkProofDocuments"
+            onPress={() => navigation.navigate('DependentList')}
+            testID="quickLinkDependentList"
           >
             <View style={styles.quickLinkLeft}>
               <Ionicons name="people-outline" size={18} color={theme.colors.textPrimary} />
