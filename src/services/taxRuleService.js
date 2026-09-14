@@ -50,51 +50,49 @@ export function parseApiError(error) {
 
   let friendlyMessage = rawMsg
   let field = null
-  let title = `Lỗi hệ thống (${status || 'Network'})`
+  let title = 'Thông báo hệ thống'
   let suggestion = ''
 
   if (!error.response) {
-    title = 'Không thể kết nối máy chủ Backend AI'
+    title = 'Không thể kết nối máy chủ'
     friendlyMessage =
-      'Không thể gửi yêu cầu tới máy chủ AI Service tại ' +
-      API_BASE_URL +
-      '. Vui lòng kiểm tra lại dịch vụ Backend.'
-    suggestion = 'Đảm bảo terminal backend đang chạy: python -m uvicorn app.main:app --reload'
+      'Không thể gửi yêu cầu tới máy chủ xử lý văn bản. Vui lòng kiểm tra lại kết nối mạng hoặc thử lại sau.'
+    suggestion = 'Vui lòng liên hệ quản trị viên để kiểm tra trạng thái dịch vụ.'
   } else if (status === 409) {
-    title = 'Xung đột dữ liệu (Mã lỗi 409 - Conflict)'
+    title = 'Trùng lặp dữ liệu năm tính thuế'
     if (
       rawMsg.includes('tax year already exists') ||
       rawMsg.includes('TAX_RULE_SET_EXISTS')
     ) {
       field = 'taxYear'
       friendlyMessage =
-        'Năm tính thuế này đã có bộ quy tắc thuế tồn tại trong cơ sở dữ liệu hệ thống.'
+        'Năm tính thuế này đã có bộ quy tắc thuế tồn tại trên hệ thống.'
       suggestion =
-        'Khắc phục: Vui lòng thay đổi Năm tính thuế sang năm khác (ví dụ: 2025, 2027) hoặc xóa bộ quy tắc trùng lặp trong CSDL trước khi gửi lại.'
+        'Khắc phục: Vui lòng thay đổi Năm tính thuế sang năm khác (ví dụ: 2025, 2027) hoặc cập nhật bộ quy tắc hiện có.'
     } else if (
       rawMsg.includes('rule code already exists') ||
       rawMsg.includes('ruleCode') ||
       rawMsg.includes('Duplicate ruleCode')
     ) {
       friendlyMessage =
-        'Mã quy tắc thuế trích xuất từ văn bản bị trùng lặp với quy tắc đã có trong cơ sở dữ liệu.'
+        'Mã quy tắc thuế trích xuất từ văn bản bị trùng lặp với quy tắc đã có trên hệ thống.'
       suggestion =
-        'Khắc phục: Kiểm tra lại các điều khoản trong văn bản hoặc cập nhật cơ sở dữ liệu.'
+        'Khắc phục: Kiểm tra lại các điều khoản trong văn bản hoặc cập nhật quy tắc hiện có.'
     } else if (rawMsg.includes('name already exists')) {
       field = 'name'
-      friendlyMessage = 'Tên bộ quy tắc thuế này đã tồn tại trong hệ thống.'
+      friendlyMessage = 'Tên bộ quy tắc thuế này đã tồn tại trên hệ thống.'
       suggestion = 'Khắc phục: Vui lòng nhập tên văn bản quy phạm khác để phân biệt.'
     } else {
       friendlyMessage =
-        'Dữ liệu văn bản hoặc quy tắc gửi lên bị xung đột với dữ liệu hiện có trong CSDL.'
+        'Dữ liệu văn bản hoặc quy tắc gửi lên bị trùng lặp với dữ liệu hiện có trên hệ thống.'
       suggestion = 'Khắc phục: Vui lòng kiểm tra lại thông tin gửi lên hoặc chọn năm khác.'
     }
   } else if (status === 400) {
-    title = 'Yêu cầu không hợp lệ (Mã lỗi 400 - Bad Request)'
+    title = 'Thông tin chưa hợp lệ'
     if (rawMsg.includes('adminId')) {
       field = 'adminId'
-      friendlyMessage = 'Mã định danh Admin (adminId) không đúng định dạng UUID hợp lệ.'
-      suggestion = 'Khắc phục: Đảm bảo tài khoản Quản trị viên đăng nhập có UUID hợp lệ.'
+      friendlyMessage = 'Mã định danh quản trị viên không hợp lệ.'
+      suggestion = 'Khắc phục: Vui lòng đăng nhập lại tài khoản quản trị viên.'
     } else if (
       data.TaxYear ||
       rawMsg.includes('TaxYear') ||
@@ -102,11 +100,11 @@ export function parseApiError(error) {
     ) {
       field = 'taxYear'
       friendlyMessage =
-        'Năm tính thuế không hợp lệ. Vui lòng nhập số nguyên hợp lệ từ 1900 đến 2100.'
+        'Năm tính thuế không hợp lệ. Vui lòng nhập số năm hợp lệ từ 1900 đến 2100.'
     } else if (data.SourceUrl || rawMsg.includes('SourceUrl')) {
       field = 'sourceUrl'
       friendlyMessage =
-        'Nguồn văn bản không đúng định dạng URL (phải bắt đầu bằng http:// hoặc https://).'
+        'Nguồn văn bản không đúng định dạng liên kết (phải bắt đầu bằng http:// hoặc https://).'
     } else if (rawMsg.includes('PDF') || rawMsg.includes('file')) {
       field = 'file'
       friendlyMessage = rawMsg.includes('exceed')
@@ -114,21 +112,31 @@ export function parseApiError(error) {
         : 'Tệp tải lên không hợp lệ hoặc không đúng định dạng PDF.'
     } else if (rawMsg.includes('No tax rule information could be extracted')) {
       friendlyMessage =
-        'Không thể trích xuất quy tắc thuế nào từ văn bản PDF. Tệp có thể là trang trắng, scan mờ hoặc không chứa điều khoản thuế.'
+        'Không thể trích xuất quy tắc thuế nào từ văn bản PDF. Tệp có thể là trang trắng, bản quét mờ hoặc không chứa điều khoản thuế.'
       suggestion = 'Khắc phục: Thử lại với tài liệu PDF có nội dung văn bản rõ ràng.'
     } else if (rawMsg.includes('Some required tax rule fields could not be extracted')) {
       friendlyMessage =
-        'AI không trích xuất đủ các trường quy tắc thuế bắt buộc từ văn bản.'
+        'Hệ thống không trích xuất đủ các trường quy tắc thuế bắt buộc từ văn bản.'
       suggestion = 'Khắc phục: Kiểm tra lại văn bản có đầy đủ biểu thuế hoặc điều kiện người phụ thuộc không.'
+    } else if (
+      rawMsg.includes('StringDataRightTruncation') ||
+      rawMsg.includes('value too long for type character varying') ||
+      rawMsg.includes('character varying')
+    ) {
+      title = 'Dữ liệu văn bản vượt quá quy định'
+      friendlyMessage =
+        'Tên hoặc nội dung một quy tắc do hệ thống trích xuất từ văn bản dài hơn quy định chuẩn.'
+      suggestion =
+        'Khắc phục: Vui lòng kiểm tra lại văn bản nguồn hoặc liên hệ quản trị viên để chuẩn hóa cấu trúc dữ liệu.'
     }
   } else if (status === 404) {
-    title = 'Không tìm thấy tài nguyên (Mã lỗi 404 - Not Found)'
-    friendlyMessage = 'Bộ quy tắc thuế hoặc tài nguyên yêu cầu không tồn tại trong hệ thống.'
+    title = 'Không tìm thấy dữ liệu'
+    friendlyMessage = 'Bộ quy tắc thuế hoặc tài liệu yêu cầu không tồn tại trên hệ thống.'
   } else if (status === 500) {
-    title = 'Lỗi máy chủ nội bộ (Mã lỗi 500 - Server Error)'
+    title = 'Sự cố xử lý hệ thống'
     friendlyMessage =
-      'Máy chủ Backend AI gặp sự cố trong quá trình phân tích văn bản hoặc truy vấn CSDL.'
-    suggestion = 'Khắc phục: Kiểm tra terminal uvicorn để xem chi tiết log traceback.'
+      'Hệ thống gặp sự cố trong quá trình phân tích văn bản hoặc cập nhật quy tắc thuế.'
+    suggestion = 'Khắc phục: Vui lòng thử lại sau giây lát hoặc kiểm tra tính hợp lệ của tệp văn bản.'
   }
 
   const err = new Error(friendlyMessage, { cause: error })
@@ -139,6 +147,43 @@ export function parseApiError(error) {
   err.suggestion = suggestion
   err.data = data
   return err
+}
+
+/**
+ * Phân giải adminId từ bộ nhớ cục bộ hoặc JWT token
+ * @returns {string|null}
+ */
+export function getStoredAdminId() {
+  try {
+    const rawUser =
+      localStorage.getItem('taxkeep_user') ||
+      sessionStorage.getItem('taxkeep_user')
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser)
+      if (parsed.userId || parsed.id) return parsed.userId || parsed.id
+    }
+    const token =
+      localStorage.getItem('taxkeep_token') ||
+      sessionStorage.getItem('taxkeep_token')
+    if (token) {
+      const parts = token.split('.')
+      if (parts.length === 3) {
+        const payload = JSON.parse(
+          atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))
+        )
+        return (
+          payload.nameid ||
+          payload.sub ||
+          payload.adminId ||
+          payload.userId ||
+          null
+        )
+      }
+    }
+  } catch {
+    // Bỏ qua nếu giải mã thất bại
+  }
+  return null
 }
 
 export const taxRuleService = {
@@ -157,22 +202,7 @@ export const taxRuleService = {
     if (name?.trim()) formData.append('name', name.trim())
     if (sourceUrl?.trim()) formData.append('sourceUrl', sourceUrl.trim())
 
-    // Tự động phân giải adminId nếu caller không truyền trực tiếp
-    let resolvedAdminId = adminId
-    if (!resolvedAdminId) {
-      try {
-        const rawUser =
-          localStorage.getItem('taxkeep_user') ||
-          sessionStorage.getItem('taxkeep_user')
-        if (rawUser) {
-          const parsed = JSON.parse(rawUser)
-          resolvedAdminId = parsed.userId || parsed.id || null
-        }
-      } catch {
-        // bỏ qua nếu parse lỗi
-      }
-    }
-
+    const resolvedAdminId = adminId || getStoredAdminId()
     if (resolvedAdminId) {
       formData.append('adminId', String(resolvedAdminId).trim())
     }
@@ -190,14 +220,54 @@ export const taxRuleService = {
   },
 
   /**
-   * Phê duyệt TaxRuleSet sang Active
+   * Lấy chi tiết toàn bộ nội dung của bộ quy tắc thuế (Tax Rule Set, Rules & Dependent Rules)
    * @param {string} ruleSetId - UUID của bộ quy tắc thuế
+   * @returns {Promise<Object>}
    */
-  approveRuleSet: async (ruleSetId) => {
+  getRuleSetDetail: async (ruleSetId) => {
     try {
-      const response = await api.post(`/api/tax-rules/${ruleSetId}/approve`)
+      const response = await api.get(`/api/tax-rules/${ruleSetId}`)
       return response.data
     } catch (error) {
+      throw parseApiError(error)
+    }
+  },
+
+  /**
+   * Cập nhật thông tin bộ quy tắc thuế, năm tính thuế hoặc các quy tắc con
+   * @param {string} ruleSetId - UUID của bộ quy tắc thuế
+   * @param {Object} payload - Dữ liệu cập nhật { name, taxYear, effectiveFrom, effectiveTo, status, taxRules, dependentRules }
+   * @returns {Promise<Object>}
+   */
+  updateRuleSet: async (ruleSetId, payload) => {
+    try {
+      const response = await api.put(`/api/tax-rules/${ruleSetId}`, payload)
+      return response.data
+    } catch (error) {
+      throw parseApiError(error)
+    }
+  },
+
+  /**
+   * Phê duyệt TaxRuleSet sang Active
+   * @param {string} ruleSetId - UUID của bộ quy tắc thuế
+   * @param {string} [adminId] - UUID của Quản trị viên phê duyệt
+   */
+  approveRuleSet: async (ruleSetId, adminId = null) => {
+    const resolvedAdminId = adminId || getStoredAdminId()
+    const payload = resolvedAdminId ? { adminId: resolvedAdminId } : {}
+    try {
+      const response = await api.post(`/api/tax-rules/${ruleSetId}/approve`, payload)
+      return response.data
+    } catch (error) {
+      if (error.response?.status === 404 || !error.response) {
+        try {
+          const fallbackRes = await api.post(`/api/admin/tax-rules/${ruleSetId}/approve`, payload)
+          return fallbackRes.data
+        } catch {
+          // Bỏ qua fallback lỗi, tiếp tục ném lỗi gốc
+        }
+      }
       throw parseApiError(error)
     }
   },

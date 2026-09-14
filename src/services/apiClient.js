@@ -44,7 +44,7 @@ apiClient.interceptors.response.use(
     let friendlyMessage = 'Đã có lỗi xảy ra khi kết nối máy chủ.'
 
     if (!error.response) {
-      friendlyMessage = `Không thể kết nối tới máy chủ Backend tại ${MANAGEMENT_API_URL}. Vui lòng kiểm tra lại dịch vụ Backend.`
+      friendlyMessage = 'Không thể kết nối tới máy chủ hệ thống. Vui lòng kiểm tra lại kết nối mạng.'
     } else if (data?.message) {
       friendlyMessage = data.message
     } else if (data?.title) {
@@ -58,7 +58,7 @@ apiClient.interceptors.response.use(
     } else if (status === 404) {
       friendlyMessage = 'Không tìm thấy tài nguyên yêu cầu.'
     } else if (status >= 500) {
-      friendlyMessage = 'Máy chủ Backend gặp sự cố nội bộ. Vui lòng thử lại sau.'
+      friendlyMessage = 'Máy chủ hệ thống gặp sự cố. Vui lòng thử lại sau.'
     }
 
     const customError = new Error(friendlyMessage)

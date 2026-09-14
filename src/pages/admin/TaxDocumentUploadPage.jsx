@@ -10,24 +10,8 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
   const [sourceUrl, setSourceUrl] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
 
-  // Recent uploaded documents loaded from localStorage, đồng bộ trạng thái đã phê duyệt
-  const [recentDocs, setRecentDocs] = useState(() => {
-    try {
-      const saved = localStorage.getItem('taxkeepvn_uploaded_documents')
-      const docs = saved ? JSON.parse(saved) : []
-      const approvedList = JSON.parse(localStorage.getItem('taxkeepvn_approved_rulesets') || '[]')
-      return docs.map((d) => {
-        const docId = d.id || d.ruleSetId || d.extractedData?.taxRuleSet?.ruleSetId
-        const docYear = d.taxYear || d.extractedData?.taxRuleSet?.taxYear
-        if ((docId && approvedList.includes(docId)) || (docYear && approvedList.includes(String(docYear)))) {
-          return { ...d, status: 'Active' }
-        }
-        return d
-      })
-    } catch {
-      return []
-    }
-  })
+  // Danh sách văn bản đã tải lên trong phiên làm việc hiện tại (In-Memory State, không dùng bộ nhớ tạm)
+  const [recentDocs, setRecentDocs] = useState([])
 
   // Validation states
   const [errors, setErrors] = useState({})
@@ -120,13 +104,73 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
     }
   }
 
+  const validateTaxYearValue = (value) => {
+    const str = String(value ?? '').trim()
+    if (!str) {
+      return 'Năm tính thuế bắt buộc nhập (từ 1900 đến 2100).'
+    }
+    const yearNum = Number(str)
+    if (isNaN(yearNum) || !Number.isInteger(yearNum)) {
+      return 'Năm tính thuế phải là số nguyên hợp lệ.'
+    }
+    if (yearNum < 1900 || yearNum > 2100) {
+      return 'Năm tính thuế phải nằm trong khoảng từ 1900 đến 2100.'
+    }
+    return null
+  }
+
+  const handleTaxYearChange = (e) => {
+    const val = e.target.value
+    setTaxYear(val)
+
+    const err = validateTaxYearValue(val)
+    // Nếu ô nhập trước đó đang có lỗi hoặc người dùng đã nhập chuỗi từ 4 ký tự trở lên:
+    if (errors.taxYear || (val && String(val).length >= 4)) {
+      if (err) {
+        setErrors((prev) => ({ ...prev, taxYear: err }))
+        if (validationAlert?.field === 'taxYear') {
+          setValidationAlert((prev) => ({
+            ...prev,
+            message: err,
+          }))
+        }
+      } else {
+        setErrors((prev) => ({ ...prev, taxYear: null }))
+        if (validationAlert?.field === 'taxYear') {
+          setValidationAlert(null)
+        }
+      }
+    } else if (!err) {
+      if (errors.taxYear) setErrors((prev) => ({ ...prev, taxYear: null }))
+      if (validationAlert?.field === 'taxYear') setValidationAlert(null)
+    }
+  }
+
+  const handleTaxYearBlur = () => {
+    const err = validateTaxYearValue(taxYear)
+    if (err) {
+      setErrors((prev) => ({ ...prev, taxYear: err }))
+      setValidationAlert({
+        title: 'Năm tính thuế chưa hợp lệ',
+        message: err,
+        field: 'taxYear',
+        suggestion: `Khắc phục: Vui lòng nhập năm tính thuế hợp lệ từ 1900 đến 2100 (ví dụ: ${new Date().getFullYear()}).`,
+      })
+    } else {
+      setErrors((prev) => ({ ...prev, taxYear: null }))
+      if (validationAlert?.field === 'taxYear') {
+        setValidationAlert(null)
+      }
+    }
+  }
+
   const validateForm = () => {
     const newErrors = {}
     let alertMsg = null
 
-    const year = parseInt(taxYear, 10)
-    if (isNaN(year) || year < 1900 || year > 2100) {
-      newErrors.taxYear = 'Năm tính thuế bắt buộc từ 1900 đến 2100.'
+    const yearError = validateTaxYearValue(taxYear)
+    if (yearError) {
+      newErrors.taxYear = yearError
     }
 
     if (sourceUrl && sourceUrl.trim()) {
@@ -223,8 +267,31 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
         setProcessTitle('Bóc tách quy tắc thuế thành công!')
         setProcessSubtitle('Hệ thống đã hoàn tất bóc tách dữ liệu và sẵn sàng để thẩm tra.')
 
-        const extractedData = response.data || {}
+        const extractedData = { ...(response.data || {}) }
+        if (response.warning && !extractedData.warning) {
+          extractedData.warning = response.warning
+        }
+        const effectiveRuleSetId = response.ruleSetId || extractedData.ruleSetId || extractedData.taxRuleSet?.ruleSetId
+        if (effectiveRuleSetId) {
+          extractedData.ruleSetId = effectiveRuleSetId
+          if (!extractedData.taxRuleSet) extractedData.taxRuleSet = {}
+          extractedData.taxRuleSet.ruleSetId = effectiveRuleSetId
+        }
+
         const rulesCount = extractedData.taxRules?.length || 0
+        const verification = extractedData.verification || null
+        const warningMsg =
+          response.warning ||
+          extractedData.warning ||
+          verification?.warningMessage ||
+          null
+        const isYearMismatched = verification?.isTaxYearMatched === false
+
+        if (isYearMismatched || warningMsg) {
+          setProcessSubtitle(
+            `Đã bóc tách dữ liệu. Phát hiện cảnh báo đối soát năm áp dụng (${verification?.extractedTaxYear || 'văn bản'} so với ${verification?.inputTaxYear || taxYear}). Vui lòng thẩm định kỹ.`
+          )
+        }
 
         const newDoc = {
           id: response.ruleSetId || extractedData.taxRuleSet?.ruleSetId || currentTaskId || Date.now().toString(),
@@ -241,23 +308,24 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
           extractedData: extractedData,
         }
 
-        setRecentDocs((prev) => {
-          const updated = [newDoc, ...prev.filter((d) => d.id !== newDoc.id)].slice(0, 10)
-          try {
-            localStorage.setItem('taxkeepvn_uploaded_documents', JSON.stringify(updated))
-          } catch {
-            // Lưu trữ cục bộ thất bại (storage full/quota)
-          }
-          return updated
-        })
+        setRecentDocs((prev) => [newDoc, ...prev.filter((d) => d.id !== newDoc.id)].slice(0, 10))
 
         setTimeout(() => {
           setIsProcessing(false)
-          showToast(
-            'Bóc tách thành công',
-            `AI đã bóc tách thành công ${rulesCount} quy tắc thuế từ văn bản PDF!`,
-            'success'
-          )
+          if (isYearMismatched || warningMsg) {
+            showToast(
+              'Cảnh báo đối soát năm',
+              warningMsg ||
+                `Năm trong văn bản (${verification?.extractedTaxYear}) khác năm nhập (${verification?.inputTaxYear}). Vui lòng kiểm tra lại trong bước thẩm tra.`,
+              'warning'
+            )
+          } else {
+            showToast(
+              'Bóc tách thành công',
+              `AI đã bóc tách thành công ${rulesCount} quy tắc thuế từ văn bản PDF!`,
+              'success'
+            )
+          }
           setTimeout(() => {
             onUploadSuccess?.(extractedData)
           }, 800)
@@ -278,30 +346,46 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
         if (currentTaskId) signalrService.leaveTaskGroup(currentTaskId)
 
         setIsProcessing(false)
-        const errMsg = response.errorMessage || 'AI gặp sự cố trong quá trình bóc tách văn bản.'
+        const errMsg = response.errorMessage || 'Hệ thống gặp sự cố trong quá trình bóc tách văn bản.'
 
         let alertData = {
-          title: 'Lỗi bóc tách quy tắc thuế từ AI',
+          title: 'Thông báo xử lý văn bản',
           message: errMsg,
-          status: 400,
+          status: null,
           suggestion: '',
           field: null,
         }
 
         if (
+          errMsg.includes('StringDataRightTruncation') ||
+          errMsg.includes('value too long for type character varying') ||
+          errMsg.includes('character varying')
+        ) {
+          alertData = {
+            title: 'Dữ liệu văn bản vượt quá quy định',
+            message: 'Tên hoặc nội dung một quy tắc do hệ thống trích xuất từ văn bản dài hơn quy định chuẩn.',
+            suggestion: 'Vui lòng kiểm tra lại văn bản nguồn hoặc liên hệ quản trị viên để chuẩn hóa cấu trúc dữ liệu.',
+          }
+        } else if (
           errMsg.includes('tax year already exists') ||
           errMsg.includes('TAX_RULE_SET_EXISTS') ||
           errMsg.includes('already exists')
         ) {
           alertData = {
-            title: 'Xung đột dữ liệu (Mã lỗi 409 - Conflict)',
-            message: `Năm tính thuế ${taxYear} đã có bộ quy tắc thuế tồn tại trong cơ sở dữ liệu hệ thống.`,
+            title: 'Trùng lặp năm tính thuế',
+            message: `Năm tính thuế ${taxYear} đã có bộ quy tắc thuế tồn tại trên hệ thống.`,
             status: 409,
             field: 'taxYear',
             suggestion:
               'Khắc phục: Vui lòng thay đổi Năm tính thuế sang năm khác hoặc điều chỉnh bộ quy tắc trùng lặp.',
           }
           setErrors((prev) => ({ ...prev, taxYear: alertData.message }))
+        } else if (errMsg.includes('Internal error') || errMsg.includes('psycopg') || errMsg.includes('SQL')) {
+          alertData = {
+            title: 'Thông báo xử lý văn bản',
+            message: 'Hệ thống gặp sự cố trong quá trình lưu trữ và phân loại các điều khoản từ văn bản.',
+            suggestion: 'Vui lòng thử lại với văn bản chuẩn hoặc liên hệ quản trị viên hệ thống.',
+          }
         }
 
         setValidationAlert(alertData)
@@ -351,23 +435,12 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
 
   const handleDeleteDoc = (e, docId) => {
     e.stopPropagation()
-    const updated = recentDocs.filter((d) => d.id !== docId)
-    setRecentDocs(updated)
-    try {
-      localStorage.setItem('taxkeepvn_uploaded_documents', JSON.stringify(updated))
-    } catch {
-      // Bỏ qua lỗi lưu trữ
-    }
+    setRecentDocs((prev) => prev.filter((d) => d.id !== docId))
   }
 
   const handleClearDocs = () => {
     setRecentDocs([])
-    try {
-      localStorage.removeItem('taxkeepvn_uploaded_documents')
-    } catch {
-      // Bỏ qua lỗi xóa lưu trữ
-    }
-    showToast('Đã xóa', 'Đã xóa toàn bộ danh sách văn bản gần đây.')
+    showToast('Đã xóa', 'Đã xóa danh sách văn bản trong phiên làm việc.')
   }
 
   return (
@@ -426,13 +499,8 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-title-sm text-title-sm font-bold text-error">
-                          {typeof validationAlert === 'object' ? validationAlert.title : 'Thông báo lỗi hệ thống'}
+                          {typeof validationAlert === 'object' ? validationAlert.title : 'Thông báo hệ thống'}
                         </span>
-                        {typeof validationAlert === 'object' && validationAlert.status && (
-                          <span className="px-2 py-0.5 text-[11px] font-mono font-bold rounded bg-error/20 text-error">
-                            Mã lỗi: {validationAlert.status}
-                          </span>
-                        )}
                       </div>
                       <p className="font-body-md text-body-md text-on-surface mt-1 leading-relaxed font-medium">
                         {typeof validationAlert === 'object' ? validationAlert.message : validationAlert}
@@ -503,11 +571,8 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
                     min="1900"
                     max="2100"
                     value={taxYear}
-                    onChange={(e) => {
-                      setTaxYear(e.target.value)
-                      if (errors.taxYear) setErrors((prev) => ({ ...prev, taxYear: null }))
-                      if (validationAlert?.field === 'taxYear') setValidationAlert(null)
-                    }}
+                    onChange={handleTaxYearChange}
+                    onBlur={handleTaxYearBlur}
                     placeholder={String(new Date().getFullYear())}
                     className={`w-full h-11 px-space-md rounded-lg text-on-surface font-body-md text-body-md focus:outline-none transition-all shadow-inner ${
                       errors.taxYear
@@ -816,6 +881,16 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
                       >
                         {doc.status === 'ACTIVE' || doc.status === 'Active' ? 'Đã hiệu lực' : 'Bản nháp'}
                       </span>
+                      {(doc.extractedData?.verification?.isTaxYearMatched === false ||
+                        doc.extractedData?.warning) && (
+                        <span
+                          className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/15 text-amber-800 border border-amber-500/30 flex items-center gap-0.5"
+                          title="Phát hiện năm tính thuế có thể lệch so với văn bản gốc"
+                        >
+                          <span className="material-symbols-outlined text-[13px]">warning</span>
+                          <span>Lệch năm</span>
+                        </span>
+                      )}
                     </div>
 
                     {/* Bottom Row: Timestamp & Action */}
