@@ -54,6 +54,14 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/admin/:section/:id"
+        element={
+          <ProtectedRoute>
+            <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
 
       {/* 404 Fallback */}
       <Route path="*" element={<NotFoundPage />} />

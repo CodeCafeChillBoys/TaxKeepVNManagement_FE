@@ -69,23 +69,13 @@ class SignalRService {
         })
       })
 
-      this.connection.onclose((error) => {
-        console.warn('[SignalR] Connection closed:', error)
-      })
-
-      this.connection.onreconnecting((error) => {
-        console.warn('[SignalR] Reconnecting:', error)
-      })
-
-      this.connection.onreconnected((connectionId) => {
-        console.log('[SignalR] Reconnected successfully with ID:', connectionId)
-      })
+      this.connection.onclose(() => {})
+      this.connection.onreconnecting(() => {})
+      this.connection.onreconnected(() => {})
 
       await this.connection.start()
-      console.log(`[SignalR] Connected successfully to ${hubUrl}`)
       return this.connection
     } catch (err) {
-      console.error('[SignalR] Error connecting via proxy/gateway, trying direct WebSocket fallback:', err)
       // Fallback: kết nối trực tiếp Gateway với withCredentials: false và WebSockets
       try {
         const fallbackUrl = `${GATEWAY_URL}/hubs/tax-ai`
@@ -104,7 +94,7 @@ class SignalRService {
               signalR.HttpTransportType.LongPolling,
           })
           .withAutomaticReconnect([0, 2000, 5000, 10000])
-          .configureLogging(signalR.LogLevel.Warning)
+          .configureLogging(signalR.LogLevel.None)
           .build()
 
         this.listeners.forEach((callbacks, eventName) => {
@@ -112,18 +102,16 @@ class SignalRService {
             callbacks.forEach((cb) => {
               try {
                 cb(...args)
-              } catch (e) {
-                console.error(`[SignalR] Callback error for ${eventName}:`, e)
+              } catch {
+                // Bỏ qua lỗi callback
               }
             })
           })
         })
 
         await this.connection.start()
-        console.log(`[SignalR] Fallback connected to ${fallbackUrl}`)
         return this.connection
       } catch (fallbackErr) {
-        console.error('[SignalR] Fallback connection failed:', fallbackErr)
         throw fallbackErr
       }
     } finally {
@@ -187,10 +175,9 @@ class SignalRService {
       await this.startConnection()
       if (this.connection && this.connection.state === signalR.HubConnectionState.Connected) {
         await this.connection.invoke('JoinTaskGroup', taskId)
-        console.log(`[SignalR] Successfully joined task group: task_${taskId}`)
       }
-    } catch (err) {
-      console.warn(`[SignalR] JoinTaskGroup error for ${taskId}:`, err)
+    } catch {
+      // Bỏ qua lỗi gia nhập group
     }
   }
 
@@ -204,8 +191,8 @@ class SignalRService {
       if (this.connection && this.connection.state === signalR.HubConnectionState.Connected) {
         await this.connection.invoke('LeaveTaskGroup', taskId)
       }
-    } catch (err) {
-      console.warn(`[SignalR] LeaveTaskGroup error for ${taskId}:`, err)
+    } catch {
+      // Bỏ qua lỗi rời group
     }
   }
 
@@ -216,9 +203,8 @@ class SignalRService {
     if (this.connection) {
       try {
         await this.connection.stop()
-        console.log('[SignalR] Connection stopped.')
-      } catch (err) {
-        console.warn('[SignalR] Error stopping connection:', err)
+      } catch {
+        // Bỏ qua lỗi ngắt kết nối
       }
     }
   }
