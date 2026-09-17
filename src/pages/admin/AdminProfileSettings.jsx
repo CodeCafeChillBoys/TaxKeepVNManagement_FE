@@ -199,13 +199,13 @@ export function AdminProfileSettings() {
       {/* Header */}
       <div className="flex flex-col gap-1">
         <span className="font-label-sm uppercase tracking-wider text-secondary font-bold">
-          CÀI ĐẶT TÀI KHOẢN & HỒ SƠ
+          THÔNG TIN TÀI KHOẢN & HỒ SƠ
         </span>
         <h2 className="font-headline-md text-headline-md font-bold text-on-surface">
           Hồ sơ cá nhân & Bảo mật
         </h2>
         <p className="font-body-md text-on-surface-variant text-sm">
-          Quản lý thông tin định danh người dùng và cập nhật mật khẩu truy cập hệ thống qua API Gateway.
+          Quản lý thông tin định danh chuyên viên quản trị và cập nhật mật khẩu truy cập hệ thống.
         </p>
       </div>
 

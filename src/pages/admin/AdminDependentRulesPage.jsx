@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { dependentRuleService } from '@/services/dependentRuleService'
+import { useDebounce } from '@/hooks/useDebounce'
 
 export function AdminDependentRulesPage() {
   const [rules, setRules] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const debouncedSearch = useDebounce(searchQuery, 400)
   const [targetGroupFilter, setTargetGroupFilter] = useState('ALL')
   const [dbNotice, setDbNotice] = useState(null)
 
@@ -16,7 +18,7 @@ export function AdminDependentRulesPage() {
         setIsLoading(true)
         const params = { page: 1, size: 50 }
         if (targetGroupFilter !== 'ALL') params.targetGroup = targetGroupFilter
-        if (searchQuery.trim()) params.search = searchQuery.trim()
+        if (debouncedSearch.trim()) params.search = debouncedSearch.trim()
 
         const res = await dependentRuleService.getAll(params)
         const items = res?.items || (Array.isArray(res) ? res : [])
@@ -44,15 +46,15 @@ export function AdminDependentRulesPage() {
     return () => {
       mounted = false
     }
-  }, [targetGroupFilter, searchQuery])
+  }, [targetGroupFilter, debouncedSearch])
 
   const filteredRules = rules.filter((r) => {
     const matchGroup = targetGroupFilter === 'ALL' || r.targetGroup === targetGroupFilter
     const matchSearch =
-      !searchQuery.trim() ||
-      r.docType?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.targetGroup?.toLowerCase().includes(searchQuery.toLowerCase())
+      !debouncedSearch.trim() ||
+      r.docType?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      r.description?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      r.targetGroup?.toLowerCase().includes(debouncedSearch.toLowerCase())
     return matchGroup && matchSearch
   })
 

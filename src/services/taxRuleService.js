@@ -220,6 +220,33 @@ export const taxRuleService = {
   },
 
   /**
+   * Lấy danh sách tất cả các bộ quy tắc thuế đã lưu trong CSDL
+   * @returns {Promise<Array>}
+   */
+  getAllRuleSets: async () => {
+    try {
+      const response = await api.get('/api/tax-rules')
+      return response.data
+    } catch (error) {
+      throw parseApiError(error)
+    }
+  },
+
+  /**
+   * Lấy chi tiết bộ quy tắc thuế theo năm tính thuế
+   * @param {number|string} taxYear
+   * @returns {Promise<Object>}
+   */
+  getRuleSetByYear: async (taxYear) => {
+    try {
+      const response = await api.get(`/api/tax-rules/year/${taxYear}`)
+      return response.data
+    } catch (error) {
+      throw parseApiError(error)
+    }
+  },
+
+  /**
    * Lấy chi tiết toàn bộ nội dung của bộ quy tắc thuế (Tax Rule Set, Rules & Dependent Rules)
    * @param {string} ruleSetId - UUID của bộ quy tắc thuế
    * @returns {Promise<Object>}

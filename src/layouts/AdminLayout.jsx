@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -16,6 +16,24 @@ export function AdminLayout({
   // Xác định route hiện tại từ URL pathname hoặc fallback prop
   const pathSegment = location.pathname.replace(/^\/admin\/?/, '')
   const currentRoute = propCurrentRoute || pathSegment || 'boc-tach-van-ban-ai'
+
+  // Quản lý trạng thái mở submenu avatar góc dưới bên trái
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const userMenuRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setIsUserMenuOpen(false)
+      }
+    }
+    if (isUserMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isUserMenuOpen])
 
   // Đồng hồ thời gian thực tự động cập nhật liên tục
   const [currentDateTime, setCurrentDateTime] = useState(new Date())
@@ -60,7 +78,7 @@ export function AdminLayout({
     { id: 'quy-tac-thue', label: 'Quy tắc thuế', icon: 'account_balance' },
     { id: 'boc-tach-van-ban-ai', label: 'Tải lên văn bản thuế', icon: 'document_scanner' },
     { id: 'lich-su-phe-duyet', label: 'Lịch sử phê duyệt', icon: 'history_edu' },
-    { id: 'cai-dat', label: 'Cài đặt', icon: 'tune' },
+    { id: 'cai-dat', label: 'Cấu hình hệ thống', icon: 'tune' },
   ]
 
   const userRoleLabel =
@@ -113,28 +131,98 @@ export function AdminLayout({
           })}
         </nav>
 
-        {/* User profile footer */}
-        <div className="p-space-sm m-space-sm rounded-xl bg-primary/60 border border-primary flex items-center justify-between gap-space-xs mt-auto shrink-0">
-          <div className="flex items-center gap-space-sm min-w-0">
-            <div className="w-9 h-9 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-bold text-[14px] shrink-0 shadow-sm">
-              <span className="material-symbols-outlined text-[20px]">person</span>
+        {/* User profile footer with Submenu Popover */}
+        <div ref={userMenuRef} className="relative p-space-sm m-space-sm mt-auto shrink-0">
+          {/* Flyout Submenu Popover */}
+          {isUserMenuOpen && (
+            <div className="absolute bottom-full left-0 right-0 mb-2 bg-surface-container-lowest text-on-surface rounded-2xl shadow-xl border border-outline-variant/40 p-2 z-50 animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2 flex flex-col gap-1">
+              {/* Header người dùng */}
+              <div className="px-3 py-2.5 border-b border-surface-container-high/60 flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0">
+                  <span className="material-symbols-outlined text-[20px]">person</span>
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-bold text-on-surface truncate">
+                    {user?.fullName || 'Quản trị viên'}
+                  </span>
+                  <span className="text-[11px] text-on-surface-variant truncate">
+                    {user?.email || 'admin@taxkeep.vn'}
+                  </span>
+                  <span className="text-[10px] font-bold text-secondary uppercase tracking-wider mt-0.5">
+                    {userRoleLabel}
+                  </span>
+                </div>
+              </div>
+
+              {/* Mục menu: Chỉnh sửa hồ sơ cá nhân */}
+              <button
+                onClick={() => {
+                  setIsUserMenuOpen(false)
+                  handleNavigate('ho-so')
+                }}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-on-surface hover:bg-surface-container-low transition-colors text-left cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px] text-primary">manage_accounts</span>
+                <span>Chỉnh sửa hồ sơ</span>
+              </button>
+
+              {/* Mục menu: Đổi mật khẩu */}
+              <button
+                onClick={() => {
+                  setIsUserMenuOpen(false)
+                  handleNavigate('ho-so')
+                }}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-on-surface hover:bg-surface-container-low transition-colors text-left cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px] text-secondary">lock_reset</span>
+                <span>Đổi mật khẩu</span>
+              </button>
+
+              <div className="h-px bg-outline-variant/30 my-0.5"></div>
+
+              {/* Mục menu: Đăng xuất */}
+              <button
+                onClick={() => {
+                  setIsUserMenuOpen(false)
+                  handleLogout()
+                }}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-error hover:bg-error-container/30 transition-colors text-left cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">logout</span>
+                <span>Đăng xuất hệ thống</span>
+              </button>
             </div>
-            <div className="flex flex-col min-w-0">
-              <span className="font-title-sm text-[13px] font-semibold text-on-primary truncate leading-tight">
-                {user?.fullName || 'Nguyễn Văn An'}
-              </span>
-              <span className="font-label-sm text-[11px] text-secondary-fixed truncate">
-                {userRoleLabel}
+          )}
+
+          {/* Trigger Button hiển thị avatar ở góc dưới màn hình bên trái */}
+          <div
+            onClick={() => setIsUserMenuOpen((prev) => !prev)}
+            className={`rounded-xl border p-2 flex items-center justify-between gap-space-xs cursor-pointer transition-all ${
+              isUserMenuOpen
+                ? 'bg-primary border-secondary-fixed/40 shadow-sm'
+                : 'bg-primary/70 hover:bg-primary border-primary-fixed/20'
+            }`}
+            title="Nhấn để mở menu hồ sơ cá nhân"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center font-bold text-[14px] shrink-0 shadow-sm">
+                <span className="material-symbols-outlined text-[20px]">person</span>
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="font-title-sm text-[13px] font-semibold text-on-primary truncate leading-tight">
+                  {user?.fullName || 'Quản trị viên'}
+                </span>
+                <span className="font-label-sm text-[11px] text-secondary-fixed truncate">
+                  {userRoleLabel}
+                </span>
+              </div>
+            </div>
+            <div className="text-secondary-fixed p-1">
+              <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${isUserMenuOpen ? 'rotate-180' : ''}`}>
+                expand_less
               </span>
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            className="p-1.5 rounded-lg text-secondary-fixed hover:text-on-primary hover:bg-primary transition-colors cursor-pointer"
-            title="Đăng xuất khỏi hệ thống"
-          >
-            <span className="material-symbols-outlined text-[18px]">logout</span>
-          </button>
         </div>
       </aside>
 
