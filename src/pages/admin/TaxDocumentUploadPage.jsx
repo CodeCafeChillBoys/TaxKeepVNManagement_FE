@@ -1,17 +1,28 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { taxAdminService } from '@/services/taxAdminService'
+import { taxRuleService } from '@/services/taxRuleService'
 import { signalrService } from '@/services/signalrService'
+import { urlRuleService } from '@/services/urlRuleService'
 import { useAuth } from '@/hooks/useAuth'
+import { useDebounce } from '@/hooks/useDebounce'
 
 export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
   const { user } = useAuth()
   const [taxYear, setTaxYear] = useState(() => new Date().getFullYear())
   const [name, setName] = useState('')
   const [sourceUrl, setSourceUrl] = useState('')
+  const debouncedSourceUrl = useDebounce(sourceUrl, 350)
   const [selectedFile, setSelectedFile] = useState(null)
+
+  // Danh mục quy tắc kiểm tra URL (tải từ API GET /api/url-rules)
+  const [urlRules, setUrlRules] = useState([])
+  const [isLoadingRules, setIsLoadingRules] = useState(false)
 
   // Danh sách văn bản đã tải lên trong phiên làm việc hiện tại (In-Memory State, không dùng bộ nhớ tạm)
   const [recentDocs, setRecentDocs] = useState([])
+  // Danh sách văn bản đã lưu trữ trên cơ sở dữ liệu hệ thống
+  const [savedRuleSets, setSavedRuleSets] = useState([])
+  const [isLoadingSavedDocs, setIsLoadingSavedDocs] = useState(false)
 
   // Validation states
   const [errors, setErrors] = useState({})
@@ -38,11 +49,70 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
       // Tự động kết nối lại khi người dùng bắt đầu tải tài liệu
     })
 
+    loadUrlRules()
+    loadSavedRuleSets()
+
     return () => {
       signalrService.off('OnTaxExtractionCompleted')
       signalrService.off('OnTaxExtractionFailed')
     }
   }, [])
+
+  const loadUrlRules = async () => {
+    try {
+      setIsLoadingRules(true)
+      const res = await urlRuleService.getRules(false)
+      const data = res?.data || res || []
+      setUrlRules(Array.isArray(data) ? data : (data.data || []))
+    } catch (err) {
+      console.error('Lỗi khi tải danh sách tên miền:', err)
+    } finally {
+      setIsLoadingRules(false)
+    }
+  }
+
+  const loadSavedRuleSets = async () => {
+    try {
+      setIsLoadingSavedDocs(true)
+      const res = await taxRuleService.getAllRuleSets()
+      const list = Array.isArray(res) ? res : (res?.data || [])
+      const formatted = list.map((item) => ({
+        id: item.ruleSetId,
+        ruleSetId: item.ruleSetId,
+        name: item.name || `Quy tắc thuế năm ${item.taxYear}`,
+        fileName: item.name ? `${item.name}.pdf` : `luat-thue-${item.taxYear}.pdf`,
+        taxYear: item.taxYear,
+        rulesCount: 'Đầy đủ',
+        status: item.status || 'Active',
+        uploadedAt: item.approvedAt
+          ? new Date(item.approvedAt).toLocaleDateString('vi-VN')
+          : 'Đã lưu hệ thống',
+        isPersisted: true,
+      }))
+      setSavedRuleSets(formatted)
+    } catch (err) {
+      console.warn('Lỗi khi tải danh sách văn bản quy phạm từ máy chủ:', err)
+    } finally {
+      setIsLoadingSavedDocs(false)
+    }
+  }
+
+  const allDocs = useMemo(() => {
+    const existingIds = new Set(recentDocs.map((d) => d.id || d.ruleSetId))
+    const additional = savedRuleSets.filter((s) => !existingIds.has(s.id))
+    return [...recentDocs, ...additional]
+  }, [recentDocs, savedRuleSets])
+
+  const handleDeleteDoc = (e, docId) => {
+    e.stopPropagation()
+    setRecentDocs((prev) => prev.filter((d) => d.id !== docId))
+    setSavedRuleSets((prev) => prev.filter((d) => d.id !== docId))
+  }
+
+  const handleClearDocs = () => {
+    setRecentDocs([])
+    setSavedRuleSets([])
+  }
 
   const showToast = (title, message, type = 'success') => {
     setToast({ title, message, type })
@@ -164,6 +234,81 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
     }
   }
 
+  const cleanDomainString = (domainStr) => {
+    if (!domainStr || typeof domainStr !== 'string') return ''
+    let clean = domainStr.trim().toLowerCase()
+    clean = clean.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0]
+    if (clean.startsWith('www.')) clean = clean.slice(4)
+    return clean
+  }
+
+  const checkDomainValidation = (url, rules = urlRules) => {
+    if (!url || !url.trim()) return { isValid: true, domain: '', matchedRule: null, error: null }
+    const domain = cleanDomainString(url)
+    if (!domain) {
+      return { isValid: false, domain: '', matchedRule: null, error: 'URL không đúng định dạng.' }
+    }
+
+    const activeRules = rules.filter((r) => r.is_active !== false && r.isActive !== false)
+    if (!activeRules || activeRules.length === 0) {
+      return { isValid: true, domain, matchedRule: null, error: null }
+    }
+
+    const matched = activeRules.find((r) => {
+      const target = cleanDomainString(r.domain)
+      return domain === target || domain.endsWith('.' + target)
+    })
+
+    if (matched) {
+      return { isValid: true, domain, matchedRule: matched, error: null }
+    }
+
+    return {
+      isValid: false,
+      domain,
+      matchedRule: null,
+      error: `Tên miền "${domain}" chưa thuộc danh sách nguồn văn bản được phê duyệt trong hệ thống.`,
+    }
+  }
+
+  const handleSourceUrlChange = (val) => {
+    setSourceUrl(val)
+    if (!val || !val.trim()) {
+      if (errors.sourceUrl) setErrors((prev) => ({ ...prev, sourceUrl: null }))
+    }
+  }
+
+  // Tự động kiểm tra tính hợp lệ của tên miền nguồn với debounce (tránh giật lag hoặc báo lỗi khi người dùng đang gõ dở)
+  useEffect(() => {
+    if (!debouncedSourceUrl || !debouncedSourceUrl.trim()) return
+
+    if (/^https?:\/\/.+/i.test(debouncedSourceUrl.trim())) {
+      const check = checkDomainValidation(debouncedSourceUrl)
+      if (!check.isValid) {
+        setErrors((prev) => ({ ...prev, sourceUrl: check.error }))
+      } else if (errors.sourceUrl) {
+        setErrors((prev) => ({ ...prev, sourceUrl: null }))
+      }
+    }
+  }, [debouncedSourceUrl, urlRules])
+
+  const handleSourceUrlBlur = () => {
+    if (!sourceUrl || !sourceUrl.trim()) return
+    if (!/^https?:\/\/.+/i.test(sourceUrl.trim())) {
+      setErrors((prev) => ({
+        ...prev,
+        sourceUrl: 'Nguồn văn bản phải là URL hợp lệ bắt đầu bằng http:// hoặc https://.',
+      }))
+      return
+    }
+    const check = checkDomainValidation(sourceUrl)
+    if (!check.isValid) {
+      setErrors((prev) => ({ ...prev, sourceUrl: check.error }))
+    } else {
+      setErrors((prev) => ({ ...prev, sourceUrl: null }))
+    }
+  }
+
   const validateForm = () => {
     const newErrors = {}
     let alertMsg = null
@@ -176,6 +321,11 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
     if (sourceUrl && sourceUrl.trim()) {
       if (!/^https?:\/\/.+/i.test(sourceUrl.trim())) {
         newErrors.sourceUrl = 'Nguồn văn bản phải là URL hợp lệ bắt đầu bằng http:// hoặc https://.'
+      } else {
+        const domainCheck = checkDomainValidation(sourceUrl, urlRules)
+        if (!domainCheck.isValid) {
+          newErrors.sourceUrl = domainCheck.error
+        }
       }
     }
 
@@ -433,16 +583,6 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
     }
   }
 
-  const handleDeleteDoc = (e, docId) => {
-    e.stopPropagation()
-    setRecentDocs((prev) => prev.filter((d) => d.id !== docId))
-  }
-
-  const handleClearDocs = () => {
-    setRecentDocs([])
-    showToast('Đã xóa', 'Đã xóa danh sách văn bản trong phiên làm việc.')
-  }
-
   return (
     <div className="relative w-full px-space-xl py-space-lg">
       {/* Subtle Dong Son Watermark in background */}
@@ -618,26 +758,101 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
               </div>
             </div>
 
-            {/* Source URL */}
+            {/* Source URL with Valid Domains Reminder Note */}
             <div className="flex flex-col gap-space-xs">
-              <label className="flex items-center justify-between font-label-md text-label-md text-on-surface font-semibold" htmlFor="sourceUrlInput">
-                <span>Nguồn văn bản / URL gốc</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="font-label-md text-label-md text-on-surface font-semibold" htmlFor="sourceUrlInput">
+                  <span>Nguồn văn bản / Đường dẫn URL gốc</span>
+                </label>
+                <span className="text-[11px] text-on-surface-variant font-medium flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px] text-primary">verified_user</span>
+                  <span>Chỉ chấp thuận nguồn hợp lệ</span>
+                </span>
+              </div>
+
               <div className="relative">
                 <input
                   id="sourceUrlInput"
                   type="url"
                   value={sourceUrl}
-                  onChange={(e) => setSourceUrl(e.target.value)}
+                  onChange={(e) => handleSourceUrlChange(e.target.value)}
+                  onBlur={handleSourceUrlBlur}
                   placeholder="https://thuvienphapluat.vn/van-ban/..."
-                  className="w-full h-11 px-space-md rounded-lg bg-surface-container-low text-on-surface font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner"
+                  className={`w-full h-11 px-space-md pr-10 rounded-lg bg-surface-container-low text-on-surface font-body-md text-body-md focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner ${
+                    errors.sourceUrl ? 'ring-1 ring-error' : ''
+                  }`}
                 />
                 <span className="material-symbols-outlined absolute right-3 top-2.5 text-secondary text-[20px]">
                   link
                 </span>
               </div>
+
+              {/* Note nhắc nhở danh mục URL tên miền hợp lệ */}
+              <div className="p-3 rounded-xl bg-surface-container-low/70 border border-outline-variant/40 flex flex-col gap-2 mt-0.5">
+                <div className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-primary text-[18px] mt-0.5 shrink-0">
+                    info
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-bold text-on-surface">
+                      Danh mục tên miền nguồn văn bản được phê chuẩn:
+                    </span>
+                    <span className="text-[11px] text-on-surface-variant leading-relaxed">
+                      Hệ thống chỉ tiếp nhận văn bản trích dẫn từ các cổng thông tin pháp luật chính thức. Nhấp để chọn nhanh:
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-wrap pl-6">
+                  {urlRules
+                    .filter((r) => r.isActive ?? r.is_active)
+                    .map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => {
+                          setSourceUrl(`https://${r.domain}/`)
+                          if (errors.sourceUrl) setErrors((prev) => ({ ...prev, sourceUrl: null }))
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-mono font-medium bg-surface-container-lowest hover:bg-primary/10 hover:text-primary hover:border-primary/40 border border-outline-variant/50 text-on-surface transition-all cursor-pointer shadow-2xs"
+                        title={`Cơ quan ban hành: ${r.name}`}
+                      >
+                        <span className="material-symbols-outlined text-[13px] text-emerald-600">verified</span>
+                        <span>{r.domain}</span>
+                      </button>
+                    ))}
+                </div>
+              </div>
+
+              {/* Real-time Domain Validation Feedback */}
+              {sourceUrl && sourceUrl.trim().length > 0 && (() => {
+                const check = checkDomainValidation(sourceUrl)
+                if (check.isValid) {
+                  return (
+                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-50 text-emerald-900 border border-emerald-200 font-body-sm text-body-sm animate-in fade-in duration-200">
+                      <span className="material-symbols-outlined text-emerald-600 text-[18px]">verified</span>
+                      <span>
+                        Nguồn hợp lệ: <strong>{check.domain}</strong>
+                        {check.matchedRule?.name ? ` — ${check.matchedRule.name}` : ''}
+                      </span>
+                    </div>
+                  )
+                }
+                if (/^https?:\/\/.+/i.test(sourceUrl.trim())) {
+                  return (
+                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200 font-body-sm text-body-sm animate-in fade-in duration-200">
+                      <span className="material-symbols-outlined text-amber-600 text-[18px]">warning</span>
+                      <span>
+                        Tên miền <strong>{check.domain || 'chưa xác định'}</strong> chưa thuộc danh mục nguồn được phê duyệt. Vui lòng chọn một trong các tên miền hợp lệ nêu trên.
+                      </span>
+                    </div>
+                  )
+                }
+                return null
+              })()}
+
               {errors.sourceUrl && (
-                <p className="font-body-sm text-body-sm text-error flex items-center gap-1">
+                <p className="font-body-sm text-body-sm text-error flex items-center gap-1 mt-0.5">
                   <span className="material-symbols-outlined text-[14px]">warning</span>
                   {errors.sourceUrl}
                 </p>
@@ -789,36 +1004,39 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
                 </div>
                 <div className="flex items-center gap-2">
                   <h3 className="font-title-sm text-title-sm font-bold text-on-surface">
-                    Văn bản đã tải lên gần đây
+                    Văn bản quy phạm đã lưu
                   </h3>
-                  {recentDocs.length > 0 && (
+                  {allDocs.length > 0 && (
                     <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-primary/10 text-primary">
-                      {recentDocs.length}
+                      {allDocs.length}
                     </span>
+                  )}
+                  {isLoadingSavedDocs && (
+                    <div className="w-3.5 h-3.5 rounded-full border-2 border-primary/20 border-t-primary animate-spin"></div>
                   )}
                 </div>
               </div>
-              {recentDocs.length > 0 && (
+              {allDocs.length > 0 && (
                 <button
                   type="button"
                   onClick={handleClearDocs}
                   className="text-xs text-error/80 hover:text-error hover:bg-error/10 px-2 py-1 rounded-md flex items-center gap-1 cursor-pointer transition-colors"
-                  title="Xóa tất cả lịch sử tải lên"
+                  title="Ẩn danh sách khỏi màn hình"
                 >
-                  <span className="material-symbols-outlined text-[14px]">delete_sweep</span>
-                  <span>Xóa tất cả</span>
+                  <span className="material-symbols-outlined text-[14px]">visibility_off</span>
+                  <span>Thu gọn</span>
                 </button>
               )}
             </div>
 
             {/* List or Empty State */}
-            {recentDocs.length === 0 ? (
+            {allDocs.length === 0 ? (
               <div className="py-8 px-4 flex flex-col items-center justify-center text-center gap-2 text-on-surface-variant bg-surface-container-low/40 rounded-lg border border-dashed border-outline-variant/60">
                 <div className="w-12 h-12 rounded-full bg-surface-container-high/60 flex items-center justify-center text-on-surface-variant/70 mb-1">
                   <span className="material-symbols-outlined text-[26px]">folder_off</span>
                 </div>
                 <p className="font-title-sm text-title-sm font-medium text-on-surface">
-                  Chưa có văn bản tải lên
+                  Chưa có văn bản lưu trữ
                 </p>
                 <p className="text-[12px] text-on-surface-variant max-w-[260px] leading-relaxed">
                   Các tệp văn bản thuế sau khi tải lên và trích xuất thành công qua AI sẽ được lưu trữ tại đây để bạn có thể xem lại hoặc tiếp tục thẩm tra bất cứ lúc nào.
@@ -826,14 +1044,16 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
               </div>
             ) : (
               <div className="flex flex-col gap-space-sm max-h-[560px] overflow-y-auto pr-1">
-                {recentDocs.map((doc) => (
+                {allDocs.map((doc) => (
                   <div
                     key={doc.id}
                     onClick={() => {
                       if (doc.extractedData) {
                         onUploadSuccess?.(doc.extractedData)
+                      } else if (doc.ruleSetId || doc.id) {
+                        onUploadSuccess?.({ ruleSetId: doc.ruleSetId || doc.id })
                       } else {
-                        showToast('Chưa có dữ liệu', 'Tài liệu này chưa có dữ liệu chi tiết được lưu trong phiên.', 'info')
+                        showToast('Chưa có dữ liệu', 'Tài liệu này chưa có dữ liệu chi tiết.', 'info')
                       }
                     }}
                     className="p-3.5 rounded-xl bg-surface-container-low/60 hover:bg-surface-container-lowest border border-outline-variant/40 hover:border-primary/50 transition-all cursor-pointer group flex flex-col gap-3 shadow-2xs hover:shadow-sm"
@@ -986,6 +1206,8 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
           </div>
         </div>
       )}
+
+
 
       {/* Toast notification */}
       {toast && (

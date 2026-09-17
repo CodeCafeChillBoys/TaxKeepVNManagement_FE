@@ -4,7 +4,10 @@ import { AdminLayout } from '@/layouts/AdminLayout'
 import { TaxDocumentUploadPage } from './TaxDocumentUploadPage'
 import { TaxRuleReviewPage } from './TaxRuleReviewPage'
 import { AdminProfileSettings } from './AdminProfileSettings'
+import { AdminSystemSettingsPage } from './AdminSystemSettingsPage'
 import { AdminDependentRulesPage } from './AdminDependentRulesPage'
+import { AdminApprovalHistoryPage } from './AdminApprovalHistoryPage'
+import { taxRuleService } from '@/services/taxRuleService'
 import { useAuth } from '@/hooks/useAuth'
 
 export function AdminDashboard({ onLogout }) {
@@ -34,8 +37,30 @@ export function AdminDashboard({ onLogout }) {
 
   // Ghi nhớ mã bộ quy tắc thuế đang làm việc trong phiên (In-Memory React State)
   const [lastRuleSetId, setLastRuleSetId] = useState(activeRuleSetId || null)
+  // Danh sách các bộ quy tắc đã lưu trữ trên cơ sở dữ liệu hệ thống
+  const [savedRuleSets, setSavedRuleSets] = useState([])
 
   const currentRoute = section
+
+  // Tải danh sách bộ quy tắc từ CSDL để thiết lập mã bộ quy tắc ban đầu
+  useEffect(() => {
+    taxRuleService
+      .getAllRuleSets()
+      .then((res) => {
+        const list = Array.isArray(res) ? res : (res?.data || [])
+        setSavedRuleSets(list)
+        if (!lastRuleSetId && list.length > 0) {
+          const activeSet =
+            list.find((s) => String(s.status).toUpperCase() === 'ACTIVE') || list[0]
+          if (activeSet?.ruleSetId) {
+            setLastRuleSetId(activeSet.ruleSetId)
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Lỗi khi tải danh mục bộ quy tắc:', err)
+      })
+  }, [])
 
   // Đồng bộ ID từ URL hoặc tự động khôi phục URL kèm ?id= khi chuyển lại tab Quy tắc thuế
   useEffect(() => {
@@ -50,22 +75,51 @@ export function AdminDashboard({ onLogout }) {
         lastRuleSetId ||
         extractedData?.ruleSetId ||
         extractedData?.taxRuleSet?.ruleSetId ||
-        extractedData?.id
+        extractedData?.id ||
+        savedRuleSets.find((s) => String(s.status).toUpperCase() === 'ACTIVE')?.ruleSetId ||
+        savedRuleSets[0]?.ruleSetId
       if (idToUse && idToUse !== 'current') {
         navigate(`/admin/quy-tac-thue?id=${idToUse}`, { replace: true })
       }
     }
-  }, [currentRoute, searchParams, routeId, lastRuleSetId, extractedData, navigate])
+  }, [currentRoute, searchParams, routeId, lastRuleSetId, extractedData, savedRuleSets, navigate])
 
-  // Danh sách tài liệu trong phiên làm việc (In-Memory, không dùng bộ nhớ tạm trình duyệt)
-  const recentDocs = extractedData ? [{
-    id: extractedData.ruleSetId || extractedData.taxRuleSet?.ruleSetId || lastRuleSetId || 'current',
-    name: extractedData.taxRuleSet?.name || (extractedData.taxRuleSet?.taxYear ? `Quy tắc thuế năm ${extractedData.taxRuleSet.taxYear}` : 'Văn bản thuế'),
-    taxYear: extractedData.taxRuleSet?.taxYear || '—',
-    rulesCount: extractedData.taxRules?.length || 0,
-    status: extractedData.status || extractedData.taxRuleSet?.status || 'Draft',
-    extractedData: extractedData
-  }] : []
+  // Danh sách tài liệu: Kết hợp phiên làm việc và tài liệu đã lưu trên CSDL
+  const recentDocs = [
+    ...(extractedData
+      ? [
+          {
+            id:
+              extractedData.ruleSetId ||
+              extractedData.taxRuleSet?.ruleSetId ||
+              lastRuleSetId ||
+              'current',
+            name:
+              extractedData.taxRuleSet?.name ||
+              (extractedData.taxRuleSet?.taxYear
+                ? `Quy tắc thuế năm ${extractedData.taxRuleSet.taxYear}`
+                : 'Văn bản thuế'),
+            taxYear: extractedData.taxRuleSet?.taxYear || '—',
+            rulesCount: extractedData.taxRules?.length || 'Đầy đủ',
+            status: extractedData.status || extractedData.taxRuleSet?.status || 'Draft',
+            extractedData: extractedData,
+          },
+        ]
+      : []),
+    ...savedRuleSets
+      .filter(
+        (s) =>
+          s.ruleSetId !== (extractedData?.ruleSetId || extractedData?.taxRuleSet?.ruleSetId)
+      )
+      .map((s) => ({
+        id: s.ruleSetId,
+        ruleSetId: s.ruleSetId,
+        name: s.name || `Quy tắc thuế năm ${s.taxYear}`,
+        taxYear: s.taxYear || '—',
+        rulesCount: 'Đầy đủ',
+        status: s.status || 'Active',
+      })),
+  ]
 
   const handleUploadSuccess = (data) => {
     setExtractedData(data)
@@ -81,7 +135,12 @@ export function AdminDashboard({ onLogout }) {
   const handleApproveSuccess = (updatedData) => {
     setExtractedData(updatedData)
     const targetId = updatedData?.ruleSetId || updatedData?.taxRuleSet?.ruleSetId || updatedData?.id
-    if (targetId) setLastRuleSetId(targetId)
+    if (targetId) {
+      setLastRuleSetId(targetId)
+      setSavedRuleSets((prev) =>
+        prev.map((s) => (s.ruleSetId === targetId ? { ...s, status: 'Active' } : s))
+      )
+    }
   }
 
   // Đồng bộ dữ liệu chi tiết khi TaxRuleReviewPage tải từ API GET /api/tax-rules/{id}
@@ -111,6 +170,8 @@ export function AdminDashboard({ onLogout }) {
         extractedData?.ruleSetId ||
         extractedData?.taxRuleSet?.ruleSetId ||
         extractedData?.id ||
+        savedRuleSets.find((s) => String(s.status).toUpperCase() === 'ACTIVE')?.ruleSetId ||
+        savedRuleSets[0]?.ruleSetId ||
         (recentDocs[0]?.id !== 'current' ? recentDocs[0]?.id : null)
       if (idToUse) {
         navigate(`/admin/quy-tac-thue?id=${idToUse}`)
@@ -130,7 +191,9 @@ export function AdminDashboard({ onLogout }) {
       : currentRoute === 'lich-su-phe-duyet'
       ? 'Lịch sử phê duyệt'
       : currentRoute === 'cai-dat'
-      ? 'Cài đặt hệ thống'
+      ? 'Cấu hình hệ thống'
+      : currentRoute === 'ho-so'
+      ? 'Hồ sơ cá nhân & Bảo mật'
       : 'Tổng quan hệ thống'
 
   return (
@@ -164,12 +227,31 @@ export function AdminDashboard({ onLogout }) {
         <AdminDependentRulesPage />
       )}
 
-      {/* Route 4: Cài đặt tài khoản & Hồ sơ */}
+      {/* Route 4: Cấu hình hệ thống */}
       {currentRoute === 'cai-dat' && (
+        <AdminSystemSettingsPage />
+      )}
+
+      {/* Route 5: Hồ sơ cá nhân & Đổi mật khẩu (từ submenu avatar góc dưới màn hình) */}
+      {currentRoute === 'ho-so' && (
         <AdminProfileSettings />
       )}
 
-      {/* Route 5: Tổng quan hệ thống */}
+      {/* Route 5: Lịch sử phê duyệt & Lưu trữ văn bản quy phạm */}
+      {currentRoute === 'lich-su-phe-duyet' && (
+        <AdminApprovalHistoryPage
+          initialYear={searchParams.get('year') || searchParams.get('taxYear')}
+          onNavigateToReview={(ruleSetId) => {
+            if (ruleSetId) {
+              navigate(`/admin/quy-tac-thue?id=${ruleSetId}`)
+            } else {
+              navigate('/admin/quy-tac-thue')
+            }
+          }}
+        />
+      )}
+
+      {/* Route 6: Tổng quan hệ thống */}
       {currentRoute === 'tong-quan' && (
         <div className="p-space-xl flex flex-col gap-space-lg">
           {/* Header Banner */}
@@ -418,6 +500,8 @@ export function AdminDashboard({ onLogout }) {
         currentRoute !== 'quy-tac-thue' &&
         currentRoute !== 'van-ban-quy-pham' &&
         currentRoute !== 'cai-dat' &&
+        currentRoute !== 'ho-so' &&
+        currentRoute !== 'lich-su-phe-duyet' &&
         currentRoute !== 'tong-quan' && (
           <div className="p-space-xl flex flex-col items-center justify-center min-h-[60vh] text-center gap-space-md">
             <div className="w-16 h-16 rounded-full bg-secondary-container/40 flex items-center justify-center text-secondary">
