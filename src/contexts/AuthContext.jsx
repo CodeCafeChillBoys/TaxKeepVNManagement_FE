@@ -14,7 +14,7 @@ export function AuthProvider({ children }) {
       const savedToken = authService.getToken()
       const savedUser = authService.getUser()
 
-      if (savedToken && savedUser) {
+      if (savedToken && !authService.isTokenExpired(savedToken) && savedUser) {
         setUser(savedUser)
         setToken(savedToken)
       } else {
@@ -26,6 +26,18 @@ export function AuthProvider({ children }) {
     }
 
     initAuth()
+
+    // Lắng nghe sự kiện token bị thu hồi hoặc hết hạn từ apiClient
+    const handleUnauthorized = () => {
+      authService.clearAuth()
+      setUser(null)
+      setToken(null)
+    }
+
+    window.addEventListener('taxkeep:unauthorized', handleUnauthorized)
+    return () => {
+      window.removeEventListener('taxkeep:unauthorized', handleUnauthorized)
+    }
   }, [])
 
   const login = useCallback(async ({ citizenId, password, rememberMe = false }) => {
@@ -59,7 +71,7 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     token,
-    isAuthenticated: Boolean(token),
+    isAuthenticated: Boolean(token && !authService.isTokenExpired(token)),
     isLoading,
     login,
     register,

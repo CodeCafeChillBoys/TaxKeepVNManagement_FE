@@ -52,7 +52,7 @@ export function AdminProfileSettings() {
             phoneNumber: data.phoneNumber || '',
             address: data.address || '',
             dateOfBirth: data.dateOfBirth ? String(data.dateOfBirth).substring(0, 10) : '',
-            userRole: data.userRole || user?.userRole || '',
+            userRole: data.userRole || data.role || user?.userRole || user?.role || '',
           })
         }
       } catch {

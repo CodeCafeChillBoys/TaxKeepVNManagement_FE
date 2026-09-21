@@ -60,20 +60,29 @@ export function LoginPage({ onNavigateToRegister, onLoginSuccess }) {
     setIsSubmitting(true)
 
     try {
-      await login({
+      const authData = await login({
         citizenId: citizenId.trim(),
         password,
         rememberMe,
       })
 
       if (onLoginSuccess) {
-        onLoginSuccess()
+        onLoginSuccess(authData)
       } else {
         const redirectPath = location.state?.from?.pathname || '/admin'
         navigate(redirectPath, { replace: true })
       }
     } catch (error) {
       console.error('Đăng nhập thất bại:', error)
+      const beErrors = error.errors || error.data?.errors
+      if (beErrors && typeof beErrors === 'object') {
+        const mappedErrors = {}
+        for (const [key, val] of Object.entries(beErrors)) {
+          const lowerKey = key.charAt(0).toLowerCase() + key.slice(1)
+          mappedErrors[lowerKey] = Array.isArray(val) ? val[0] : String(val)
+        }
+        setFieldErrors((prev) => ({ ...prev, ...mappedErrors }))
+      }
       setErrorMessage(
         error.message || 'Số CCCD hoặc mật khẩu không chính xác. Vui lòng thử lại.'
       )

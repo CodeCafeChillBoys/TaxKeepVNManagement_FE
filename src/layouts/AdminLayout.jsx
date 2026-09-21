@@ -81,12 +81,13 @@ export function AdminLayout({
     { id: 'cai-dat', label: 'Cấu hình hệ thống', icon: 'tune' },
   ]
 
+  const roleNormalized = (user?.userRole || user?.role || '').toLowerCase()
   const userRoleLabel =
-    user?.userRole === 'admin'
+    roleNormalized === 'admin'
       ? 'Quản trị viên'
-      : user?.userRole === 'taxpayer'
+      : roleNormalized === 'taxpayer'
       ? 'Người nộp thuế'
-      : user?.userRole || 'Chuyên viên QTT'
+      : user?.userRole || user?.role || 'Chuyên viên QTT'
 
   return (
     <div className="bg-surface font-body-md text-on-surface antialiased min-h-screen flex">

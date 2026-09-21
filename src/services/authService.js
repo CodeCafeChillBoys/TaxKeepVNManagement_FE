@@ -6,6 +6,7 @@ const USER_KEY = 'taxkeep_user'
 export const authService = {
   /**
    * Đăng nhập hệ thống bằng số CCCD và mật khẩu
+   * Chuẩn Backend: POST /api/v1/auth/login
    * @param {Object} credentials
    * @param {string} credentials.citizenId - Số CCCD (12 chữ số)
    * @param {string} credentials.password - Mật khẩu
@@ -18,18 +19,20 @@ export const authService = {
       password,
     }
 
-    const response = await apiClient.post('/api/auth/login', payload)
+    const response = await apiClient.post('/api/v1/auth/login', payload)
 
     // Chuẩn hóa dữ liệu trả về từ ApiResponse<AuthResponse>
     const rawData = response?.data || response
     const token = rawData?.token || response?.token
+    const role = (rawData?.userRole || rawData?.role || '').trim()
 
     const authData = {
       ...rawData,
       token,
       userId: rawData?.userId || rawData?.id,
       id: rawData?.userId || rawData?.id,
-      role: rawData?.userRole || rawData?.role,
+      userRole: role,
+      role: role,
     }
 
     if (token) {
@@ -41,6 +44,7 @@ export const authService = {
 
   /**
    * Đăng ký tài khoản người nộp thuế mới
+   * Chuẩn Backend: POST /api/v1/auth/register
    * @param {Object} registerData
    * @param {string} registerData.citizenId - Số CCCD (12 số)
    * @param {string} registerData.fullName - Họ và tên
@@ -61,16 +65,38 @@ export const authService = {
       dateOfBirth: registerData.dateOfBirth || null,
     }
 
-    const response = await apiClient.post('/api/auth/register', payload)
+    const response = await apiClient.post('/api/v1/auth/register', payload)
+    return response?.data || response
+  },
+
+  /**
+   * Bóc tách thông tin CCCD khi đăng ký (eKYC / Onboarding)
+   * Chuẩn Backend: POST /api/v1/auth/cccd-extractions
+   * @param {File} file - Mặt trước CCCD
+   * @param {File} [backFile] - Mặt sau CCCD
+   */
+  extractCccd: async (file, backFile = null) => {
+    const formData = new FormData()
+    formData.append('File', file)
+    if (backFile) {
+      formData.append('BackFile', backFile)
+    }
+
+    const response = await apiClient.post('/api/v1/auth/cccd-extractions', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
     return response?.data || response
   },
 
   /**
    * Đăng xuất khỏi hệ thống & thu hồi JWT token trên BE
+   * Chuẩn Backend: POST /api/v1/auth/logout (yêu cầu Authorization Bearer)
    */
   logout: async () => {
     try {
-      await apiClient.post('/api/auth/logout')
+      await apiClient.post('/api/v1/auth/logout')
     } catch (err) {
       console.warn('Lỗi khi gọi API logout trên server:', err)
     } finally {
@@ -80,6 +106,7 @@ export const authService = {
 
   /**
    * Đổi mật khẩu người dùng (yêu cầu ConfirmNewPassword theo DTO BE)
+   * Chuẩn Backend: PUT /api/v1/auth/change-password
    * @param {Object} data
    * @param {string} data.currentPassword
    * @param {string} data.newPassword
@@ -91,25 +118,48 @@ export const authService = {
       newPassword,
       confirmNewPassword: confirmNewPassword || newPassword,
     }
-    const response = await apiClient.put('/api/auth/change-password', payload)
+    const response = await apiClient.put('/api/v1/auth/change-password', payload)
     return response?.data || response
   },
 
   /**
    * Lấy thông tin hồ sơ cá nhân của người dùng đang đăng nhập
+   * Chuẩn Backend: GET /api/profile
    */
   getProfile: async () => {
     const response = await apiClient.get('/api/profile')
-    return response.data
+    return response?.data || response
   },
 
   /**
    * Cập nhật hồ sơ cá nhân
+   * Chuẩn Backend: PUT /api/profile
    * @param {Object} profileData
    */
   updateProfile: async (profileData) => {
     const response = await apiClient.put('/api/profile', profileData)
-    return response.data
+    return response?.data || response
+  },
+
+  /**
+   * Kiểm tra xem JWT token đã hết hạn hay chưa
+   * @param {string} token
+   * @returns {boolean}
+   */
+  isTokenExpired: (token) => {
+    if (!token) return true
+    try {
+      const parts = token.split('.')
+      if (parts.length !== 3) return true
+      const payload = JSON.parse(
+        atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))
+      )
+      if (!payload.exp) return false
+      // Trả về true nếu thời điểm hiện tại >= exp (giây -> mili giây)
+      return Date.now() >= payload.exp * 1000
+    } catch {
+      return true
+    }
   },
 
   /**
@@ -148,10 +198,11 @@ export const authService = {
   },
 
   /**
-   * Kiểm tra xem user đã đăng nhập chưa
+   * Kiểm tra xem user đã đăng nhập chưa và token còn hạn hay không
    */
   isAuthenticated: () => {
-    return Boolean(authService.getToken())
+    const token = authService.getToken()
+    return Boolean(token && !authService.isTokenExpired(token))
   },
 
   /**

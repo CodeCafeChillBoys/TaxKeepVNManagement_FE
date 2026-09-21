@@ -1,4 +1,4 @@
-export * from './apiClient'
+﻿export * from './apiClient'
 export * from './authService'
 export * from './taxRuleService'
 export * from './dependentRuleService'
@@ -8,3 +8,7 @@ export * from './profileService'
 export * from './notificationService'
 export * from './taxAdminService'
 export * from './signalrService'
+
+export * from './systemConfigService'
+export * from './taxDocumentTypeService'
+export * from './urlRuleService'

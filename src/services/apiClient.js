@@ -3,6 +3,7 @@ import axios from 'axios'
 export const MANAGEMENT_API_URL =
   import.meta.env.VITE_API_GATEWAY_URL ||
   import.meta.env.VITE_MANAGEMENT_API_URL ||
+  import.meta.env.VITE_API_BASE_URL ||
   'http://localhost:5000'
 
 export const apiClient = axios.create({
@@ -20,8 +21,8 @@ apiClient.interceptors.request.use(
       localStorage.getItem('taxkeep_token') ||
       sessionStorage.getItem('taxkeep_token')
 
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+    if (token && !config.headers.Authorization) {
+      config.headers.Authorization = 'Bearer ' + token 
     }
 
     return config
@@ -40,6 +41,7 @@ apiClient.interceptors.response.use(
   (error) => {
     const status = error.response?.status
     const data = error.response?.data
+    const isLoginRequest = error.config?.url?.includes('/auth/login')
 
     let friendlyMessage = 'Đã có lỗi xảy ra khi kết nối máy chủ.'
 
@@ -49,14 +51,16 @@ apiClient.interceptors.response.use(
       friendlyMessage = data.message
     } else if (data?.title) {
       friendlyMessage = data.title
-    } else if (typeof data === 'string') {
-      friendlyMessage = data
+    } else if (typeof data === 'string' && data.trim()) {
+      friendlyMessage = data.trim()
     } else if (status === 401) {
-      friendlyMessage = 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ.'
+      friendlyMessage = isLoginRequest
+        ? 'Số CCCD hoặc mật khẩu không chính xác.'
+        : 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.'
     } else if (status === 403) {
-      friendlyMessage = 'Bạn không có quyền thực hiện thao tác này.'
+      friendlyMessage = 'Bạn không có quyền truy cập vào tài nguyên hoặc chức năng này.'
     } else if (status === 404) {
-      friendlyMessage = 'Không tìm thấy tài nguyên yêu cầu.'
+      friendlyMessage = 'Không tìm thấy tài nguyên yêu cầu trên máy chủ.'
     } else if (status >= 500) {
       friendlyMessage = 'Máy chủ hệ thống gặp sự cố. Vui lòng thử lại sau.'
     }
@@ -65,13 +69,18 @@ apiClient.interceptors.response.use(
     customError.status = status
     customError.data = data
     customError.errors = data?.errors
+    customError.response = error.response
 
-    // Nếu bị 401 Unauthorized do token hết hạn/bị thu hồi, xóa token lưu cục bộ
-    if (status === 401) {
+    // Nếu bị 401 Unauthorized do token hết hạn/bị thu hồi trên phiên đang hoạt động
+    if (status === 401 && !isLoginRequest) {
       localStorage.removeItem('taxkeep_token')
       localStorage.removeItem('taxkeep_user')
       sessionStorage.removeItem('taxkeep_token')
       sessionStorage.removeItem('taxkeep_user')
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('taxkeep:unauthorized'))
+      }
     }
 
     return Promise.reject(customError)
