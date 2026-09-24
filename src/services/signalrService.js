@@ -10,6 +10,40 @@ class SignalRService {
     this.connection = null
     this.listeners = new Map()
     this.isConnecting = false
+
+    // Khởi tạo sẵn các kênh sự kiện cốt lõi của Tax AI
+    this.listeners.set('OnTaxExtractionCompleted', new Set())
+    this.listeners.set('OnTaxExtractionFailed', new Set())
+  }
+
+  /**
+   * Đăng ký dispatchers trung tâm lên HubConnection
+   * Đảm bảo luôn có handler nhận sự kiện (cả PascalCase và lowercase)
+   */
+  _bindHandlers(conn) {
+    if (!conn) return
+    this.listeners.forEach((_, eventName) => {
+      const lowerName = eventName.toLowerCase()
+      const handler = (...args) => {
+        const cbs = this.listeners.get(eventName)
+        if (cbs && cbs.size > 0) {
+          cbs.forEach((cb) => {
+            try {
+              cb(...args)
+            } catch (e) {
+              console.error(`[SignalR] Callback error for ${eventName}:`, e)
+            }
+          })
+        }
+      }
+
+      conn.off(eventName)
+      conn.on(eventName, handler)
+      if (lowerName !== eventName) {
+        conn.off(lowerName)
+        conn.on(lowerName, handler)
+      }
+    })
   }
 
   /**
@@ -56,22 +90,13 @@ class SignalRService {
         .configureLogging(signalR.LogLevel.Information)
         .build()
 
-      // Gán lại các listeners đã đăng ký
-      this.listeners.forEach((callbacks, eventName) => {
-        this.connection.on(eventName, (...args) => {
-          callbacks.forEach((cb) => {
-            try {
-              cb(...args)
-            } catch (e) {
-              console.error(`[SignalR] Callback error for ${eventName}:`, e)
-            }
-          })
-        })
-      })
+      this._bindHandlers(this.connection)
 
       this.connection.onclose(() => {})
       this.connection.onreconnecting(() => {})
-      this.connection.onreconnected(() => {})
+      this.connection.onreconnected(() => {
+        this._bindHandlers(this.connection)
+      })
 
       await this.connection.start()
       return this.connection
@@ -97,17 +122,7 @@ class SignalRService {
           .configureLogging(signalR.LogLevel.None)
           .build()
 
-        this.listeners.forEach((callbacks, eventName) => {
-          this.connection.on(eventName, (...args) => {
-            callbacks.forEach((cb) => {
-              try {
-                cb(...args)
-              } catch {
-                // Bỏ qua lỗi callback
-              }
-            })
-          })
-        })
+        this._bindHandlers(this.connection)
 
         await this.connection.start()
         return this.connection
@@ -131,19 +146,7 @@ class SignalRService {
     this.listeners.get(eventName).add(callback)
 
     if (this.connection) {
-      this.connection.off(eventName)
-      this.connection.on(eventName, (...args) => {
-        const cbs = this.listeners.get(eventName)
-        if (cbs) {
-          cbs.forEach((cb) => {
-            try {
-              cb(...args)
-            } catch (e) {
-              console.error(`[SignalR] Callback error for ${eventName}:`, e)
-            }
-          })
-        }
-      })
+      this._bindHandlers(this.connection)
     }
   }
 
@@ -157,10 +160,8 @@ class SignalRService {
       if (callback) {
         this.listeners.get(eventName).delete(callback)
       } else {
-        this.listeners.delete(eventName)
-        if (this.connection) {
-          this.connection.off(eventName)
-        }
+        // Chỉ xóa tập callbacks nhưng giữ lại channel để connection không báo Warning thiếu method
+        this.listeners.get(eventName).clear()
       }
     }
   }

@@ -359,6 +359,150 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
 
     let currentTaskId = null
     let timeoutTimer = null
+    let stageTimer = null
+
+    // 1. Định nghĩa bộ xử lý phản hồi khi AI hoàn tất bóc tách
+    const handleCompletion = (response) => {
+      // Nếu đã có currentTaskId và response có taskId khác thì bỏ qua
+      if (currentTaskId && response.taskId && response.taskId !== currentTaskId) {
+        return
+      }
+
+      clearTimeout(stageTimer)
+      clearTimeout(timeoutTimer)
+
+      signalrService.off('OnTaxExtractionCompleted', handleCompletion)
+      signalrService.off('OnTaxExtractionFailed', handleFailure)
+      if (currentTaskId) signalrService.leaveTaskGroup(currentTaskId)
+
+      setProcessProgress(100)
+      setProcessTitle('Bóc tách quy tắc thuế thành công!')
+      setProcessSubtitle('Hệ thống đã hoàn tất bóc tách dữ liệu và sẵn sàng để thẩm tra.')
+
+      const extractedData = { ...(response.data || {}) }
+      if (response.warning && !extractedData.warning) {
+        extractedData.warning = response.warning
+      }
+      const effectiveRuleSetId = response.ruleSetId || extractedData.ruleSetId || extractedData.taxRuleSet?.ruleSetId
+      if (effectiveRuleSetId) {
+        extractedData.ruleSetId = effectiveRuleSetId
+        if (!extractedData.taxRuleSet) extractedData.taxRuleSet = {}
+        extractedData.taxRuleSet.ruleSetId = effectiveRuleSetId
+      }
+
+      const rulesCount = extractedData.taxRules?.length || 0
+      const verification = extractedData.verification || null
+      const warningMsg =
+        response.warning ||
+        extractedData.warning ||
+        verification?.warningMessage ||
+        null
+      const isYearMismatched = verification?.isTaxYearMatched === false
+
+      if (isYearMismatched || warningMsg) {
+        setProcessSubtitle(
+          `Đã bóc tách dữ liệu. Phát hiện cảnh báo đối soát năm áp dụng (${verification?.extractedTaxYear || 'văn bản'} so với ${verification?.inputTaxYear || taxYear}). Vui lòng thẩm định kỹ.`
+        )
+      }
+
+      const newDoc = {
+        id: response.ruleSetId || extractedData.taxRuleSet?.ruleSetId || currentTaskId || Date.now().toString(),
+        name: name.trim() || extractedData.taxRuleSet?.name || (taxYear ? `Luật thuế năm ${taxYear}` : 'Văn bản thuế'),
+        fileName: selectedFile.name,
+        taxYear: taxYear,
+        rulesCount: rulesCount,
+        status: extractedData.taxRuleSet?.status || 'Draft',
+        adminName: user?.fullName || 'Quản trị viên',
+        uploadedAt:
+          new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) +
+          ' • ' +
+          new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        extractedData: extractedData,
+      }
+
+      setRecentDocs((prev) => [newDoc, ...prev.filter((d) => d.id !== newDoc.id)].slice(0, 10))
+
+      setTimeout(() => {
+        setIsProcessing(false)
+        if (isYearMismatched || warningMsg) {
+          showToast(
+            'Cảnh báo đối soát năm',
+            warningMsg ||
+              `Năm trong văn bản (${verification?.extractedTaxYear}) khác năm nhập (${verification?.inputTaxYear}). Vui lòng kiểm tra lại trong bước thẩm tra.`,
+            'warning'
+          )
+        } else {
+          showToast(
+            'Bóc tách thành công',
+            `AI đã bóc tách thành công ${rulesCount} quy tắc thuế từ văn bản PDF!`,
+            'success'
+          )
+        }
+        setTimeout(() => {
+          onUploadSuccess?.(extractedData)
+        }, 800)
+      }, 800)
+    }
+
+    // 2. Định nghĩa bộ xử lý phản hồi khi AI bóc tách thất bại
+    const handleFailure = (response) => {
+      if (currentTaskId && response.taskId && response.taskId !== currentTaskId) {
+        return
+      }
+
+      clearTimeout(stageTimer)
+      clearTimeout(timeoutTimer)
+
+      signalrService.off('OnTaxExtractionCompleted', handleCompletion)
+      signalrService.off('OnTaxExtractionFailed', handleFailure)
+      if (currentTaskId) signalrService.leaveTaskGroup(currentTaskId)
+
+      setIsProcessing(false)
+      const errMsg = response.errorMessage || 'Hệ thống gặp sự cố trong quá trình bóc tách văn bản.'
+
+      let alertData = {
+        title: 'Thông báo xử lý văn bản',
+        message: errMsg,
+        status: null,
+        suggestion: '',
+        field: null,
+      }
+
+      if (
+        errMsg.includes('StringDataRightTruncation') ||
+        errMsg.includes('value too long for type character varying') ||
+        errMsg.includes('character varying')
+      ) {
+        alertData = {
+          title: 'Dữ liệu văn bản vượt quá quy định',
+          message: 'Tên hoặc nội dung một quy tắc do hệ thống trích xuất từ văn bản dài hơn quy định chuẩn.',
+          suggestion: 'Vui lòng kiểm tra lại văn bản nguồn hoặc liên hệ quản trị viên để chuẩn hóa cấu trúc dữ liệu.',
+        }
+      } else if (
+        errMsg.includes('tax year already exists') ||
+        errMsg.includes('TAX_RULE_SET_EXISTS') ||
+        errMsg.includes('already exists')
+      ) {
+        alertData = {
+          title: 'Trùng lặp năm tính thuế',
+          message: `Năm tính thuế ${taxYear} đã có bộ quy tắc thuế tồn tại trên hệ thống.`,
+          status: 409,
+          field: 'taxYear',
+          suggestion:
+            'Khắc phục: Vui lòng thay đổi Năm tính thuế sang năm khác hoặc điều chỉnh bộ quy tắc trùng lặp.',
+        }
+        setErrors((prev) => ({ ...prev, taxYear: alertData.message }))
+      } else if (errMsg.includes('Internal error') || errMsg.includes('psycopg') || errMsg.includes('SQL')) {
+        alertData = {
+          title: 'Thông báo xử lý văn bản',
+          message: 'Hệ thống gặp sự cố trong quá trình lưu trữ và phân loại các điều khoản từ văn bản.',
+          suggestion: 'Vui lòng thử lại với văn bản chuẩn hoặc liên hệ quản trị viên hệ thống.',
+        }
+      }
+
+      setValidationAlert(alertData)
+      showToast(alertData.title, alertData.message, 'error')
+    }
 
     try {
       // 1. Đảm bảo kết nối SignalR Hub đã sẵn sàng trước khi gửi request
@@ -366,183 +510,7 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
         // Tiếp tục gửi yêu cầu bóc tách nếu kết nối thời gian thực gặp độ trễ
       })
 
-      // 2. Gửi tệp PDF tới API quản trị
-      const uploadRes = await taxAdminService.uploadTaxDocumentAsync(
-        selectedFile,
-        taxYear,
-        name,
-        sourceUrl
-      )
-
-      const rawRes = uploadRes?.data || uploadRes
-      currentTaskId = rawRes?.taskId || null
-
-      setProcessProgress(45)
-      setProcessStage(2)
-      setProcessTitle('Đang tiếp nhận và xếp hàng xử lý...')
-      setProcessSubtitle(
-        'Tài liệu đã được tiếp nhận thành công và chuyển đến hệ thống AI để tiến hành bóc tách...'
-      )
-
-      // 3. Gia nhập nhóm lắng nghe tác vụ qua SignalR
-      if (currentTaskId) {
-        await signalrService.joinTaskGroup(currentTaskId)
-      }
-
-      // Tiến độ phân tích quy tắc thuế trong nền
-      const stageTimer = setTimeout(() => {
-        setProcessProgress(75)
-        setProcessStage(3)
-        setProcessTitle('AI đang bóc tách và phân loại quy tắc thuế...')
-        setProcessSubtitle(
-          'Hệ thống đang quét nội dung văn bản và tự động chuẩn hóa các nhóm quy tắc thuế...'
-        )
-      }, 3500)
-
-      // 4. Lắng nghe phản hồi từ SignalR khi AI bóc tách xong
-      const handleCompletion = (response) => {
-        // Nếu taskId không khớp thì bỏ qua
-        if (currentTaskId && response.taskId && response.taskId !== currentTaskId) {
-          return
-        }
-
-        clearTimeout(stageTimer)
-        clearTimeout(timeoutTimer)
-
-        signalrService.off('OnTaxExtractionCompleted', handleCompletion)
-        signalrService.off('OnTaxExtractionFailed', handleFailure)
-        if (currentTaskId) signalrService.leaveTaskGroup(currentTaskId)
-
-        setProcessProgress(100)
-        setProcessTitle('Bóc tách quy tắc thuế thành công!')
-        setProcessSubtitle('Hệ thống đã hoàn tất bóc tách dữ liệu và sẵn sàng để thẩm tra.')
-
-        const extractedData = { ...(response.data || {}) }
-        if (response.warning && !extractedData.warning) {
-          extractedData.warning = response.warning
-        }
-        const effectiveRuleSetId = response.ruleSetId || extractedData.ruleSetId || extractedData.taxRuleSet?.ruleSetId
-        if (effectiveRuleSetId) {
-          extractedData.ruleSetId = effectiveRuleSetId
-          if (!extractedData.taxRuleSet) extractedData.taxRuleSet = {}
-          extractedData.taxRuleSet.ruleSetId = effectiveRuleSetId
-        }
-
-        const rulesCount = extractedData.taxRules?.length || 0
-        const verification = extractedData.verification || null
-        const warningMsg =
-          response.warning ||
-          extractedData.warning ||
-          verification?.warningMessage ||
-          null
-        const isYearMismatched = verification?.isTaxYearMatched === false
-
-        if (isYearMismatched || warningMsg) {
-          setProcessSubtitle(
-            `Đã bóc tách dữ liệu. Phát hiện cảnh báo đối soát năm áp dụng (${verification?.extractedTaxYear || 'văn bản'} so với ${verification?.inputTaxYear || taxYear}). Vui lòng thẩm định kỹ.`
-          )
-        }
-
-        const newDoc = {
-          id: response.ruleSetId || extractedData.taxRuleSet?.ruleSetId || currentTaskId || Date.now().toString(),
-          name: name.trim() || extractedData.taxRuleSet?.name || (taxYear ? `Luật thuế năm ${taxYear}` : 'Văn bản thuế'),
-          fileName: selectedFile.name,
-          taxYear: taxYear,
-          rulesCount: rulesCount,
-          status: extractedData.taxRuleSet?.status || 'Draft',
-          adminName: user?.fullName || 'Quản trị viên',
-          uploadedAt:
-            new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) +
-            ' • ' +
-            new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-          extractedData: extractedData,
-        }
-
-        setRecentDocs((prev) => [newDoc, ...prev.filter((d) => d.id !== newDoc.id)].slice(0, 10))
-
-        setTimeout(() => {
-          setIsProcessing(false)
-          if (isYearMismatched || warningMsg) {
-            showToast(
-              'Cảnh báo đối soát năm',
-              warningMsg ||
-                `Năm trong văn bản (${verification?.extractedTaxYear}) khác năm nhập (${verification?.inputTaxYear}). Vui lòng kiểm tra lại trong bước thẩm tra.`,
-              'warning'
-            )
-          } else {
-            showToast(
-              'Bóc tách thành công',
-              `AI đã bóc tách thành công ${rulesCount} quy tắc thuế từ văn bản PDF!`,
-              'success'
-            )
-          }
-          setTimeout(() => {
-            onUploadSuccess?.(extractedData)
-          }, 800)
-        }, 800)
-      }
-
-      // 5. Lắng nghe phản hồi khi bóc tách thất bại
-      const handleFailure = (response) => {
-        if (currentTaskId && response.taskId && response.taskId !== currentTaskId) {
-          return
-        }
-
-        clearTimeout(stageTimer)
-        clearTimeout(timeoutTimer)
-
-        signalrService.off('OnTaxExtractionCompleted', handleCompletion)
-        signalrService.off('OnTaxExtractionFailed', handleFailure)
-        if (currentTaskId) signalrService.leaveTaskGroup(currentTaskId)
-
-        setIsProcessing(false)
-        const errMsg = response.errorMessage || 'Hệ thống gặp sự cố trong quá trình bóc tách văn bản.'
-
-        let alertData = {
-          title: 'Thông báo xử lý văn bản',
-          message: errMsg,
-          status: null,
-          suggestion: '',
-          field: null,
-        }
-
-        if (
-          errMsg.includes('StringDataRightTruncation') ||
-          errMsg.includes('value too long for type character varying') ||
-          errMsg.includes('character varying')
-        ) {
-          alertData = {
-            title: 'Dữ liệu văn bản vượt quá quy định',
-            message: 'Tên hoặc nội dung một quy tắc do hệ thống trích xuất từ văn bản dài hơn quy định chuẩn.',
-            suggestion: 'Vui lòng kiểm tra lại văn bản nguồn hoặc liên hệ quản trị viên để chuẩn hóa cấu trúc dữ liệu.',
-          }
-        } else if (
-          errMsg.includes('tax year already exists') ||
-          errMsg.includes('TAX_RULE_SET_EXISTS') ||
-          errMsg.includes('already exists')
-        ) {
-          alertData = {
-            title: 'Trùng lặp năm tính thuế',
-            message: `Năm tính thuế ${taxYear} đã có bộ quy tắc thuế tồn tại trên hệ thống.`,
-            status: 409,
-            field: 'taxYear',
-            suggestion:
-              'Khắc phục: Vui lòng thay đổi Năm tính thuế sang năm khác hoặc điều chỉnh bộ quy tắc trùng lặp.',
-          }
-          setErrors((prev) => ({ ...prev, taxYear: alertData.message }))
-        } else if (errMsg.includes('Internal error') || errMsg.includes('psycopg') || errMsg.includes('SQL')) {
-          alertData = {
-            title: 'Thông báo xử lý văn bản',
-            message: 'Hệ thống gặp sự cố trong quá trình lưu trữ và phân loại các điều khoản từ văn bản.',
-            suggestion: 'Vui lòng thử lại với văn bản chuẩn hoặc liên hệ quản trị viên hệ thống.',
-          }
-        }
-
-        setValidationAlert(alertData)
-        showToast(alertData.title, alertData.message, 'error')
-      }
-
-      // Đăng ký listeners
+      // 2. Đăng ký listeners TRƯỚC KHI gửi request upload để không bao giờ bị lỡ event
       signalrService.on('OnTaxExtractionCompleted', handleCompletion)
       signalrService.on('OnTaxExtractionFailed', handleFailure)
 
@@ -563,9 +531,47 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
         showToast('Thời gian xử lý kéo dài', 'Hệ thống đang tiếp tục xử lý văn bản trong nền.', 'warning')
       }, 180000)
 
+      // 3. Gửi tệp PDF tới API quản trị
+      const uploadRes = await taxAdminService.uploadTaxDocumentAsync(
+        selectedFile,
+        taxYear,
+        name,
+        sourceUrl
+      )
+
+      const rawRes = uploadRes?.data || uploadRes
+      currentTaskId = rawRes?.taskId || null
+
+      setProcessProgress(45)
+      setProcessStage(2)
+      setProcessTitle('Đang tiếp nhận và xếp hàng xử lý...')
+      setProcessSubtitle(
+        'Tài liệu đã được tiếp nhận thành công và chuyển đến hệ thống AI để tiến hành bóc tách...'
+      )
+
+      // 4. Gia nhập nhóm lắng nghe tác vụ qua SignalR
+      if (currentTaskId) {
+        await signalrService.joinTaskGroup(currentTaskId)
+      }
+
+      // Tiến độ phân tích quy tắc thuế trong nền
+      stageTimer = setTimeout(() => {
+        setProcessProgress(75)
+        setProcessStage(3)
+        setProcessTitle('AI đang bóc tách và phân loại quy tắc thuế...')
+        setProcessSubtitle(
+          'Hệ thống đang quét nội dung văn bản và tự động chuẩn hóa các nhóm quy tắc thuế...'
+        )
+      }, 3500)
+
     } catch (err) {
-      setIsProcessing(false)
+      clearTimeout(stageTimer)
       clearTimeout(timeoutTimer)
+      signalrService.off('OnTaxExtractionCompleted', handleCompletion)
+      signalrService.off('OnTaxExtractionFailed', handleFailure)
+      if (currentTaskId) signalrService.leaveTaskGroup(currentTaskId)
+
+      setIsProcessing(false)
 
       const alertData = {
         title: err.title || 'Lỗi tải lên văn bản',

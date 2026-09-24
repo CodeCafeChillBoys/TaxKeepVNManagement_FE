@@ -19,7 +19,7 @@ export const taxAdminService = {
     if (name?.trim()) formData.append('Name', name.trim())
     if (sourceUrl?.trim()) formData.append('SourceUrl', sourceUrl.trim())
 
-    return apiClient.post('/api/admin/tax-rules/upload', formData, {
+    return await apiClient.post('/api/v1/admin/tax-rules/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

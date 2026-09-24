@@ -97,164 +97,165 @@ export function TaxRuleReviewPage({
     }
   }, [currentData, extractedData, onDataLoaded])
 
-  // 3. Tự động đồng bộ danh mục bộ quy tắc từ CSDL và tải chi tiết bộ quy tắc (Active hoặc theo URL/props)
+  // 3. Tải danh mục tất cả bộ quy tắc thuế có sẵn từ CSDL để hiển thị trên thanh chọn bộ quy tắc
   useEffect(() => {
     let isMounted = true
-
-    const explicitId =
-      currentRuleSetId ||
-      paramId ||
-      searchParams.get('id') ||
-      searchParams.get('ruleSetId')
-
-    const explicitYear =
-      searchParams.get('year') ||
-      searchParams.get('taxYear')
-
-    const currentLoadedId =
-      currentData?.taxRuleSet?.ruleSetId ||
-      currentData?.ruleSetId ||
-      currentData?.id
-
-    const currentLoadedYear =
-      currentData?.taxRuleSet?.taxYear ||
-      currentData?.taxYear
-
-    const fetchDetail = (targetId, targetYear = null) => {
-      if ((!targetId && !targetYear) || !isMounted) return
-      setIsLoadingDetail(true)
-
-      const apiCall = targetYear
-        ? taxRuleService.getRuleSetByYear(targetYear)
-        : taxRuleService.getRuleSetDetail(targetId)
-
-      apiCall
-        .then((res) => {
-          if (!isMounted) return
-          const resData = res?.data || res || {}
-          const actual = resData.taxRuleSet
-            ? resData
-            : (resData.data?.taxRuleSet ? resData.data : resData)
-          if (actual.taxRuleSet || actual.taxRules) {
-            const ruleSet = actual.taxRuleSet || {}
-            const rules = actual.taxRules || []
-            const registeredYear = parseInt(ruleSet.taxYear, 10)
-
-            // Bảo toàn verification từ phiên làm việc nếu có
-            let mergedVerification =
-              actual.verification ||
-              currentData?.verification ||
-              extractedData?.verification ||
-              null
-
-            let mergedWarning =
-              actual.warning ||
-              currentData?.warning ||
-              extractedData?.warning ||
-              null
-
-            // Nếu chưa có verification (do CSDL không lưu cột này), tự động đối soát dựa trên văn bản
-            if (!mergedVerification && registeredYear) {
-              const docYear = extractYearFromTextOrDate(
-                ruleSet.effectiveFrom,
-                ruleSet.name,
-                rules
-              )
-              if (docYear && docYear !== registeredYear) {
-                mergedVerification = {
-                  inputTaxYear: registeredYear,
-                  extractedTaxYear: docYear,
-                  isTaxYearMatched: false,
-                  mismatchReason: `Năm áp dụng văn bản nhận diện được là ${docYear}, khác với năm tính thuế đăng ký ${registeredYear}.`,
-                  warningMessage: `Văn bản quy định áp dụng từ năm ${docYear}, chưa hoàn toàn khớp với năm tính thuế ${registeredYear}.`,
-                }
-                mergedWarning = mergedVerification.warningMessage
-              } else if (docYear && docYear === registeredYear) {
-                mergedVerification = {
-                  inputTaxYear: registeredYear,
-                  extractedTaxYear: docYear,
-                  isTaxYearMatched: true,
-                  mismatchReason: null,
-                  warningMessage: null,
-                }
-              }
-            }
-
-            const completeData = {
-              ...actual,
-              verification: mergedVerification,
-              warning: mergedWarning || mergedVerification?.warningMessage || null,
-            }
-
-            setCurrentData(completeData)
-            onDataLoaded?.(completeData)
-            const resolvedId = ruleSet.ruleSetId || targetId
-            if (resolvedId && !searchParams.get('id') && !paramId) {
-              setSearchParams({ id: resolvedId }, { replace: true })
-            }
-          } else {
-            setCurrentData(null)
-          }
-        })
-        .catch((err) => {
-          if (!isMounted) return
-          setCurrentData(null)
-          showToast(
-            'Không tìm thấy dữ liệu',
-            err.status === 404
-              ? 'Không tìm thấy thông tin bộ quy tắc thuế trên hệ thống.'
-              : err.message || 'Không thể tải chi tiết bộ quy tắc thuế.',
-            'warning'
-          )
-        })
-        .finally(() => {
-          if (isMounted) setIsLoadingDetail(false)
-        })
-    }
-
-    // Luôn tải danh sách tất cả các bộ quy tắc trong CSDL để nạp vào bộ chọn
     taxRuleService
       .getAllRuleSets()
       .then((res) => {
         if (!isMounted) return
         const list = Array.isArray(res) ? res : (res?.data || [])
         setAvailableRuleSets(list)
-
-        // Nếu trên URL không có ID và không có Year và chưa có currentData:
-        // Tự động chọn bộ quy tắc Đang áp dụng (Active) hoặc gần nhất từ CSDL
-        if (!explicitId && !explicitYear && !currentData) {
-          if (list.length > 0) {
-            const activeSet =
-              list.find((s) => String(s.status).toUpperCase() === 'ACTIVE') || list[0]
-            if (activeSet?.ruleSetId) {
-              setSearchParams({ id: activeSet.ruleSetId }, { replace: true })
-              fetchDetail(activeSet.ruleSetId)
-            } else {
-              setIsLoadingDetail(false)
-            }
-          } else {
-            setIsLoadingDetail(false)
-          }
-        }
       })
       .catch((err) => {
         console.warn('Lỗi khi tải danh mục bộ quy tắc thuế:', err)
-        if (!explicitId && !explicitYear && !currentData) {
-          setIsLoadingDetail(false)
+      })
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  // 4. Tải chi tiết bộ quy tắc theo explicitId hoặc explicitYear từ URL / props
+  const explicitId =
+    currentRuleSetId ||
+    paramId ||
+    searchParams.get('id') ||
+    searchParams.get('ruleSetId') ||
+    ''
+
+  const explicitYear =
+    searchParams.get('year') ||
+    searchParams.get('taxYear') ||
+    ''
+
+  useEffect(() => {
+    let isMounted = true
+
+    // Nếu không có ID và không có Year:
+    if (!explicitId && !explicitYear) {
+      if (!currentData && !extractedData && availableRuleSets.length > 0) {
+        const activeSet =
+          availableRuleSets.find((s) => String(s.status).toUpperCase() === 'ACTIVE') || availableRuleSets[0]
+        if (activeSet?.ruleSetId) {
+          setSearchParams({ id: activeSet.ruleSetId }, { replace: true })
+        }
+      }
+      setIsLoadingDetail(false)
+      return
+    }
+
+    // Nếu dữ liệu hiện tại đã khớp với ID hoặc Year cần xem, không cần tải lại
+    const currentLoadedId =
+      currentData?.taxRuleSet?.ruleSetId ||
+      currentData?.ruleSetId ||
+      currentData?.id
+    const currentLoadedYear =
+      currentData?.taxRuleSet?.taxYear ||
+      currentData?.taxYear
+
+    if (explicitId && currentLoadedId === explicitId) {
+      setIsLoadingDetail(false)
+      return
+    }
+    if (explicitYear && !explicitId && String(currentLoadedYear) === String(explicitYear)) {
+      setIsLoadingDetail(false)
+      return
+    }
+
+    setIsLoadingDetail(true)
+
+    const apiCall = explicitId
+      ? taxRuleService.getRuleSetDetail(explicitId)
+      : taxRuleService.getRuleSetByYear(explicitYear)
+
+    apiCall
+      .then((res) => {
+        if (!isMounted) return
+        const resData = res?.data || res || {}
+        const actual = resData.taxRuleSet
+          ? resData
+          : (resData.data?.taxRuleSet ? resData.data : resData)
+        if (actual.taxRuleSet || actual.taxRules) {
+          const ruleSet = actual.taxRuleSet || {}
+          const rules = actual.taxRules || []
+          const registeredYear = parseInt(ruleSet.taxYear, 10)
+
+          let mergedVerification =
+            actual.verification ||
+            currentData?.verification ||
+            extractedData?.verification ||
+            null
+
+          let mergedWarning =
+            actual.warning ||
+            currentData?.warning ||
+            extractedData?.warning ||
+            null
+
+          if (!mergedVerification && registeredYear) {
+            const docYear = extractYearFromTextOrDate(
+              ruleSet.effectiveFrom,
+              ruleSet.name,
+              rules
+            )
+            if (docYear && docYear !== registeredYear) {
+              mergedVerification = {
+                inputTaxYear: registeredYear,
+                extractedTaxYear: docYear,
+                isTaxYearMatched: false,
+                mismatchReason: `Năm áp dụng văn bản nhận diện được là ${docYear}, khác với năm tính thuế đăng ký ${registeredYear}.`,
+                warningMessage: `Văn bản quy định áp dụng từ năm ${docYear}, chưa hoàn toàn khớp với năm tính thuế ${registeredYear}.`,
+              }
+              mergedWarning = mergedVerification.warningMessage
+            } else if (docYear && docYear === registeredYear) {
+              mergedVerification = {
+                inputTaxYear: registeredYear,
+                extractedTaxYear: docYear,
+                isTaxYearMatched: true,
+                mismatchReason: null,
+                warningMessage: null,
+              }
+            }
+          }
+
+          const completeData = {
+            ...actual,
+            verification: mergedVerification,
+            warning: mergedWarning || mergedVerification?.warningMessage || null,
+          }
+
+          setCurrentData(completeData)
+          onDataLoaded?.(completeData)
+        } else {
+          setCurrentData(null)
         }
       })
-
-    // Nếu có explicitYear và không có explicitId
-    if (explicitYear && !explicitId && (!currentData || String(currentLoadedYear) !== String(explicitYear))) {
-      fetchDetail(null, explicitYear)
-    } else if (explicitId && (!currentData || currentLoadedId !== explicitId)) {
-      fetchDetail(explicitId)
-    }
+      .catch((err) => {
+        if (!isMounted) return
+        setCurrentData(null)
+        // Nếu ID trên URL bị 404 hoặc không tìm thấy, tự động chuyển sang bộ quy tắc hiện có
+        if (availableRuleSets.length > 0) {
+          const fallbackSet =
+            availableRuleSets.find((s) => String(s.status).toUpperCase() === 'ACTIVE') || availableRuleSets[0]
+          if (fallbackSet?.ruleSetId && fallbackSet.ruleSetId !== explicitId) {
+            setSearchParams({ id: fallbackSet.ruleSetId }, { replace: true })
+            return
+          }
+        }
+        showToast(
+          'Không thể tải dữ liệu',
+          err.message || 'Lỗi khi kết nối máy chủ.',
+          'error'
+        )
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingDetail(false)
+      })
 
     return () => {
       isMounted = false
     }
-  }, [currentRuleSetId, paramId, searchParams, currentData, extractedData, onDataLoaded, setSearchParams])
+  }, [explicitId, explicitYear, availableRuleSets, currentData, extractedData, onDataLoaded, setSearchParams])
 
   const showToast = (title, message, type = 'success') => {
     setToast({ title, message, type })
@@ -367,7 +368,7 @@ export function TaxRuleReviewPage({
   const brackets = rawTaxRules.filter((r) => r.ruleType === 'BRACKET')
   const deductions = rawTaxRules.filter((r) => r.ruleType === 'DEDUCTION')
   const rateExemptions = rawTaxRules.filter(
-    (r) => r.ruleType === 'RATE' || r.ruleType === 'EXEMPTION'
+    (r) => r.ruleType === 'RATE' || r.ruleType === 'EXEMPTION' || r.ruleType === 'REDUCTION'
   )
   const dependents = rawDependentRules
 
@@ -2133,7 +2134,8 @@ export function TaxRuleReviewPage({
                       <option value="BRACKET">Biểu thuế lũy tiến từng phần (BRACKET)</option>
                       <option value="DEDUCTION">Giảm trừ gia cảnh (DEDUCTION)</option>
                       <option value="RATE">Thuế suất toàn phần (RATE)</option>
-                      <option value="EXEMPTION">Miễn thuế / Giảm thuế đặc thù (EXEMPTION)</option>
+                      <option value="EXEMPTION">Miễn thuế (EXEMPTION)</option>
+                        <option value="REDUCTION">Giảm thuế (REDUCTION)</option>
                     </select>
                   </div>
                 )}

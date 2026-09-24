@@ -270,7 +270,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
   const brackets = currentRules.filter((r) => r.ruleType === 'BRACKET')
   const deductions = currentRules.filter((r) => r.ruleType === 'DEDUCTION')
   const ratesExemptions = currentRules.filter(
-    (r) => r.ruleType === 'RATE' || r.ruleType === 'EXEMPTION'
+    (r) => r.ruleType === 'RATE' || r.ruleType === 'EXEMPTION' || r.ruleType === 'REDUCTION'
   )
 
   const formatCurrency = (val) => {
