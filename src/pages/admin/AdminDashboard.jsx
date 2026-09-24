@@ -188,7 +188,7 @@ export function AdminDashboard({ onLogout }) {
       ? 'Thẩm định & Phê duyệt'
       : currentRoute === 'van-ban-quy-pham'
       ? 'Danh mục văn bản quy phạm'
-      : currentRoute === 'lich-su-phe-duyet'
+      : currentRoute === 'lich-su-phe-duyet' || currentRoute === 'lich-su' || currentRoute === 'lich-su-duyet'
       ? 'Lịch sử phê duyệt'
       : currentRoute === 'cai-dat'
       ? 'Cấu hình hệ thống'
@@ -238,7 +238,7 @@ export function AdminDashboard({ onLogout }) {
       )}
 
       {/* Route 5: Lịch sử phê duyệt & Lưu trữ văn bản quy phạm */}
-      {currentRoute === 'lich-su-phe-duyet' && (
+      {(currentRoute === 'lich-su-phe-duyet' || currentRoute === 'lich-su' || currentRoute === 'lich-su-duyet') && (
         <AdminApprovalHistoryPage
           initialYear={searchParams.get('year') || searchParams.get('taxYear')}
           onNavigateToReview={(ruleSetId) => {

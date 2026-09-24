@@ -84,8 +84,10 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
   // Bộ lọc tìm kiếm (tối ưu hóa bằng debounce)
   const [searchQuery, setSearchQuery] = useState('')
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
+  // Bộ lọc trạng thái (Tất cả / Đã có hiệu lực / Bản lưu nháp)
+  const [statusFilter, setStatusFilter] = useState('ALL')
 
-  // 1. Tải danh sách tất cả các bộ quy tắc đã phê duyệt có hiệu lực
+  // 1. Tải danh sách tất cả các bộ quy tắc trong CSDL hồ sơ
   useEffect(() => {
     let mounted = true
     setIsLoadingList(true)
@@ -95,11 +97,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
       .then((res) => {
         if (!mounted) return
         const list = Array.isArray(res) ? res : (res?.data || [])
-        // Chỉ lấy những bộ quy tắc có trạng thái có hiệu lực thi hành
-        const activeOnly = list.filter(
-          (item) => String(item.status || '').toUpperCase() === 'ACTIVE'
-        )
-        setAllRuleSets(activeOnly)
+        setAllRuleSets(list)
       })
       .catch((err) => {
         console.warn('Lỗi khi tải danh mục lịch sử phê duyệt:', err)
@@ -134,23 +132,41 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
           ? resData
           : (resData.data?.taxRuleSet ? resData.data : resData)
 
-        // Chỉ lấy bộ quy tắc có trạng thái có hiệu lực
-        const isAct = String(actual.taxRuleSet?.status || '').toUpperCase() === 'ACTIVE'
-        if (actual.taxRuleSet && isAct) {
+        if (actual.taxRuleSet) {
           setYearDetailData(actual)
-        } else if (actual.taxRuleSet && !isAct) {
-          setYearDetailData(null)
-          setDetailError(`Bộ quy tắc thuế năm ${selectedYear} chưa được phê duyệt ban hành có hiệu lực.`)
+          setDetailError(null)
         } else {
           setYearDetailData(null)
-          setDetailError(`Chưa có dữ liệu quy tắc thuế được phê duyệt cho năm ${selectedYear}.`)
+          setDetailError(`Chưa có dữ liệu quy tắc thuế cho năm ${selectedYear}.`)
         }
       })
-      .catch((err) => {
+      .catch(async (err) => {
         if (!mounted) return
+        // Fallback: Tìm theo ruleSetId trong allRuleSets nếu API theo năm gặp sự cố
+        const matchingSet = allRuleSets.find(
+          (s) => Number(s.taxYear) === Number(selectedYear)
+        )
+        if (matchingSet?.ruleSetId) {
+          try {
+            const detailRes = await taxRuleService.getRuleSetDetail(matchingSet.ruleSetId)
+            if (!mounted) return
+            const detailData = detailRes?.data || detailRes || {}
+            const actual = detailData.taxRuleSet
+              ? detailData
+              : (detailData.data?.taxRuleSet ? detailData.data : detailData)
+            if (actual.taxRuleSet) {
+              setYearDetailData(actual)
+              setDetailError(null)
+              return
+            }
+          } catch {
+            // Tiếp tục fallback lỗi phía dưới
+          }
+        }
+
         setYearDetailData(null)
         if (err.status === 404 || err.message?.includes('404')) {
-          setDetailError(`Chưa tìm thấy bộ quy tắc thuế nào có hiệu lực thi hành cho năm ${selectedYear}.`)
+          setDetailError(`Chưa tìm thấy bộ quy tắc thuế nào cho năm ${selectedYear}.`)
         } else {
           setDetailError(`Chưa thể tải dữ liệu quy tắc thuế cho năm ${selectedYear}.`)
         }
@@ -162,7 +178,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
     return () => {
       mounted = false
     }
-  }, [selectedYear])
+  }, [selectedYear, allRuleSets])
 
   // Cập nhật URL khi đổi năm lọc
   const handleYearChange = (year) => {
@@ -177,14 +193,12 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
     }
   }
 
-  // Danh sách các năm có bộ quy tắc đang có hiệu lực
+  // Danh sách các năm có bộ quy tắc trong hồ sơ lưu trữ
   const availableYears = useMemo(() => {
     const yearsSet = new Set()
-    allRuleSets
-      .filter((item) => String(item.status || '').toUpperCase() === 'ACTIVE')
-      .forEach((item) => {
-        if (item.taxYear) yearsSet.add(Number(item.taxYear))
-      })
+    allRuleSets.forEach((item) => {
+      if (item.taxYear) yearsSet.add(Number(item.taxYear))
+    })
     if (yearsSet.size === 0) yearsSet.add(2026)
     return Array.from(yearsSet).sort((a, b) => b - a)
   }, [allRuleSets])
@@ -223,10 +237,11 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
     return currentAdminName || '—'
   }
 
-  // Lọc danh sách lịch sử theo năm và từ khóa tìm kiếm (chỉ lấy status có hiệu lực, tối ưu hóa qua debounce)
+  // Lọc danh sách lịch sử theo năm, trạng thái và từ khóa tìm kiếm (tối ưu hóa qua debounce)
   const filteredRuleSets = useMemo(() => {
     return allRuleSets.filter((item) => {
-      if (String(item.status || '').toUpperCase() !== 'ACTIVE') {
+      const itemStatus = String(item.status || '').toUpperCase()
+      if (statusFilter !== 'ALL' && itemStatus !== statusFilter) {
         return false
       }
       if (selectedYear !== 'ALL' && Number(item.taxYear) !== Number(selectedYear)) {
@@ -245,7 +260,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
       }
       return true
     })
-  }, [allRuleSets, selectedYear, debouncedSearchQuery, userProfile, authUser])
+  }, [allRuleSets, statusFilter, selectedYear, debouncedSearchQuery, userProfile, authUser])
 
   // Dữ liệu chi tiết của năm hiện tại
   const currentSet = yearDetailData?.taxRuleSet || null
@@ -359,30 +374,53 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
         </div>
       </div>
 
-      {/* Filter Toolbar: Dropdown Năm (Shadcn UI Select) & Ô tìm kiếm */}
+      {/* Filter Toolbar: Dropdown Năm (Shadcn UI Select), Trạng thái & Ô tìm kiếm */}
       <div className="p-space-md rounded-xl bg-surface-container-lowest border border-outline-variant/40 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-space-md">
-        {/* Bộ chọn Năm sử dụng Dropdown Shadcn UI */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-on-surface whitespace-nowrap flex items-center gap-1">
-            <span className="material-symbols-outlined text-[18px] text-primary">calendar_month</span>
-            Năm:
-          </span>
-          <Select
-            value={selectedYear}
-            onValueChange={(val) => handleYearChange(val)}
-          >
-            <SelectTrigger className="w-[170px] h-9 bg-surface-container-low border-outline-variant/40 font-semibold text-primary">
-              <SelectValue placeholder="Chọn năm" />
-            </SelectTrigger>
-            <SelectContent className="bg-surface-container-lowest border-outline-variant/40 shadow-md">
-              <SelectItem value="ALL">Tất cả các năm</SelectItem>
-              {availableYears.map((yr) => (
-                <SelectItem key={yr} value={String(yr)}>
-                  Năm {yr} {yr === 2026 ? '(Hiện hành)' : ''}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Bộ chọn Năm sử dụng Dropdown Shadcn UI */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-on-surface whitespace-nowrap flex items-center gap-1">
+              <span className="material-symbols-outlined text-[18px] text-primary">calendar_month</span>
+              Năm:
+            </span>
+            <Select
+              value={selectedYear}
+              onValueChange={(val) => handleYearChange(val)}
+            >
+              <SelectTrigger className="w-[160px] h-9 bg-surface-container-low border-outline-variant/40 font-semibold text-primary">
+                <SelectValue placeholder="Chọn năm" />
+              </SelectTrigger>
+              <SelectContent className="bg-surface-container-lowest border-outline-variant/40 shadow-md">
+                <SelectItem value="ALL">Tất cả các năm</SelectItem>
+                {availableYears.map((yr) => (
+                  <SelectItem key={yr} value={String(yr)}>
+                    Năm {yr} {yr === 2026 ? '(Hiện hành)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Bộ chọn Trạng thái */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-on-surface whitespace-nowrap flex items-center gap-1">
+              <span className="material-symbols-outlined text-[18px] text-secondary">tune</span>
+              Trạng thái:
+            </span>
+            <Select
+              value={statusFilter}
+              onValueChange={(val) => setStatusFilter(val)}
+            >
+              <SelectTrigger className="w-[160px] h-9 bg-surface-container-low border-outline-variant/40 font-semibold text-on-surface">
+                <SelectValue placeholder="Chọn trạng thái" />
+              </SelectTrigger>
+              <SelectContent className="bg-surface-container-lowest border-outline-variant/40 shadow-md">
+                <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
+                <SelectItem value="ACTIVE">Đã có hiệu lực</SelectItem>
+                <SelectItem value="DRAFT">Bản lưu nháp</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Ô tìm kiếm */}
@@ -418,7 +456,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                 </span>
                 <div>
                   <h4 className="font-title-sm text-title-sm font-bold text-amber-950">
-                    Chưa có bộ quy tắc thuế được phê duyệt cho năm {selectedYear}
+                    Chưa có bộ quy tắc thuế cho năm {selectedYear}
                   </h4>
                   <p className="text-xs text-amber-800/90 mt-0.5 leading-relaxed">
                     {detailError} Bạn có thể tải lên văn bản quy phạm pháp luật của năm này để hệ thống tiến hành tiếp nhận và xử lý.
@@ -476,11 +514,31 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                     onClick={() => handleOpenReview(currentSet.ruleSetId)}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-on-primary hover:bg-primary-container text-xs font-bold shadow-sm transition-all cursor-pointer"
                   >
-                    <span className="material-symbols-outlined text-[16px]">visibility</span>
-                    <span>Xem chi tiết quy tắc</span>
+                    <span className="material-symbols-outlined text-[16px]">
+                      {String(currentSet.status).toUpperCase() === 'ACTIVE' ? 'visibility' : 'gavel'}
+                    </span>
+                    <span>
+                      {String(currentSet.status).toUpperCase() === 'ACTIVE' ? 'Xem chi tiết quy tắc' : 'Thẩm tra & Phê duyệt ngay'}
+                    </span>
                   </button>
                 </div>
               </div>
+
+              {/* Thông báo nếu bộ quy tắc đang là bản lưu nháp */}
+              {String(currentSet.status).toUpperCase() !== 'ACTIVE' && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-900 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[20px] text-amber-700 shrink-0">info</span>
+                    <span>Bộ quy tắc thuế năm <strong>{currentSet.taxYear}</strong> hiện đang ở trạng thái <strong>Bản lưu nháp</strong> và chưa kích hoạt có hiệu lực thi hành.</span>
+                  </div>
+                  <button
+                    onClick={() => handleOpenReview(currentSet.ruleSetId)}
+                    className="px-3 py-1.5 rounded-lg bg-amber-800 text-amber-50 text-xs font-bold hover:bg-amber-900 transition-colors shrink-0 cursor-pointer shadow-2xs"
+                  >
+                    Thẩm tra & Phê duyệt ngay
+                  </button>
+                </div>
+              )}
 
               {/* Middle Row: Thông tin thẩm định & Cán bộ phê duyệt */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-space-md p-space-md rounded-xl bg-surface-container-low/50 border border-outline-variant/30">
@@ -488,8 +546,10 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                   <span className="material-symbols-outlined text-primary text-[20px]">person_check</span>
                   <div className="flex flex-col">
                     <span className="text-[11px] text-on-surface-variant uppercase font-bold">Chuyên viên phê duyệt</span>
-                    <span className="text-xs font-bold text-on-surface truncate max-w-[220px]" title={formatApprover(currentSet.approvedBy || currentSet.adminId)}>
-                      {formatApprover(currentSet.approvedBy || currentSet.adminId)}
+                    <span className="text-xs font-bold text-on-surface truncate max-w-[220px]" title={currentSet.approvedBy || currentSet.adminId || ''}>
+                      {String(currentSet.status).toUpperCase() === 'ACTIVE'
+                        ? formatApprover(currentSet.approvedBy || currentSet.adminId)
+                        : <span className="italic text-on-surface-variant/70">Chờ phê duyệt</span>}
                     </span>
                   </div>
                 </div>
@@ -499,7 +559,9 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                   <div className="flex flex-col">
                     <span className="text-[11px] text-on-surface-variant uppercase font-bold">Thời gian phê duyệt</span>
                     <span className="text-xs font-semibold text-on-surface">
-                      {formatDateTime(currentSet.approvedAt || currentSet.createdAt)}
+                      {String(currentSet.status).toUpperCase() === 'ACTIVE'
+                        ? formatDateTime(currentSet.approvedAt || currentSet.createdAt)
+                        : <span className="italic text-on-surface-variant/70">Chưa kích hoạt hiệu lực</span>}
                     </span>
                   </div>
                 </div>
@@ -585,12 +647,19 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                       </span>
                     </div>
                     <div className="flex flex-col gap-1 text-[11px] text-on-surface-variant">
-                      {currentDependents.slice(0, 3).map((dep, i) => (
-                        <div key={dep.id || i} className="flex items-center justify-between">
-                          <span className="truncate max-w-[140px]">{dep.name || dep.dependentType}</span>
-                          <span className="text-[10px] font-semibold text-emerald-700">Đạt chuẩn</span>
-                        </div>
-                      ))}
+                      {currentDependents.slice(0, 3).map((dep, i) => {
+                        const docCount = (dep.requiredDocuments || dep.required_documents || []).length
+                        return (
+                          <div key={dep.id || i} className="flex items-center justify-between">
+                            <span className="truncate max-w-[130px]" title={dep.name || dep.dependentType}>
+                              {dep.name || dep.dependentType}
+                            </span>
+                            <span className="text-[10px] font-semibold text-emerald-700">
+                              {docCount > 0 ? `${docCount} giấy tờ` : 'Đạt chuẩn'}
+                            </span>
+                          </div>
+                        )
+                      })}
                       {currentDependents.length > 3 && (
                         <span className="text-[10px] text-emerald-800 cursor-pointer hover:underline" onClick={() => handleOpenReview(currentSet.ruleSetId)}>
                           + {currentDependents.length - 3} nhóm đối tượng khác...
@@ -703,10 +772,10 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                         {formatDate(doc.effectiveFrom)}
                       </td>
                       <td className="py-3.5 px-3 text-on-surface-variant">
-                        {formatDateTime(doc.approvedAt || doc.createdAt)}
+                        {isAct ? formatDateTime(doc.approvedAt || doc.createdAt) : '—'}
                       </td>
                       <td className="py-3.5 px-3 text-on-surface-variant max-w-[160px] truncate" title={doc.approvedBy || doc.adminId}>
-                        {formatApprover(doc.approvedBy || doc.adminId)}
+                        {isAct ? formatApprover(doc.approvedBy || doc.adminId) : <span className="italic text-on-surface-variant/60">Chờ phê duyệt</span>}
                       </td>
                       <td className="py-3.5 px-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end">

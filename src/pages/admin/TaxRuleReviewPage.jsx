@@ -607,6 +607,12 @@ export function TaxRuleReviewPage({
         }
       }
 
+      const initialReqDocs = parseRequiredDocuments(
+        item.requiredDocuments || item.required_documents,
+        item.dependentType,
+        rawTaxRules
+      )
+
       setEditingRule({
         isOpen: true,
         isNew: false,
@@ -624,6 +630,7 @@ export function TaxRuleReviewPage({
           isStudying: Boolean(item.isStudying),
           isDisabled: Boolean(item.isDisabled),
           conditionsText: condsText,
+          requiredDocuments: initialReqDocs,
         },
         errors: {},
         isSaving: false,
@@ -652,6 +659,7 @@ export function TaxRuleReviewPage({
           isStudying: false,
           isDisabled: false,
           conditionsText: '',
+          requiredDocuments: [],
         },
         errors: {},
         isSaving: false,
@@ -753,6 +761,8 @@ export function TaxRuleReviewPage({
           isStudying: Boolean(form.isStudying),
           isDisabled: Boolean(form.isDisabled),
           conditions: condList.length > 0 ? condList : null,
+          requiredDocuments: form.requiredDocuments || [],
+          required_documents: form.requiredDocuments || [],
         }
         if (!isNew && original) {
           depItemPayload.id = original.id || original.ruleId
@@ -828,6 +838,8 @@ export function TaxRuleReviewPage({
                   isStudying: Boolean(form.isStudying),
                   isDisabled: Boolean(form.isDisabled),
                   conditions: condList.length > 0 ? condList : d.conditions,
+                  requiredDocuments: form.requiredDocuments || d.requiredDocuments || d.required_documents || [],
+                  required_documents: form.requiredDocuments || d.required_documents || d.requiredDocuments || [],
                 }
               }
               return d
@@ -1035,6 +1047,61 @@ export function TaxRuleReviewPage({
       return [trimmed]
     }
     return [String(conds)]
+  }
+
+  const parseRequiredDocuments = (docs, dependentType = null, currentTaxRules = null) => {
+    let raw = docs
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim()
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        try {
+          raw = JSON.parse(trimmed)
+        } catch {
+          raw = [{ name: trimmed, docType: 'OTHER', isMandatory: true, description: '' }]
+        }
+      } else if (trimmed) {
+        raw = [{ name: trimmed, docType: 'OTHER', isMandatory: true, description: '' }]
+      }
+    }
+
+    // Fallback: nếu chưa có docs trực tiếp, lấy từ condition.eligibility của taxRule PIT_DEDUCTION_DEPENDENT
+    if ((!raw || (Array.isArray(raw) && raw.length === 0)) && dependentType && Array.isArray(currentTaxRules)) {
+      const depRule = currentTaxRules.find(
+        (r) => r.ruleCode === 'PIT_DEDUCTION_DEPENDENT' || r.ruleType === 'DEDUCTION'
+      )
+      if (depRule && depRule.condition) {
+        let condObj = depRule.condition
+        if (typeof condObj === 'string') {
+          try {
+            condObj = JSON.parse(condObj)
+          } catch {
+            condObj = null
+          }
+        }
+        if (condObj && Array.isArray(condObj.eligibility)) {
+          const matched = condObj.eligibility.find(
+            (e) => String(e.type || e.dependentType).toUpperCase() === String(dependentType).toUpperCase()
+          )
+          if (matched && (matched.requiredDocuments || matched.required_documents)) {
+            raw = matched.requiredDocuments || matched.required_documents
+          }
+        }
+      }
+    }
+
+    if (!Array.isArray(raw)) return []
+
+    return raw.map((d) => {
+      if (typeof d === 'string') {
+        return { name: d, docType: 'OTHER', isMandatory: true, description: '' }
+      }
+      return {
+        name: d.name || d.docType || 'Giấy tờ chứng minh',
+        docType: d.docType || 'OTHER',
+        isMandatory: d.isMandatory !== false,
+        description: d.description || '',
+      }
+    })
   }
 
   const formatRateValue = (val) => {
@@ -1747,6 +1814,53 @@ export function TaxRuleReviewPage({
                     </div>
                   </div>
 
+                  {/* Danh sách giấy tờ cần chứng minh (required_documents) */}
+                  {(() => {
+                    const reqDocs = parseRequiredDocuments(
+                      dep.requiredDocuments || dep.required_documents,
+                      dep.dependentType,
+                      rawTaxRules
+                    )
+                    if (reqDocs.length === 0) return null
+                    return (
+                      <div className="flex flex-col gap-1.5 pt-space-xs border-t border-surface-container-high/60">
+                        <div className="flex items-center justify-between text-[11px] font-semibold text-on-surface-variant">
+                          <span className="flex items-center gap-1 text-primary">
+                            <span className="material-symbols-outlined text-[15px]">description</span>
+                            <span>Giấy tờ cần nộp ({reqDocs.length}):</span>
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {reqDocs.map((doc, dIdx) => (
+                            <span
+                              key={dIdx}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
+                                doc.isMandatory
+                                  ? 'bg-primary/5 text-primary border-primary/25'
+                                  : 'bg-surface-container text-on-surface-variant border-outline-variant/30'
+                              }`}
+                              title={doc.description || doc.name}
+                            >
+                              <span className="material-symbols-outlined text-[12px]">
+                                {doc.isMandatory ? 'check_circle' : 'help_outline'}
+                              </span>
+                              <span className="truncate max-w-[140px]">{doc.name}</span>
+                              {doc.isMandatory ? (
+                                <span className="text-[9px] font-bold uppercase text-primary/90 bg-primary/10 px-1 py-0.2 rounded">
+                                  Bắt buộc
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-medium text-on-surface-variant bg-surface-container-high px-1 py-0.2 rounded">
+                                  Tùy chọn
+                                </span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   <div className="flex items-center justify-between pt-space-xs border-t border-surface-container-high/60">
                     <span className="text-[11px] text-on-surface-variant font-medium">Hồ sơ &amp; Tiêu chuẩn</span>
                     <div className="flex items-center gap-1.5">
@@ -2338,6 +2452,152 @@ export function TaxRuleReviewPage({
                     placeholder="Bản sao Giấy khai sinh hoặc Thẻ CCCD&#10;Giấy xác nhận sinh viên đối với con trên 18 tuổi..."
                   />
                 </div>
+
+                {/* Danh mục giấy tờ cần chứng minh (required_documents) */}
+                <div className="flex flex-col gap-2 p-space-md rounded-xl bg-surface-container-low/60 border border-outline-variant/20">
+                  <div className="flex items-center justify-between">
+                    <label className="text-label-md font-semibold text-on-surface flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-primary text-[18px]">folder_shared</span>
+                      <span>Danh mục Giấy tờ cần nộp để chứng minh ({editingRule.form.requiredDocuments?.length || 0})</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingRule((prev) => ({
+                          ...prev,
+                          form: {
+                            ...prev.form,
+                            requiredDocuments: [
+                              ...(prev.form.requiredDocuments || []),
+                              {
+                                name: '',
+                                docType: 'OTHER',
+                                isMandatory: true,
+                                description: '',
+                              },
+                            ],
+                          },
+                        }))
+                      }
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-on-primary transition-all text-xs font-semibold cursor-pointer border border-primary/30"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">add</span>
+                      <span>Thêm giấy tờ</span>
+                    </button>
+                  </div>
+
+                  {(!editingRule.form.requiredDocuments || editingRule.form.requiredDocuments.length === 0) && (
+                    <p className="text-xs text-on-surface-variant italic py-1">
+                      Chưa có loại giấy tờ nào được cấu hình cho tiêu chí này. Nhấn "Thêm giấy tờ" để bổ sung các loại hồ sơ chứng minh.
+                    </p>
+                  )}
+
+                  <div className="flex flex-col gap-2">
+                    {(editingRule.form.requiredDocuments || []).map((docItem, dIndex) => (
+                      <div
+                        key={dIndex}
+                        className="p-3 rounded-lg bg-surface-container-lowest border border-outline-variant/30 flex flex-col gap-2 shadow-2xs"
+                      >
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                          <div className="sm:col-span-6 flex flex-col gap-0.5">
+                            <span className="text-[11px] font-semibold text-on-surface-variant">Tên giấy tờ</span>
+                            <input
+                              type="text"
+                              value={docItem.name}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                setEditingRule((prev) => {
+                                  const updated = [...(prev.form.requiredDocuments || [])]
+                                  updated[dIndex] = { ...updated[dIndex], name: val }
+                                  return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
+                                })
+                              }}
+                              className="w-full h-8 px-2.5 rounded text-xs bg-surface-container-low border border-outline-variant/30 focus:outline-none"
+                              placeholder="VD: Giấy khai sinh, CCCD..."
+                            />
+                          </div>
+
+                          <div className="sm:col-span-4 flex flex-col gap-0.5">
+                            <span className="text-[11px] font-semibold text-on-surface-variant">Mã chứng từ (docType)</span>
+                            <select
+                              value={docItem.docType}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                setEditingRule((prev) => {
+                                  const updated = [...(prev.form.requiredDocuments || [])]
+                                  updated[dIndex] = { ...updated[dIndex], docType: val }
+                                  return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
+                                })
+                              }}
+                              className="w-full h-8 px-2 rounded text-xs bg-surface-container-low border border-outline-variant/30 focus:outline-none cursor-pointer"
+                            >
+                              <option value="BIRTH_CERTIFICATE">BIRTH_CERTIFICATE (Giấy khai sinh)</option>
+                              <option value="CITIZEN_ID">CITIZEN_ID (CCCD/CMND)</option>
+                              <option value="STUDENT_CARD">STUDENT_CARD (Thẻ SV/Giấy trường)</option>
+                              <option value="DISABILITY_CERTIFICATE">DISABILITY_CERTIFICATE (Khuyết tật/Y tế)</option>
+                              <option value="MARRIAGE_CERTIFICATE">MARRIAGE_CERTIFICATE (Kết hôn)</option>
+                              <option value="RELATIONSHIP_CERTIFICATE">RELATIONSHIP_CERTIFICATE (Quan hệ)</option>
+                              <option value="SUPPORT_COMMITMENT_FORM">SUPPORT_COMMITMENT_FORM (Cam kết)</option>
+                              <option value="RESIDENCE_CT07">RESIDENCE_CT07 (Cư trú CT07)</option>
+                              <option value="INCOME_DECLARATION">INCOME_DECLARATION (Tờ khai thu nhập)</option>
+                              <option value="OTHER">OTHER (Giấy tờ khác)</option>
+                            </select>
+                          </div>
+
+                          <div className="sm:col-span-2 flex items-center justify-between sm:justify-end gap-2 pt-3 sm:pt-4">
+                            <label className="flex items-center gap-1 text-[11px] font-semibold text-on-surface cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={docItem.isMandatory}
+                                onChange={(e) => {
+                                  const checked = e.target.checked
+                                  setEditingRule((prev) => {
+                                    const updated = [...(prev.form.requiredDocuments || [])]
+                                    updated[dIndex] = { ...updated[dIndex], isMandatory: checked }
+                                    return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
+                                  })
+                                }}
+                                className="w-3.5 h-3.5 rounded text-primary focus:ring-primary"
+                              />
+                              <span>Bắt buộc</span>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingRule((prev) => {
+                                  const updated = (prev.form.requiredDocuments || []).filter((_, idx) => idx !== dIndex)
+                                  return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
+                                })
+                              }}
+                              className="text-error hover:bg-error/10 p-1 rounded transition-colors cursor-pointer"
+                              title="Xóa loại giấy tờ này"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">delete</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[11px] font-semibold text-on-surface-variant">Mô tả / Hướng dẫn hồ sơ</span>
+                          <input
+                            type="text"
+                            value={docItem.description || ''}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setEditingRule((prev) => {
+                                const updated = [...(prev.form.requiredDocuments || [])]
+                                updated[dIndex] = { ...updated[dIndex], description: val }
+                                return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
+                              })
+                            }}
+                            className="w-full h-8 px-2.5 rounded text-xs bg-surface-container-low border border-outline-variant/30 focus:outline-none"
+                            placeholder="VD: Bản sao công chứng, nộp kèm bản chính đối chiếu..."
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -2603,6 +2863,83 @@ export function TaxRuleReviewPage({
                       )
                     })()}
                   </div>
+                </div>
+
+                {/* Danh mục giấy tờ cần nộp để chứng minh (requiredDocuments) */}
+                <div className="p-space-md rounded-xl bg-surface-container-low/60 flex flex-col gap-2.5 border border-outline-variant/20">
+                  <div className="flex items-center justify-between text-secondary font-bold text-title-sm">
+                    <div className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[18px]">folder_shared</span>
+                      <span>Danh mục Giấy tờ cần nộp để chứng minh</span>
+                    </div>
+                    {(() => {
+                      const docs = parseRequiredDocuments(
+                        selectedDetail.data.requiredDocuments || selectedDetail.data.required_documents,
+                        selectedDetail.data.dependentType,
+                        rawTaxRules
+                      )
+                      return (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+                          {docs.length} loại giấy tờ
+                        </span>
+                      )
+                    })()}
+                  </div>
+
+                  {(() => {
+                    const docs = parseRequiredDocuments(
+                      selectedDetail.data.requiredDocuments || selectedDetail.data.required_documents,
+                      selectedDetail.data.dependentType,
+                      rawTaxRules
+                    )
+                    if (docs.length === 0) {
+                      return (
+                        <div className="p-3 rounded-lg bg-surface-container-lowest border border-outline-variant/30 text-body-sm text-on-surface-variant italic">
+                          Chưa có quy định chi tiết về hồ sơ giấy tờ cần nộp cho nhóm này.
+                        </div>
+                      )
+                    }
+                    return (
+                      <div className="flex flex-col gap-2">
+                        {docs.map((doc, dIdx) => (
+                          <div
+                            key={dIdx}
+                            className="p-3 rounded-lg bg-surface-container-lowest border border-outline-variant/30 flex flex-col gap-1.5 hover:border-primary/40 transition-colors"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-primary text-[18px] shrink-0">
+                                  {doc.isMandatory ? 'assignment' : 'pending_actions'}
+                                </span>
+                                <span className="font-title-sm text-title-sm font-bold text-on-surface">
+                                  {doc.name}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-surface-container text-on-surface-variant">
+                                  {doc.docType}
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                    doc.isMandatory
+                                      ? 'bg-primary/10 text-primary border border-primary/20'
+                                      : 'bg-surface-container text-on-surface-variant border border-outline-variant/30'
+                                  }`}
+                                >
+                                  {doc.isMandatory ? 'Bắt buộc nộp' : 'Tùy chọn'}
+                                </span>
+                              </div>
+                            </div>
+                            {doc.description && (
+                              <p className="text-body-sm text-on-surface-variant text-xs leading-relaxed pl-6.5">
+                                {doc.description}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
             )}
