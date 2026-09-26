@@ -22,12 +22,14 @@ export function TaxDocumentTypeModal({
         setFormData({
           code: initialData.code || '',
           name: initialData.name || '',
+          description: initialData.description || '',
           isTaxEligible: initialData.isTaxEligible !== undefined ? Boolean(initialData.isTaxEligible) : true,
         })
       } else {
         setFormData({
           code: '',
           name: '',
+          description: '',
           isTaxEligible: true,
         })
       }
@@ -66,19 +68,12 @@ export function TaxDocumentTypeModal({
     e.preventDefault()
     if (!validateForm()) return
 
-    if (mode === 'create') {
-      onSubmit({
-        code: formData.code.trim().toUpperCase(),
-        name: formData.name.trim(),
-        isTaxEligible: formData.isTaxEligible,
-      })
-    } else {
-      onSubmit({
-        code: formData.code.trim().toUpperCase(),
-        name: formData.name.trim(),
-        isTaxEligible: formData.isTaxEligible,
-      })
-    }
+    onSubmit({
+      code: formData.code.trim().toUpperCase(),
+      name: formData.name.trim(),
+      description: formData.description?.trim() || null,
+      isTaxEligible: formData.isTaxEligible,
+    })
   }
 
   const sampleCodes = [
@@ -224,6 +219,24 @@ export function TaxDocumentTypeModal({
                 Tên hiển thị rõ ràng trên giao diện người dùng và biên bản quyết toán thuế.
               </p>
             )}
+          </div>
+
+          {/* Đặc điểm nhận diện cho AI (Description) */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-bold text-on-surface flex items-center gap-1">
+              <span>Đặc điểm nhận diện cho AI</span>
+              <span className="text-on-surface-variant font-normal">(AI Prompt)</span>
+            </label>
+            <textarea
+              rows={3}
+              value={formData.description || ''}
+              onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+              placeholder="VD: Hóa đơn khám chữa bệnh, viện phí, tiền thuốc tại bệnh viện, phòng khám (kể cả khi biểu mẫu ghi tiêu đề là Hóa đơn bán hàng hoặc Hóa đơn GTGT)..."
+              className="p-3 rounded-xl border text-xs bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all border-outline-variant/50 focus:border-primary resize-none"
+            />
+            <p className="text-[11px] text-on-surface-variant">
+              Mô tả chi tiết để AI Gemini đọc và phân loại chính xác các loại chứng từ thực tế (kể cả khi mẫu ghi "Hóa đơn bán hàng").
+            </p>
           </div>
 
           {/* Tính đủ điều kiện giảm trừ thuế (isTaxEligible) */}

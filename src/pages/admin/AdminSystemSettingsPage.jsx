@@ -471,6 +471,7 @@ export function AdminSystemSettingsPage() {
       } else {
         const updated = await taxDocumentTypeService.update(payload.code, {
           name: payload.name,
+          description: payload.description,
           isTaxEligible: payload.isTaxEligible,
         })
         showToast('Thành công', `Đã cập nhật loại chứng từ ${payload.code}.`, 'success')
@@ -1452,8 +1453,15 @@ export function AdminSystemSettingsPage() {
                           </span>
                         </td>
 
-                        <td className="py-3.5 px-4 font-semibold text-on-surface">
-                          <span>{item.name}</span>
+                        <td className="py-3.5 px-4">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-semibold text-on-surface">{item.name}</span>
+                            {item.description && (
+                              <span className="text-[11px] text-on-surface-variant line-clamp-2 max-w-md" title={item.description}>
+                                {item.description}
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         <td className="py-3.5 px-4 text-center">

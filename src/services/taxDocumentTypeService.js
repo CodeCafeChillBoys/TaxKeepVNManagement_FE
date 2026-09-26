@@ -53,6 +53,7 @@ export const taxDocumentTypeService = {
     const body = {
       code: payload.code?.trim().toUpperCase(),
       name: payload.name?.trim(),
+      description: payload.description !== undefined ? payload.description?.trim() : null,
       isTaxEligible: payload.isTaxEligible !== undefined ? Boolean(payload.isTaxEligible) : true,
     }
 
@@ -65,6 +66,7 @@ export const taxDocumentTypeService = {
    * @param {string} code - Mã loại chứng từ
    * @param {Object} payload
    * @param {string} payload.name - Tên mới loại chứng từ
+   * @param {string} [payload.description] - Mô tả chi tiết cho AI nhận diện
    * @param {boolean} [payload.isTaxEligible] - Cập nhật tính đủ điều kiện giảm trừ
    * @returns {Promise<{ code: string, name: string, isTaxEligible: boolean }>}
    */
@@ -72,6 +74,7 @@ export const taxDocumentTypeService = {
     if (!code?.trim()) throw new Error('Mã loại chứng từ không hợp lệ.')
     const body = {
       name: payload.name?.trim(),
+      description: payload.description !== undefined ? payload.description?.trim() : null,
       isTaxEligible: payload.isTaxEligible !== undefined ? Boolean(payload.isTaxEligible) : true,
     }
 
