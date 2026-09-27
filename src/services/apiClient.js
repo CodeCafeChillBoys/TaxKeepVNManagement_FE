@@ -25,6 +25,19 @@ apiClient.interceptors.request.use(
       config.headers.Authorization = 'Bearer ' + token 
     }
 
+    // Khi gửi FormData trong trình duyệt, bắt buộc xóa Content-Type để runtime tự tạo multipart boundary
+    if (config.data && (typeof FormData !== 'undefined' && config.data instanceof FormData)) {
+      if (config.headers) {
+        if (typeof config.headers.delete === 'function') {
+          config.headers.delete('Content-Type')
+          config.headers.delete('content-type')
+        }
+        delete config.headers['Content-Type']
+        delete config.headers['content-type']
+        config.headers['Content-Type'] = undefined
+      }
+    }
+
     return config
   },
   (error) => {

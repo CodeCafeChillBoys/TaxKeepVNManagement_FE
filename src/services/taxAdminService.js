@@ -21,7 +21,7 @@ export const taxAdminService = {
 
     return await apiClient.post('/api/v1/admin/tax-rules/upload', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': undefined,
       },
     })
   },

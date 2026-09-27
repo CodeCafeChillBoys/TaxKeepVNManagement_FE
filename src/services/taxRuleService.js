@@ -21,6 +21,18 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`
     }
 
+    if (config.data && (typeof FormData !== 'undefined' && config.data instanceof FormData)) {
+      if (config.headers) {
+        if (typeof config.headers.delete === 'function') {
+          config.headers.delete('Content-Type')
+          config.headers.delete('content-type')
+        }
+        delete config.headers['Content-Type']
+        delete config.headers['content-type']
+        config.headers['Content-Type'] = undefined
+      }
+    }
+
     return config
   },
   (error) => {
@@ -211,7 +223,7 @@ export const taxRuleService = {
     try {
       const response = await api.post('/api/tax-rules/documents/upload', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Content-Type': undefined,
         },
       })
       return response.data

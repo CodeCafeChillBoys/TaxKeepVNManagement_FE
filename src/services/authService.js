@@ -84,7 +84,7 @@ export const authService = {
 
     const response = await apiClient.post('/api/v1/auth/cccd-extractions', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': undefined,
       },
     })
     return response?.data || response

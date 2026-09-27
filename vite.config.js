@@ -19,7 +19,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/hubs': {
-        target: 'https://localhost:7000',
+        target: 'http://localhost:5000',
         secure: false,
         ws: true,
         changeOrigin: true,
