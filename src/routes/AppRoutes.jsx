@@ -2,15 +2,21 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { LoginPage } from '@/pages/LoginPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { AdminDashboard } from '@/pages/admin/AdminDashboard'
+import { ExpertDashboard } from '@/pages/expert/ExpertDashboard'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { ProtectedRoute } from './ProtectedRoute'
 import { PublicRoute } from './PublicRoute'
 import { useAuth } from '@/hooks/useAuth'
 
 function RootRedirect() {
-  const { isAuthenticated, isLoading } = useAuth()
+  const { isAuthenticated, isLoading, user } = useAuth()
   if (isLoading) return null
-  return <Navigate to={isAuthenticated ? '/admin' : '/login'} replace />
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  const role = (user?.userRole || user?.role || '').toLowerCase()
+  if (role === 'expert') {
+    return <Navigate to="/expert" replace />
+  }
+  return <Navigate to="/admin" replace />
 }
 
 export function AppRoutes() {
@@ -59,6 +65,32 @@ export function AppRoutes() {
         element={
           <ProtectedRoute>
             <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Protected Expert Routes */}
+      <Route
+        path="/expert"
+        element={
+          <ProtectedRoute>
+            <ExpertDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/expert/:section"
+        element={
+          <ProtectedRoute>
+            <ExpertDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/expert/:section/:id"
+        element={
+          <ProtectedRoute>
+            <ExpertDashboard />
           </ProtectedRoute>
         }
       />

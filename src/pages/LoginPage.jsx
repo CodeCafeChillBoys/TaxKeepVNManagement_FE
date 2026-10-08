@@ -69,7 +69,9 @@ export function LoginPage({ onNavigateToRegister, onLoginSuccess }) {
       if (onLoginSuccess) {
         onLoginSuccess(authData)
       } else {
-        const redirectPath = location.state?.from?.pathname || '/admin'
+        const role = (authData?.userRole || authData?.role || '').toLowerCase()
+        const defaultPath = role === 'expert' ? '/expert' : '/admin'
+        const redirectPath = location.state?.from?.pathname || defaultPath
         navigate(redirectPath, { replace: true })
       }
     } catch (error) {

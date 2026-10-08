@@ -78,6 +78,7 @@ export function AdminLayout({
     { id: 'quy-tac-thue', label: 'Quy tắc thuế', icon: 'account_balance' },
     { id: 'boc-tach-van-ban-ai', label: 'Tải lên văn bản thuế', icon: 'document_scanner' },
     { id: 'lich-su-phe-duyet', label: 'Lịch sử phê duyệt', icon: 'history_edu' },
+    { id: 'quan-ly-chuyen-gia', label: 'Quản lý chuyên gia', icon: 'support_agent' },
     { id: 'cai-dat', label: 'Cấu hình hệ thống', icon: 'tune' },
   ]
 
@@ -130,6 +131,16 @@ export function AdminLayout({
               </button>
             )
           })}
+
+          <div className="pt-2 border-t border-primary-container/40 mt-2">
+            <button
+              onClick={() => navigate('/expert')}
+              className="flex items-center gap-space-md px-space-md py-space-sm rounded-lg transition-all text-left cursor-pointer w-full text-secondary-fixed hover:bg-primary hover:text-on-primary"
+            >
+              <span className="material-symbols-outlined text-[20px]">support_agent</span>
+              <span className="font-title-sm text-title-sm">Cổng Chuyên gia tư vấn</span>
+            </button>
+          </div>
         </nav>
 
         {/* User profile footer with Submenu Popover */}

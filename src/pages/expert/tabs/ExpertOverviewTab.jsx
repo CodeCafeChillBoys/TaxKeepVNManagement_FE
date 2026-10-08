@@ -1,0 +1,460 @@
+import { useState, useEffect } from 'react'
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { expertPortalService } from '@/services/expertPortalService'
+
+function formatCurrency(val) {
+  if (val === null || val === undefined) return '0 ₫'
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val)
+}
+
+function formatDate(d) {
+  if (!d) return '—'
+  const dt = new Date(d)
+  return isNaN(dt) ? String(d) : dt.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+const SESSION_TYPE_MAP = {
+  ONLINE_MEETING: { label: 'Họp trực tuyến', icon: 'videocam' },
+  CHAT: { label: 'Nhắn tin', icon: 'chat' },
+  VOICE_CALL: { label: 'Gọi thoại', icon: 'call' },
+}
+
+const STATUS_MAP = {
+  PENDING_PAYMENT: { label: 'Chờ thanh toán', variant: 'warning' },
+  AWAITING_EXPERT_APPROVAL: { label: 'Chờ duyệt (SLA 2h)', variant: 'orange' },
+  CONFIRMED: { label: 'Đã xác nhận', variant: 'success' },
+  COMPLETED: { label: 'Đã hoàn thành', variant: 'default' },
+  REJECTED_BY_EXPERT: { label: 'Đã từ chối', variant: 'destructive' },
+  CANCELLED_BY_USER: { label: 'Khách đã hủy', variant: 'muted' },
+  CANCELLED_BY_EXPERT: { label: 'Chuyên gia hủy', variant: 'muted' },
+  EXPIRED_NO_RESPONSE: { label: 'Hết hạn phản hồi', variant: 'destructive' },
+  EXPIRED_UNPAID: { label: 'Hết hạn thanh toán', variant: 'muted' },
+}
+
+// Countdown component for remaining SLA time
+function SlaCountdown({ deadline }) {
+  const [timeLeft, setTimeLeft] = useState('')
+  const [isUrgent, setIsUrgent] = useState(false)
+
+  useEffect(() => {
+    if (!deadline) return
+    const update = () => {
+      const diff = new Date(deadline).getTime() - Date.now()
+      if (diff <= 0) {
+        setTimeLeft('Đã hết hạn')
+        setIsUrgent(true)
+        return
+      }
+      const hours = Math.floor(diff / (1000 * 60 * 60))
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+
+      setIsUrgent(diff < 30 * 60 * 1000) // Dưới 30 phút -> khẩn cấp
+      setTimeLeft(
+        `${hours > 0 ? `${hours}h ` : ''}${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s`
+      )
+    }
+
+    update()
+    const timer = setInterval(update, 1000)
+    return () => clearInterval(timer)
+  }, [deadline])
+
+  if (!deadline) return <span>—</span>
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 font-mono font-bold text-xs px-2.5 py-0.5 rounded-full ${
+        isUrgent
+          ? 'bg-red-100 text-red-700 animate-pulse border border-red-300'
+          : 'bg-amber-100 text-amber-800 border border-amber-300'
+      }`}
+    >
+      <span className="material-symbols-outlined text-[14px]">timer</span>
+      {timeLeft}
+    </span>
+  )
+}
+
+export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
+  const [loading, setLoading] = useState(true)
+  const [pendingBookings, setPendingBookings] = useState([])
+  const [confirmedBookings, setConfirmedBookings] = useState([])
+  const [allBookings, setAllBookings] = useState([])
+  const [stats, setStats] = useState({
+    pending: 0,
+    confirmed: 0,
+    completed: 0,
+    totalRevenue: 0,
+  })
+
+  useEffect(() => {
+    let isMounted = true
+    const fetchData = async () => {
+      setLoading(true)
+      try {
+        const [pendingRes, allRes] = await Promise.all([
+          expertPortalService.getPendingBookings({ page: 1, size: 5 }).catch(() => ({ items: [] })),
+          expertPortalService.getExpertBookings({ page: 1, size: 50 }).catch(() => ({ items: [] })),
+        ])
+
+        if (!isMounted) return
+
+        const pendingItems = pendingRes?.items || []
+        const allItems = allRes?.items || []
+
+        const confirmedItems = allItems.filter((b) => b.status === 'CONFIRMED')
+        const completedItems = allItems.filter((b) => b.status === 'COMPLETED')
+
+        // Doanh thu tạm tính từ các ca đã chốt hoặc đã hoàn thành
+        const revenue = [...confirmedItems, ...completedItems].reduce(
+          (sum, b) => sum + (Number(b.fee) || 0),
+          0
+        )
+
+        setPendingBookings(pendingItems)
+        setConfirmedBookings(confirmedItems.slice(0, 5))
+        setAllBookings(allItems)
+        setStats({
+          pending: pendingRes?.pagination?.totalItems ?? pendingItems.length,
+          confirmed: confirmedItems.length,
+          completed: completedItems.length,
+          totalRevenue: revenue,
+        })
+      } catch (err) {
+        console.error('Lỗi khi tải dữ liệu tổng quan:', err)
+      } finally {
+        if (isMounted) setLoading(false)
+      }
+    }
+
+    fetchData()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  return (
+    <div className="p-8 flex flex-col gap-6 max-w-7xl mx-auto">
+      {/* Welcome Banner */}
+      <div className="rounded-3xl bg-gradient-to-r from-[#182747] via-[#213555] to-[#2c4066] p-8 text-white flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl border border-white/10 relative overflow-hidden">
+        <div className="absolute right-0 top-0 bottom-0 opacity-10 pointer-events-none flex items-center pr-10">
+          <span className="material-symbols-outlined text-[200px]">support_agent</span>
+        </div>
+
+        <div className="flex flex-col gap-2 z-10 max-w-2xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-300 text-xs font-bold w-fit">
+            <span className="material-symbols-outlined text-[16px]">verified</span>
+            <span>BẢNG ĐIỀU KHIỂN CHUYÊN GIA TƯ VẤN THUẾ</span>
+          </div>
+          <h1 className="text-2xl lg:text-3xl font-extrabold tracking-tight">
+            Chào mừng trở lại phiên làm việc!
+          </h1>
+          <p className="text-white/80 text-sm leading-relaxed">
+            Theo dõi danh sách ca tư vấn, phê duyệt yêu cầu trong hạn SLA 2 giờ và quản lý lịch hẹn tư vấn thuế với người nộp thuế.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 z-10">
+          <Button
+            onClick={() => onNavigate('cho-tiep-nhan')}
+            className="bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold gap-2 shadow-lg shadow-amber-500/20"
+          >
+            <span className="material-symbols-outlined text-[20px]">hourglass_top</span>
+            <span>Xử lý ca chờ ({stats.pending})</span>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => onNavigate('lich-hen')}
+            className="border-white/20 bg-white/10 text-white hover:bg-white/20 font-bold gap-2"
+          >
+            <span className="material-symbols-outlined text-[20px]">calendar_month</span>
+            <span>Xem toàn bộ lịch hẹn</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Chờ tiếp nhận (SLA 2h) */}
+        <Card className={`border shadow-sm transition-all hover:shadow-md ${
+          stats.pending > 0 ? 'border-amber-400/60 bg-amber-50/40' : 'border-outline-variant/30'
+        }`}>
+          <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+              Ca chờ duyệt (SLA 2h)
+            </CardTitle>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+              stats.pending > 0 ? 'bg-amber-500 text-white animate-pulse' : 'bg-surface-container text-on-surface-variant'
+            }`}>
+              <span className="material-symbols-outlined text-[22px]">hourglass_top</span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-black text-on-surface">{stats.pending}</div>
+            <p className="text-xs text-on-surface-variant mt-1 flex items-center gap-1">
+              {stats.pending > 0 ? (
+                <span className="text-amber-700 font-semibold flex items-center gap-0.5">
+                  <span className="material-symbols-outlined text-[14px]">warning</span>
+                  Cần phản hồi trong 2 giờ
+                </span>
+              ) : (
+                <span>Không có ca nào đang chờ</span>
+              )}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Card 2: Lịch đã xác nhận */}
+        <Card className="border border-outline-variant/30 shadow-sm hover:shadow-md transition-all">
+          <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+              Lịch đã xác nhận
+            </CardTitle>
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[22px]">event_available</span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-black text-emerald-700">{stats.confirmed}</div>
+            <p className="text-xs text-on-surface-variant mt-1">
+              Ca tư vấn đã chốt với khách hàng
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Card 3: Ca đã hoàn thành */}
+        <Card className="border border-outline-variant/30 shadow-sm hover:shadow-md transition-all">
+          <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+              Ca đã hoàn thành
+            </CardTitle>
+            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center">
+              <span className="material-symbols-outlined text-[22px]">check_circle</span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-black text-blue-800">{stats.completed}</div>
+            <p className="text-xs text-on-surface-variant mt-1">
+              Phiên tư vấn kết thúc thành công
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Card 4: Doanh thu tạm tính */}
+        <Card className="border border-outline-variant/30 shadow-sm hover:shadow-md transition-all bg-gradient-to-br from-white to-amber-50/20">
+          <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+              Phí tư vấn ước tính
+            </CardTitle>
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center border border-amber-300">
+              <span className="material-symbols-outlined text-[22px]">payments</span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl lg:text-3xl font-black text-amber-800">
+              {formatCurrency(stats.totalRevenue)}
+            </div>
+            <p className="text-xs text-on-surface-variant mt-1">
+              Từ các ca đã duyệt & hoàn tất
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* SLA Alert Section if pending > 0 */}
+      {pendingBookings.length > 0 && (
+        <Card className="border-2 border-amber-400 bg-amber-50/50 shadow-md">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md animate-bounce">
+                <span className="material-symbols-outlined text-[20px]">notifications_active</span>
+              </div>
+              <div>
+                <CardTitle className="text-base text-amber-900 font-extrabold flex items-center gap-2">
+                  <span>YÊU CẦU TƯ VẤN CẦN PHẢN HỒI GẤP</span>
+                  <Badge variant="warning">{pendingBookings.length} ca chờ</Badge>
+                </CardTitle>
+                <CardDescription className="text-amber-800/80 text-xs">
+                  Quy định SLA: Quá 2 giờ kể từ khi khách thanh toán mà chuyên gia không tiếp nhận, hệ thống sẽ tự động hoàn tiền 100% cho khách.
+                </CardDescription>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => onNavigate('cho-tiep-nhan')}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+            >
+              Xem toàn bộ ca chờ
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {pendingBookings.map((b) => (
+                <div
+                  key={b.id}
+                  onClick={() => {
+                    onSelectBooking?.(b.id)
+                    onNavigate('cho-tiep-nhan')
+                  }}
+                  className="bg-white rounded-xl p-4 border border-amber-200 shadow-xs hover:border-amber-400 hover:shadow-md transition-all cursor-pointer flex flex-col gap-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold text-amber-800">#{b.bookingCode}</span>
+                    <SlaCountdown deadline={b.approvalDeadline} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-stone-900 truncate">{b.topicTitle || 'Tư vấn quyết toán thuế'}</span>
+                    <span className="text-sm font-extrabold text-amber-800">{formatCurrency(b.fee)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-stone-600">
+                    <span className="flex items-center gap-1 truncate">
+                      <span className="material-symbols-outlined text-[16px] text-primary">person</span>
+                      {b.userFullName}
+                    </span>
+                    <span>{formatDate(b.slotDate)} ({b.durationMinutes}p)</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Split Section: Next Upcoming Bookings & Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Next Upcoming Confirmed Sessions */}
+        <Card className="shadow-sm border border-outline-variant/30">
+          <CardHeader className="pb-3 flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px] text-primary">schedule</span>
+              <CardTitle className="text-base font-bold text-on-surface">Lịch hẹn sắp tới</CardTitle>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onNavigate('lich-hen')}
+              className="text-xs text-primary font-bold"
+            >
+              Xem tất cả
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {confirmedBookings.length > 0 ? (
+              <div className="flex flex-col gap-2.5">
+                {confirmedBookings.map((b) => (
+                  <div
+                    key={b.id}
+                    onClick={() => {
+                      onSelectBooking?.(b.id)
+                      onNavigate('lich-hen')
+                    }}
+                    className="p-3.5 rounded-xl border border-outline-variant/20 bg-surface-container-low/40 hover:bg-surface-container-low hover:border-primary/40 transition-all flex items-center justify-between gap-3 cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-700 border border-emerald-300 flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-[20px]">videocam</span>
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-bold text-sm text-on-surface truncate">
+                          {b.topicTitle || 'Tư vấn thuế'}
+                        </span>
+                        <span className="text-xs text-on-surface-variant truncate">
+                          Khách hàng: <b>{b.userFullName}</b> • #{b.bookingCode}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end shrink-0">
+                      <span className="text-xs font-bold text-primary font-mono">
+                        {formatDate(b.slotDate)}
+                      </span>
+                      <span className="text-[11px] text-on-surface-variant font-medium">
+                        {b.startTime} - {b.endTime}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-12 flex flex-col items-center justify-center gap-2 text-on-surface-variant">
+                <span className="material-symbols-outlined text-[36px] text-outline">event_busy</span>
+                <p className="text-xs">Chưa có lịch hẹn nào sắp tới.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* All Bookings Table Preview */}
+        <Card className="shadow-sm border border-outline-variant/30">
+          <CardHeader className="pb-3 flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px] text-primary">history</span>
+              <CardTitle className="text-base font-bold text-on-surface">Hoạt động gần đây</CardTitle>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onNavigate('lich-hen')}
+              className="text-xs text-primary font-bold"
+            >
+              Xem chi tiết
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {allBookings.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Mã ca</TableHead>
+                    <TableHead>Khách hàng</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                    <TableHead className="text-right">Phí</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {allBookings.slice(0, 5).map((b) => {
+                    const st = STATUS_MAP[b.status] || { label: b.status, variant: 'outline' }
+                    return (
+                      <TableRow
+                        key={b.id}
+                        onClick={() => {
+                          onSelectBooking?.(b.id)
+                          onNavigate('lich-hen')
+                        }}
+                        className="cursor-pointer"
+                      >
+                        <TableCell className="font-mono text-xs font-bold text-primary">
+                          #{b.bookingCode}
+                        </TableCell>
+                        <TableCell className="font-medium text-xs max-w-[120px] truncate">
+                          {b.userFullName}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={st.variant} className="text-[10px] px-2 py-0">
+                            {st.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-xs font-mono text-primary">
+                          {formatCurrency(b.fee)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="py-12 flex flex-col items-center justify-center gap-2 text-on-surface-variant">
+                <span className="material-symbols-outlined text-[36px] text-outline">history</span>
+                <p className="text-xs">Chưa có hoạt động nào được ghi nhận.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
