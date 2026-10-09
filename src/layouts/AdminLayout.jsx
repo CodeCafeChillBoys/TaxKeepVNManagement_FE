@@ -79,6 +79,7 @@ export function AdminLayout({
     { id: 'boc-tach-van-ban-ai', label: 'Tải lên văn bản thuế', icon: 'document_scanner' },
     { id: 'lich-su-phe-duyet', label: 'Lịch sử phê duyệt', icon: 'history_edu' },
     { id: 'cai-dat', label: 'Cấu hình hệ thống', icon: 'tune' },
+    { id: 'tham-so-thue', label: 'Tham số thuế TNCN', icon: 'request_quote' },
   ]
 
   const roleNormalized = (user?.userRole || user?.role || '').toLowerCase()
