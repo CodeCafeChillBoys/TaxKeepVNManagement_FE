@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { NotificationDialog } from '@/components/ui/notification-dialog'
 import { expertPortalService } from '@/services/expertPortalService'
 
 function formatCurrency(val) {
@@ -113,8 +115,12 @@ export function ExpertPendingBookingsTab({ initialBookingId, onRefreshStats }) {
   const [detailLoading, setDetailLoading] = useState(false)
   const [downloadingAttId, setDownloadingAttId] = useState(null)
 
+  // Notification dialog
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+
   // Auto-refresh interval
   const [autoRefresh, setAutoRefresh] = useState(true)
+  const [viewMode, setViewMode] = useState('table') // 'table' | 'grid'
 
   const fetchPendingBookings = useCallback(async () => {
     setLoading(true)
@@ -160,7 +166,12 @@ export function ExpertPendingBookingsTab({ initialBookingId, onRefreshStats }) {
       const data = await expertPortalService.getBookingDetail(id)
       setDetailBooking(data)
     } catch (err) {
-      alert(err.message || 'Không thể xem chi tiết ca tư vấn.')
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Không thể xem chi tiết ca tư vấn',
+        description: err.message || 'Lỗi khi tải thông tin chi tiết.',
+      })
     } finally {
       setDetailLoading(false)
     }
@@ -175,9 +186,22 @@ export function ExpertPendingBookingsTab({ initialBookingId, onRefreshStats }) {
       if (detailBooking?.id === id) {
         setDetailBooking(null)
       }
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Tiếp nhận ca tư vấn thành công!',
+        description: 'Lịch hẹn đã được xác nhận chính thức và chuyển sang danh mục "Quản lý lịch hẹn". Khách hàng đã được gửi thông báo xác nhận.',
+      })
       await fetchPendingBookings()
     } catch (err) {
-      setActionError(err.message || 'Lỗi khi tiếp nhận ca tư vấn.')
+      const msg = err.message || 'Lỗi khi tiếp nhận ca tư vấn.'
+      setActionError(msg)
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Tiếp nhận ca tư vấn thất bại',
+        description: msg,
+      })
     } finally {
       setActionLoading(false)
     }
@@ -194,9 +218,22 @@ export function ExpertPendingBookingsTab({ initialBookingId, onRefreshStats }) {
       if (detailBooking?.id === rejectingBooking.id) {
         setDetailBooking(null)
       }
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Đã từ chối ca tư vấn',
+        description: 'Hệ thống đã ghi nhận việc từ chối ca tư vấn và tự động hoàn tiền 100% cho khách hàng.',
+      })
       await fetchPendingBookings()
     } catch (err) {
-      setActionError(err.message || 'Lỗi khi từ chối ca tư vấn.')
+      const msg = err.message || 'Lỗi khi từ chối ca tư vấn.'
+      setActionError(msg)
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Từ chối ca tư vấn thất bại',
+        description: msg,
+      })
     } finally {
       setActionLoading(false)
     }
@@ -212,7 +249,12 @@ export function ExpertPendingBookingsTab({ initialBookingId, onRefreshStats }) {
         window.open(attachment.fileUrl, '_blank')
       }
     } catch (err) {
-      alert(err.message || 'Không thể tải tệp đính kèm.')
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Không thể tải tệp đính kèm',
+        description: err.message || 'Lỗi khi tải tài liệu đính kèm.',
+      })
     } finally {
       setDownloadingAttId(null)
     }
@@ -234,7 +276,33 @@ export function ExpertPendingBookingsTab({ initialBookingId, onRefreshStats }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 self-end sm:self-auto">
+        <div className="flex items-center gap-3 self-end sm:self-auto flex-wrap">
+          {/* View Mode Toggle */}
+          <div className="flex items-center rounded-xl border border-outline-variant/40 p-0.5 bg-surface-container-low">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-surface-container-lowest text-primary shadow-xs font-bold'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">table_rows</span>
+              <span>Dạng bảng</span>
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                viewMode === 'grid'
+                  ? 'bg-surface-container-lowest text-primary shadow-xs font-bold'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[16px]">grid_view</span>
+              <span>Dạng thẻ</span>
+            </button>
+          </div>
+
           <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-on-surface select-none">
             <input
               type="checkbox"
@@ -289,8 +357,108 @@ export function ExpertPendingBookingsTab({ initialBookingId, onRefreshStats }) {
         </Card>
       )}
 
+      {/* Table View */}
+      {!loading && bookings.length > 0 && viewMode === 'table' && (
+        <Card className="border border-outline-variant/30 shadow-sm overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Mã ca</TableHead>
+                <TableHead>Khách hàng</TableHead>
+                <TableHead>Chủ đề tư vấn</TableHead>
+                <TableHead>Hình thức</TableHead>
+                <TableHead className="text-center">Lịch hẹn</TableHead>
+                <TableHead className="text-right">Mức phí</TableHead>
+                <TableHead className="text-center">Hạn duyệt SLA (2h)</TableHead>
+                <TableHead className="text-right">Thao tác</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {bookings.map((b) => {
+                const session = SESSION_TYPE_MAP[b.sessionType] || { label: b.sessionType, icon: 'help' }
+                return (
+                  <TableRow key={b.id} className="hover:bg-surface-container-low/40">
+                    <TableCell className="font-mono text-xs font-bold text-primary">
+                      #{b.bookingCode}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-xs text-on-surface">{b.userFullName}</span>
+                        {b.attachmentCount > 0 && (
+                          <span className="text-[10px] text-on-surface-variant flex items-center gap-0.5">
+                            <span className="material-symbols-outlined text-[12px] text-primary">attach_file</span>
+                            {b.attachmentCount} tệp
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate text-xs font-medium text-on-surface">
+                      {b.topicTitle || 'Yêu cầu tư vấn'}
+                    </TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-md bg-primary/10 text-primary">
+                        <span className="material-symbols-outlined text-[14px]">{session.icon}</span>
+                        {session.label} ({b.durationMinutes}p)
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-center font-mono text-xs">
+                      <div>{formatDate(b.slotDate)}</div>
+                      <div className="text-on-surface-variant text-[11px] font-bold text-primary">
+                        {b.startTime} - {b.endTime}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold text-xs text-primary">
+                      {formatCurrency(b.fee)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <SlaLiveCountdown deadline={b.approvalDeadline} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 px-2.5 text-xs gap-1 cursor-pointer font-bold"
+                          onClick={() => setAcceptingId(b.id)}
+                          disabled={actionLoading}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                          <span>Tiếp nhận</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="h-8 px-2.5 text-xs gap-1 cursor-pointer"
+                          onClick={() => {
+                            setRejectingBooking(b)
+                            setRejectReason('')
+                            setActionError(null)
+                          }}
+                          disabled={actionLoading}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">close</span>
+                          <span>Từ chối</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-2 text-xs cursor-pointer"
+                          onClick={() => handleOpenDetail(b.id)}
+                          title="Xem chi tiết & tài liệu"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">visibility</span>
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+
       {/* Cards Grid */}
-      {!loading && bookings.length > 0 && (
+      {!loading && bookings.length > 0 && viewMode === 'grid' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {bookings.map((b) => {
             const session = SESSION_TYPE_MAP[b.sessionType] || { label: b.sessionType, icon: 'help' }
@@ -669,6 +837,15 @@ export function ExpertPendingBookingsTab({ initialBookingId, onRefreshStats }) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Thông báo chung (Notification Dialog) */}
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
+      />
     </div>
   )
 }

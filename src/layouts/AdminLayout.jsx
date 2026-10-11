@@ -131,16 +131,6 @@ export function AdminLayout({
               </button>
             )
           })}
-
-          <div className="pt-2 border-t border-primary-container/40 mt-2">
-            <button
-              onClick={() => navigate('/expert')}
-              className="flex items-center gap-space-md px-space-md py-space-sm rounded-lg transition-all text-left cursor-pointer w-full text-secondary-fixed hover:bg-primary hover:text-on-primary"
-            >
-              <span className="material-symbols-outlined text-[20px]">support_agent</span>
-              <span className="font-title-sm text-title-sm">Cổng Chuyên gia tư vấn</span>
-            </button>
-          </div>
         </nav>
 
         {/* User profile footer with Submenu Popover */}

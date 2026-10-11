@@ -1,8 +1,8 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 
-export function ProtectedRoute({ children }) {
-  const { isAuthenticated, isLoading } = useAuth()
+export function ProtectedRoute({ children, allowedRoles }) {
+  const { isAuthenticated, isLoading, user } = useAuth()
   const location = useLocation()
 
   if (isLoading) {
@@ -18,6 +18,20 @@ export function ProtectedRoute({ children }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />
+  }
+
+  if (allowedRoles && allowedRoles.length > 0) {
+    const userRole = (user?.userRole || user?.role || '').toLowerCase()
+    const isAllowed = allowedRoles.some((r) => r.toLowerCase() === userRole)
+    if (!isAllowed) {
+      if (userRole === 'expert') {
+        return <Navigate to="/expert" replace />
+      }
+      if (userRole === 'admin') {
+        return <Navigate to="/admin" replace />
+      }
+      return <Navigate to="/login" replace />
+    }
   }
 
   return children ? children : <Outlet />

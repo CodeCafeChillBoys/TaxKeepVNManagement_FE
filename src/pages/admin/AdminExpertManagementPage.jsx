@@ -9,8 +9,9 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { NotificationDialog, ConfirmDialog } from '@/components/ui/notification-dialog'
 
 // ═══════════════════════════════════════════════════════════
 // CONSTANTS & HELPERS
@@ -35,8 +36,29 @@ const CERT_STATUS_MAP = {
 
 const SESSION_TYPE_MAP = {
   ONLINE_MEETING: { label: 'Họp trực tuyến', icon: 'videocam' },
-  CHAT: { label: 'Nhắn tin', icon: 'chat' },
-  VOICE_CALL: { label: 'Gọi thoại', icon: 'call' },
+  CHAT: { label: 'Nhắn tin tư vấn', icon: 'chat' },
+  VOICE_CALL: { label: 'Gọi thoại trực tiếp', icon: 'call' },
+}
+
+const CERT_TYPE_MAP = {
+  TAX_AGENT: 'Chứng chỉ hành nghề đại lý thuế',
+  CPA: 'Chứng chỉ kiểm toán viên',
+  ACCOUNTANT: 'Chứng chỉ hành nghề kế toán',
+  CHIEF_ACCOUNTANT: 'Chứng chỉ kế toán trưởng',
+  OTHER: 'Chứng chỉ chuyên môn liên quan',
+}
+
+const AUDIT_ACTION_MAP = {
+  DRAFT_CREATED: 'Khởi tạo hồ sơ',
+  DRAFT_SAVED: 'Lưu bản nháp hồ sơ',
+  SUBMITTED: 'Nộp hồ sơ xét duyệt',
+  UNDER_REVIEW: 'Hội đồng tiếp nhận thẩm định',
+  SUPPLEMENT_REQUESTED: 'Yêu cầu bổ sung thông tin/chứng chỉ',
+  SUPPLEMENT_SUBMITTED: 'Đã nộp bổ sung hồ sơ',
+  APPROVED: 'Phê duyệt hồ sơ chính thức',
+  REJECTED: 'Từ chối hồ sơ',
+  CERTIFICATE_VERIFIED: 'Thẩm định chứng chỉ: Hợp lệ',
+  CERTIFICATE_REJECTED: 'Thẩm định chứng chỉ: Không hợp lệ',
 }
 
 const REVIEWABLE = ['PendingReview', 'NeedSupplement']
@@ -141,25 +163,6 @@ function InfoRow({ label, value }) {
   )
 }
 
-function ConfirmDialog({ open, title, description, confirmText = 'Xác nhận', loading, onConfirm, onOpenChange }) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Hủy</Button>
-          <Button variant="destructive" size="sm" disabled={loading} onClick={onConfirm}>
-            {loading ? 'Đang xử lý...' : confirmText}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 // ═══════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════
@@ -173,9 +176,9 @@ export function AdminExpertManagementPage() {
         <span className="font-label-sm uppercase tracking-widest text-secondary-fixed font-bold">
           QUẢN LÝ TƯ VẤN CHUYÊN GIA
         </span>
-        <h1 className="font-headline-lg text-headline-lg font-bold">Hệ thống Chuyên gia Tư vấn Thuế</h1>
+        <h1 className="font-headline-lg text-headline-lg font-bold">Quản lý Chuyên gia Tư vấn Thuế</h1>
         <p className="font-body-md text-on-primary/80 max-w-xl">
-          Quản lý hồ sơ đăng ký chuyên gia, lĩnh vực chuyên môn và cấu hình mức phí tư vấn.
+          Thẩm định hồ sơ đăng ký hành nghề, kiểm tra chứng chỉ chuyên môn, quản lý danh mục lĩnh vực tư vấn và khung mức phí tư vấn thuế.
         </p>
       </div>
 
@@ -191,7 +194,7 @@ export function AdminExpertManagementPage() {
           </TabsTrigger>
           <TabsTrigger value="fee-configs" id="tab-expert-fee-configs">
             <Icon name="payments" className="text-[20px]" />
-            <span className="hidden sm:inline">Cấu hình mức phí</span>
+            <span className="hidden sm:inline">Khung mức phí tư vấn</span>
           </TabsTrigger>
         </TabsList>
 
@@ -330,11 +333,11 @@ function ApplicationsTab() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>Mã hồ sơ</TableHead>
-                <TableHead>Ứng viên</TableHead>
-                <TableHead>Chức danh</TableHead>
-                <TableHead className="text-center">KN (năm)</TableHead>
-                <TableHead className="text-center">Chứng chỉ</TableHead>
-                <TableHead className="text-center">Trạng thái</TableHead>
+                <TableHead>Họ tên chuyên gia</TableHead>
+                <TableHead>Chức danh nghề nghiệp</TableHead>
+                <TableHead className="text-center">Kinh nghiệm</TableHead>
+                <TableHead className="text-center">Chứng chỉ hợp lệ</TableHead>
+                <TableHead className="text-center">Trạng thái hồ sơ</TableHead>
                 <TableHead className="text-center">Ngày gửi</TableHead>
                 <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
@@ -343,7 +346,7 @@ function ApplicationsTab() {
               {applications.map((app) => (
                 <TableRow key={app.id}>
                   <TableCell className="font-mono text-xs text-primary font-bold">
-                    {app.applicationNumber || app.id?.substring(0, 8)}
+                    {app.applicationNumber || `#HS-${(app.id || '').substring(0, 6).toUpperCase()}`}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -358,9 +361,11 @@ function ApplicationsTab() {
                     </div>
                   </TableCell>
                   <TableCell className="text-sm text-on-surface-variant max-w-[160px] truncate">{app.jobTitle || '—'}</TableCell>
-                  <TableCell className="text-center font-bold text-primary">{app.yearsOfExperience ?? '—'}</TableCell>
+                  <TableCell className="text-center font-bold text-primary">
+                    {app.yearsOfExperience != null ? `${app.yearsOfExperience} năm` : '—'}
+                  </TableCell>
                   <TableCell className="text-center font-mono text-xs">
-                    {app.verifiedCertificateCount ?? 0}/{app.certificateCount ?? 0}
+                    {app.verifiedCertificateCount ?? 0} / {app.certificateCount ?? 0}
                   </TableCell>
                   <TableCell className="text-center"><StatusBadge status={app.status} /></TableCell>
                   <TableCell className="text-center text-xs text-on-surface-variant">{formatDate(app.submittedAt)}</TableCell>
@@ -409,18 +414,34 @@ function ApplicationDetail({ app, onBack, onRefresh }) {
   const [actionError, setActionError] = useState(null)
   const [dialog, setDialog] = useState(null) // 'approve' | 'reject' | 'supplement'
   const [certToVerify, setCertToVerify] = useState(null)
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
 
   const canReview = REVIEWABLE.includes(app.status)
 
-  const runAction = async (fn, onDone) => {
+  const runAction = async (fn, onDone, successTitle, successDesc) => {
     setActionLoading(true)
     setActionError(null)
     try {
       await fn()
       onDone?.()
+      if (successTitle) {
+        setNotice({
+          open: true,
+          type: 'success',
+          title: successTitle,
+          description: successDesc,
+        })
+      }
       await onRefresh()
     } catch (err) {
-      setActionError(err.message || 'Thao tác thất bại.')
+      const msg = err.message || 'Thao tác không thành công.'
+      setActionError(msg)
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Thao tác thất bại',
+        description: msg,
+      })
     } finally {
       setActionLoading(false)
     }
@@ -429,29 +450,35 @@ function ApplicationDetail({ app, onBack, onRefresh }) {
   const dialogConfig = {
     approve: {
       title: 'Phê duyệt hồ sơ chuyên gia',
-      description: `Phê duyệt hồ sơ của ${app.fullName}? Tài khoản sẽ được nâng quyền thành chuyên gia.`,
-      inputLabel: 'Ghi chú (không bắt buộc)',
+      description: `Bạn có chắc chắn muốn phê duyệt hồ sơ của ${app.fullName}? Tài khoản người dùng sẽ được nâng cấp thành Chuyên gia tư vấn thuế chính thức trên hệ thống.`,
+      inputLabel: 'Ghi chú xét duyệt (không bắt buộc)',
       required: false,
       confirmText: 'Xác nhận phê duyệt',
-      confirmClass: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+      confirmClass: 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold',
+      successTitle: 'Phê duyệt hồ sơ thành công',
+      successDesc: `Đã phê duyệt hồ sơ chuyên gia cho ${app.fullName}. Tài khoản đã được cấp quyền Chuyên gia tư vấn.`,
       action: (v) => expertService.approveApplication(app.id, v),
     },
     reject: {
       title: 'Từ chối hồ sơ chuyên gia',
-      description: `Từ chối hồ sơ của ${app.fullName}?`,
-      inputLabel: 'Lý do từ chối (bắt buộc)',
+      description: `Bạn có chắc chắn muốn từ chối hồ sơ của ${app.fullName}? Vui lòng nêu rõ lý do để thông báo phản hồi cho ứng viên.`,
+      inputLabel: 'Lý do từ chối hồ sơ (bắt buộc, tối thiểu 5 ký tự)',
       required: true,
       confirmText: 'Xác nhận từ chối',
-      confirmClass: 'bg-red-600 hover:bg-red-700 text-white',
+      confirmClass: 'bg-red-600 hover:bg-red-700 text-white font-bold',
+      successTitle: 'Đã từ chối hồ sơ',
+      successDesc: `Đã gửi thông báo từ chối hồ sơ kèm lý do đến ứng viên ${app.fullName}.`,
       action: (v) => expertService.rejectApplication(app.id, v),
     },
     supplement: {
       title: 'Yêu cầu bổ sung hồ sơ',
-      description: `Yêu cầu ${app.fullName} bổ sung thông tin hoặc giấy tờ.`,
-      inputLabel: 'Nội dung yêu cầu bổ sung (bắt buộc)',
+      description: `Gửi yêu cầu bổ sung thông tin hoặc giấy tờ chứng chỉ hành nghề đến ứng viên ${app.fullName}.`,
+      inputLabel: 'Nội dung yêu cầu bổ sung (bắt buộc, tối thiểu 5 ký tự)',
       required: true,
       confirmText: 'Gửi yêu cầu bổ sung',
-      confirmClass: 'bg-orange-500 hover:bg-orange-600 text-white',
+      confirmClass: 'bg-orange-500 hover:bg-orange-600 text-white font-bold',
+      successTitle: 'Đã gửi yêu cầu bổ sung',
+      successDesc: `Hồ sơ đã chuyển sang trạng thái Cần bổ sung và gửi thông báo đến ứng viên ${app.fullName}.`,
       action: (v) => expertService.requestSupplement(app.id, v),
     },
   }
@@ -460,9 +487,9 @@ function ApplicationDetail({ app, onBack, onRefresh }) {
 
   return (
     <div className="flex flex-col gap-space-md">
-      <Button variant="ghost" size="sm" onClick={onBack} className="self-start gap-1 text-primary" id="expert-detail-back">
+      <Button variant="ghost" size="sm" onClick={onBack} className="self-start gap-1 text-primary font-bold" id="expert-detail-back">
         <Icon name="arrow_back" className="text-[20px]" />
-        Quay lại danh sách
+        Quay lại danh sách hồ sơ
       </Button>
 
       <ErrorAlert message={actionError} onClose={() => setActionError(null)} />
@@ -498,14 +525,14 @@ function ApplicationDetail({ app, onBack, onRefresh }) {
           {canReview && (
             <div className="flex flex-col gap-2 sm:flex-row md:flex-col">
               <Button id="expert-approve" size="sm" disabled={actionLoading} onClick={() => setDialog('approve')}
-                className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
-                <Icon name="check_circle" /> Phê duyệt
+                className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+                <Icon name="check_circle" /> Phê duyệt hồ sơ
               </Button>
-              <Button id="expert-reject" size="sm" variant="destructive" disabled={actionLoading} onClick={() => setDialog('reject')} className="gap-1">
-                <Icon name="cancel" /> Từ chối
+              <Button id="expert-reject" size="sm" variant="destructive" disabled={actionLoading} onClick={() => setDialog('reject')} className="gap-1 font-bold">
+                <Icon name="cancel" /> Từ chối hồ sơ
               </Button>
               <Button id="expert-supplement" size="sm" disabled={actionLoading} onClick={() => setDialog('supplement')}
-                className="gap-1 bg-orange-500 hover:bg-orange-600 text-white">
+                className="gap-1 bg-orange-500 hover:bg-orange-600 text-white font-bold">
                 <Icon name="note_add" /> Yêu cầu bổ sung
               </Button>
             </div>
@@ -592,7 +619,7 @@ function ApplicationDetail({ app, onBack, onRefresh }) {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex flex-col gap-0.5">
                         <span className="text-sm font-bold text-on-surface">{cert.certificateName}</span>
-                        <span className="text-[11px] text-on-surface-variant">{cert.certificateType}</span>
+                        <span className="text-[11px] text-on-surface-variant">{CERT_TYPE_MAP[cert.certificateType] || cert.certificateType}</span>
                       </div>
                       <Badge variant={cs.variant}>{cs.label}</Badge>
                     </div>
@@ -615,9 +642,9 @@ function ApplicationDetail({ app, onBack, onRefresh }) {
                       <p className="text-[11px] text-on-surface-variant italic">Ghi chú: {cert.verificationNote}</p>
                     )}
                     {cert.verificationStatus === 'PendingVerification' && canReview && (
-                      <Button size="sm" variant="secondary" className="self-start gap-1 mt-1" disabled={actionLoading}
+                      <Button size="sm" variant="secondary" className="self-start gap-1 mt-1 font-bold" disabled={actionLoading}
                         onClick={() => setCertToVerify(cert)} id={`expert-cert-verify-${cert.id}`}>
-                        <Icon name="fact_check" className="text-[16px]" /> Thẩm định
+                        <Icon name="fact_check" className="text-[16px]" /> Thẩm định chứng chỉ
                       </Button>
                     )}
                   </div>
@@ -634,7 +661,7 @@ function ApplicationDetail({ app, onBack, onRefresh }) {
                 <div key={audit.id || i} className="flex items-start gap-3 p-3 bg-surface-container-low rounded-lg">
                   <Icon name="radio_button_checked" className="text-[18px] text-outline mt-0.5" />
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-bold text-on-surface">{audit.action || audit.description}</span>
+                    <span className="text-sm font-bold text-on-surface">{AUDIT_ACTION_MAP[audit.action] || audit.action || audit.description || 'Thao tác xét duyệt'}</span>
                     <span className="text-[11px] text-on-surface-variant">{formatDateTime(audit.createdAt || audit.timestamp)}</span>
                     {audit.note && <span className="text-[11px] text-on-surface-variant italic">{audit.note}</span>}
                   </div>
@@ -652,7 +679,14 @@ function ApplicationDetail({ app, onBack, onRefresh }) {
           config={current}
           loading={actionLoading}
           onOpenChange={(o) => !o && setDialog(null)}
-          onConfirm={(val) => runAction(() => current.action(val), () => setDialog(null))}
+          onConfirm={(val) =>
+            runAction(
+              () => current.action(val),
+              () => setDialog(null),
+              current.successTitle,
+              current.successDesc
+            )
+          }
         />
       )}
 
@@ -662,10 +696,24 @@ function ApplicationDetail({ app, onBack, onRefresh }) {
           loading={actionLoading}
           onOpenChange={(o) => !o && setCertToVerify(null)}
           onVerify={(payload) =>
-            runAction(() => expertService.verifyCertificate(app.id, certToVerify.id, payload), () => setCertToVerify(null))
+            runAction(
+              () => expertService.verifyCertificate(app.id, certToVerify.id, payload),
+              () => setCertToVerify(null),
+              'Thẩm định chứng chỉ thành công',
+              'Đã cập nhật kết quả thẩm định cho chứng chỉ hành nghề.'
+            )
           }
         />
       )}
+
+      {/* Thông báo kết quả thao tác */}
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
+      />
     </div>
   )
 }
@@ -710,33 +758,33 @@ function CertVerifyDialog({ cert, loading, onVerify, onOpenChange }) {
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Thẩm định chứng chỉ</DialogTitle>
+          <DialogTitle>Thẩm định chứng chỉ hành nghề</DialogTitle>
           <DialogDescription>
-            Chứng chỉ: <strong>{cert.certificateName}</strong> ({cert.certificateNumber})
+            Chứng chỉ: <strong>{cert.certificateName}</strong> (Số: {cert.certificateNumber || '—'})
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-2">
-          <Label>Kết quả xác minh</Label>
+          <Label>Kết quả thẩm định</Label>
           <Select value={status} onValueChange={setStatus}>
             <SelectTrigger id="cert-verify-status" className="h-11 text-sm"><SelectValue /></SelectTrigger>
             <SelectContent className="z-[110]">
-              <SelectItem value="Verified">Hợp lệ (Verified)</SelectItem>
-              <SelectItem value="Rejected">Không hợp lệ (Rejected)</SelectItem>
-              <SelectItem value="Expired">Hết hạn (Expired)</SelectItem>
+              <SelectItem value="Verified">Hợp lệ</SelectItem>
+              <SelectItem value="Rejected">Không hợp lệ</SelectItem>
+              <SelectItem value="Expired">Đã hết hạn</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="cert-verify-source">Nguồn xác minh</Label>
+          <Label htmlFor="cert-verify-source">Nguồn đối soát xác minh</Label>
           <Input id="cert-verify-source" value={source} onChange={(e) => setSource(e.target.value)}
-            placeholder="VD: Tra cứu cổng thông tin Tổng cục Thuế..." />
+            placeholder="Ví dụ: Tra cứu tại Cổng thông tin Tổng cục Thuế..." />
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="cert-verify-note">Ghi chú</Label>
-          <Textarea id="cert-verify-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ghi chú thêm..." />
+          <Label htmlFor="cert-verify-note">Ghi chú thẩm định</Label>
+          <Textarea id="cert-verify-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ghi chú chi tiết kết quả thẩm định..." />
         </div>
 
         <DialogFooter>
@@ -745,8 +793,8 @@ function CertVerifyDialog({ cert, loading, onVerify, onOpenChange }) {
             verificationStatus: status,
             verificationSource: source.trim() || null,
             verificationNote: note.trim() || null,
-          })}>
-            {loading ? 'Đang xử lý...' : 'Xác nhận'}
+          })} className="bg-primary text-on-primary font-bold">
+            {loading ? 'Đang xử lý...' : 'Xác nhận kết quả thẩm định'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -768,6 +816,7 @@ function SpecializationsTab() {
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput.trim()), 400)
@@ -781,7 +830,7 @@ function SpecializationsTab() {
       const data = await expertService.getSpecializations({ search: search || undefined })
       setSpecializations(extractItems(data))
     } catch (err) {
-      setError(err.message || 'Không thể tải lĩnh vực chuyên môn.')
+      setError(err.message || 'Không thể tải danh sách lĩnh vực chuyên môn.')
       setSpecializations([])
     } finally {
       setLoading(false)
@@ -797,13 +846,25 @@ function SpecializationsTab() {
     try {
       if (formState?.item) {
         await expertService.updateSpecialization(formState.item.id, payload)
+        setNotice({
+          open: true,
+          type: 'success',
+          title: 'Cập nhật thành công',
+          description: `Đã cập nhật thông tin lĩnh vực tư vấn "${payload.name}".`,
+        })
       } else {
         await expertService.createSpecialization(payload)
+        setNotice({
+          open: true,
+          type: 'success',
+          title: 'Thêm mới thành công',
+          description: `Đã thêm lĩnh vực tư vấn "${payload.name}".`,
+        })
       }
       setFormState(null)
       await fetchData()
     } catch (err) {
-      return err.message || 'Lưu thất bại.'
+      return err.message || 'Lưu thông tin thất bại.'
     } finally {
       setFormLoading(false)
     }
@@ -813,11 +874,24 @@ function SpecializationsTab() {
     setDeleteLoading(true)
     try {
       await expertService.deleteSpecialization(deleteTarget.id)
+      const name = deleteTarget.name
       setDeleteTarget(null)
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Xóa thành công',
+        description: `Đã xóa lĩnh vực tư vấn "${name}".`,
+      })
       await fetchData()
     } catch (err) {
-      setError(err.message || 'Xóa thất bại.')
+      const msg = err.message || 'Xóa lĩnh vực tư vấn thất bại.'
       setDeleteTarget(null)
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Xóa thất bại',
+        description: msg,
+      })
     } finally {
       setDeleteLoading(false)
     }
@@ -829,26 +903,26 @@ function SpecializationsTab() {
         <CardContent className="p-5 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
           <div className="flex-1">
             <Input id="spec-search" value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Tìm kiếm lĩnh vực..." leftIcon={<Icon name="search" className="text-[20px]" />} />
+              placeholder="Tìm kiếm lĩnh vực tư vấn..." leftIcon={<Icon name="search" className="text-[20px]" />} />
           </div>
-          <Button id="spec-add" onClick={() => setFormState({ item: null })} className="gap-1">
-            <Icon name="add" /> Thêm lĩnh vực
+          <Button id="spec-add" onClick={() => setFormState({ item: null })} className="gap-1 font-bold">
+            <Icon name="add" /> Thêm lĩnh vực mới
           </Button>
         </CardContent>
       </Card>
 
       <ErrorAlert message={error} onClose={() => setError(null)} />
 
-      {loading && <LoadingState text="Đang tải danh sách lĩnh vực..." />}
+      {loading && <LoadingState text="Đang tải danh sách lĩnh vực tư vấn..." />}
 
       {!loading && specializations.length > 0 && (
         <Card className="shadow-sm">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>Mã</TableHead>
-                <TableHead>Tên lĩnh vực</TableHead>
-                <TableHead>Mô tả</TableHead>
+                <TableHead>Ký hiệu phân loại</TableHead>
+                <TableHead>Tên lĩnh vực chuyên môn</TableHead>
+                <TableHead>Mô tả phạm vi tư vấn</TableHead>
                 <TableHead className="text-center">Trạng thái</TableHead>
                 <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
@@ -862,7 +936,7 @@ function SpecializationsTab() {
                   <TableCell className="text-center"><ActiveBadge active={item.isActive} /></TableCell>
                   <TableCell>
                     <div className="flex gap-2 justify-end">
-                      <Button size="sm" variant="outline" onClick={() => setFormState({ item })} id={`spec-edit-${item.id}`}>Sửa</Button>
+                      <Button size="sm" variant="outline" onClick={() => setFormState({ item })} id={`spec-edit-${item.id}`}>Chỉnh sửa</Button>
                       <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50 hover:text-red-700"
                         onClick={() => setDeleteTarget(item)} id={`spec-delete-${item.id}`}>Xóa</Button>
                     </div>
@@ -889,12 +963,22 @@ function SpecializationsTab() {
 
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Xóa lĩnh vực chuyên môn"
-        description={deleteTarget ? `Bạn có chắc chắn muốn xóa "${deleteTarget.name}"?` : ''}
-        confirmText="Xóa"
+        title="Xóa lĩnh vực tư vấn"
+        description={deleteTarget ? `Bạn có chắc chắn muốn xóa "${deleteTarget.name}" khỏi hệ thống? Thao tác này không thể hoàn tác.` : ''}
+        confirmText="Xác nhận xóa"
+        cancelText="Hủy bỏ"
+        type="destructive"
         loading={deleteLoading}
         onConfirm={handleDelete}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
+      />
+
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
       />
     </div>
   )
@@ -923,33 +1007,33 @@ function SpecializationFormDialog({ editItem, loading, onSave, onOpenChange }) {
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent as="form" onSubmit={handleSubmit}>
         <DialogHeader>
-          <DialogTitle>{editItem ? 'Chỉnh sửa lĩnh vực' : 'Thêm lĩnh vực mới'}</DialogTitle>
-          <DialogDescription>Lĩnh vực hiển thị cho ứng viên khi đăng ký làm chuyên gia.</DialogDescription>
+          <DialogTitle>{editItem ? 'Chỉnh sửa lĩnh vực tư vấn' : 'Thêm lĩnh vực tư vấn mới'}</DialogTitle>
+          <DialogDescription>Lĩnh vực chuyên môn hiển thị cho người nộp hồ sơ đăng ký làm chuyên gia.</DialogDescription>
         </DialogHeader>
 
         <ErrorAlert message={formError} />
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="spec-code">Mã lĩnh vực</Label>
-          <Input id="spec-code" value={code} onChange={(e) => setCode(e.target.value)} disabled={!!editItem} placeholder="VD: TAX_AGENT" />
+          <Label htmlFor="spec-code">Ký hiệu phân loại</Label>
+          <Input id="spec-code" value={code} onChange={(e) => setCode(e.target.value)} disabled={!!editItem} placeholder="VD: DAI_LY_THUE, KT_DOANH_NGHIEP" />
         </div>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="spec-name">Tên lĩnh vực</Label>
-          <Input id="spec-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Đại lý thuế" />
+          <Label htmlFor="spec-name">Tên lĩnh vực chuyên môn</Label>
+          <Input id="spec-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Tư vấn đại lý thuế" />
         </div>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="spec-desc">Mô tả</Label>
-          <Textarea id="spec-desc" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Mô tả lĩnh vực chuyên môn..." />
+          <Label htmlFor="spec-desc">Mô tả phạm vi tư vấn</Label>
+          <Textarea id="spec-desc" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Mô tả phạm vi và nghiệp vụ tư vấn..." />
         </div>
         <label className="flex items-center gap-2 cursor-pointer text-sm text-on-surface">
           <Checkbox id="spec-active" checked={isActive} onCheckedChange={setIsActive} />
-          Kích hoạt (hiển thị cho ứng viên)
+          Áp dụng ngay trên hệ thống (hiển thị khi nộp hồ sơ)
         </label>
 
         <DialogFooter>
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>Hủy</Button>
-          <Button type="submit" size="sm" disabled={loading || !isValid} id="spec-submit">
-            {loading ? 'Đang lưu...' : editItem ? 'Cập nhật' : 'Tạo mới'}
+          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>Hủy bỏ</Button>
+          <Button type="submit" size="sm" disabled={loading || !isValid} id="spec-submit" className="font-bold">
+            {loading ? 'Đang lưu...' : editItem ? 'Lưu thay đổi' : 'Thêm mới'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -958,7 +1042,7 @@ function SpecializationFormDialog({ editItem, loading, onSave, onOpenChange }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// TAB 3: FEE CONFIGS
+// TAB 3: FEE CONFIGS (KHUNG MỨC PHÍ TƯ VẤN)
 // ═══════════════════════════════════════════════════════════
 
 function FeeConfigsTab() {
@@ -970,6 +1054,7 @@ function FeeConfigsTab() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [sessionFilter, setSessionFilter] = useState(ALL)
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -980,7 +1065,7 @@ function FeeConfigsTab() {
       })
       setFeeConfigs(extractItems(data))
     } catch (err) {
-      setError(err.message || 'Không thể tải cấu hình mức phí.')
+      setError(err.message || 'Không thể tải danh sách khung mức phí.')
       setFeeConfigs([])
     } finally {
       setLoading(false)
@@ -996,13 +1081,25 @@ function FeeConfigsTab() {
     try {
       if (formState?.item) {
         await expertService.updateFeeConfig(formState.item.id, payload)
+        setNotice({
+          open: true,
+          type: 'success',
+          title: 'Cập nhật thành công',
+          description: 'Đã cập nhật khung mức phí tư vấn.',
+        })
       } else {
         await expertService.createFeeConfig(payload)
+        setNotice({
+          open: true,
+          type: 'success',
+          title: 'Thêm mới thành công',
+          description: 'Đã thêm khung mức phí tư vấn mới.',
+        })
       }
       setFormState(null)
       await fetchData()
     } catch (err) {
-      return err.message || 'Lưu thất bại.'
+      return err.message || 'Lưu khung mức phí thất bại.'
     } finally {
       setFormLoading(false)
     }
@@ -1013,10 +1110,22 @@ function FeeConfigsTab() {
     try {
       await expertService.deleteFeeConfig(deleteTarget.id)
       setDeleteTarget(null)
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Xóa thành công',
+        description: 'Đã xóa khung mức phí khỏi hệ thống.',
+      })
       await fetchData()
     } catch (err) {
-      setError(err.message || 'Xóa thất bại.')
+      const msg = err.message || 'Xóa khung mức phí thất bại.'
       setDeleteTarget(null)
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Xóa thất bại',
+        description: msg,
+      })
     } finally {
       setDeleteLoading(false)
     }
@@ -1030,22 +1139,22 @@ function FeeConfigsTab() {
             <Select value={sessionFilter} onValueChange={setSessionFilter}>
               <SelectTrigger id="fee-session-filter" className="h-11 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL}>Tất cả hình thức</SelectItem>
+                <SelectItem value={ALL}>Tất cả hình thức tư vấn</SelectItem>
                 {Object.entries(SESSION_TYPE_MAP).map(([key, { label }]) => (
                   <SelectItem key={key} value={key}>{label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <Button id="fee-add" onClick={() => setFormState({ item: null })} className="gap-1">
-            <Icon name="add" /> Thêm cấu hình
+          <Button id="fee-add" onClick={() => setFormState({ item: null })} className="gap-1 font-bold">
+            <Icon name="add" /> Thêm khung mức phí
           </Button>
         </CardContent>
       </Card>
 
       <ErrorAlert message={error} onClose={() => setError(null)} />
 
-      {loading && <LoadingState text="Đang tải cấu hình mức phí..." />}
+      {loading && <LoadingState text="Đang tải danh sách khung mức phí tư vấn..." />}
 
       {!loading && feeConfigs.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-md">
@@ -1067,16 +1176,16 @@ function FeeConfigsTab() {
                 </CardHeader>
                 <CardContent className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col">
-                    <span className="text-[10px] text-on-surface-variant uppercase tracking-wider font-bold">Phí sàn</span>
+                    <span className="text-[10px] text-on-surface-variant uppercase tracking-wider font-bold">Mức phí sàn tối thiểu</span>
                     <span className="text-sm text-primary font-bold">{formatCurrency(item.minFee)}</span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[10px] text-on-surface-variant uppercase tracking-wider font-bold">Phí trần</span>
+                    <span className="text-[10px] text-on-surface-variant uppercase tracking-wider font-bold">Mức phí trần tối đa</span>
                     <span className="text-sm text-primary font-bold">{formatCurrency(item.maxFee)}</span>
                   </div>
                 </CardContent>
                 <CardFooter className="gap-2 mt-auto">
-                  <Button size="sm" variant="outline" className="flex-1" onClick={() => setFormState({ item })} id={`fee-edit-${item.id}`}>
+                  <Button size="sm" variant="outline" className="flex-1 font-bold" onClick={() => setFormState({ item })} id={`fee-edit-${item.id}`}>
                     Chỉnh sửa
                   </Button>
                   <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50 hover:text-red-700"
@@ -1091,7 +1200,7 @@ function FeeConfigsTab() {
       )}
 
       {!loading && feeConfigs.length === 0 && !error && (
-        <EmptyState icon="payments" text="Chưa có cấu hình mức phí nào." />
+        <EmptyState icon="payments" text="Chưa có khung mức phí tư vấn nào." />
       )}
 
       {formState && (
@@ -1105,14 +1214,24 @@ function FeeConfigsTab() {
 
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Xóa cấu hình mức phí"
+        title="Xóa khung mức phí tư vấn"
         description={deleteTarget
-          ? `Xóa cấu hình ${SESSION_TYPE_MAP[deleteTarget.sessionType]?.label || deleteTarget.sessionType} - ${deleteTarget.durationMinutes} phút?`
+          ? `Bạn có chắc chắn muốn xóa khung mức phí cho hình thức ${SESSION_TYPE_MAP[deleteTarget.sessionType]?.label || deleteTarget.sessionType} (${deleteTarget.durationMinutes} phút)? Thao tác này không thể hoàn tác.`
           : ''}
-        confirmText="Xóa"
+        confirmText="Xác nhận xóa"
+        cancelText="Hủy bỏ"
+        type="destructive"
         loading={deleteLoading}
         onConfirm={handleDelete}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
+      />
+
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
       />
     </div>
   )
@@ -1129,7 +1248,7 @@ function FeeConfigFormDialog({ editItem, loading, onSave, onOpenChange }) {
   const d = Number(durationMinutes)
   const min = Number(minFee)
   const max = Number(maxFee)
-  const rangeError = min > max ? 'Phí sàn không được lớn hơn phí trần.' : null
+  const rangeError = min > max ? 'Mức phí sàn không được lớn hơn mức phí trần.' : null
   const isValid = d >= 15 && d <= 240 && min >= 0 && max >= 0 && !rangeError
 
   const handleSubmit = async (e) => {
@@ -1144,8 +1263,8 @@ function FeeConfigFormDialog({ editItem, loading, onSave, onOpenChange }) {
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent as="form" onSubmit={handleSubmit}>
         <DialogHeader>
-          <DialogTitle>{editItem ? 'Chỉnh sửa mức phí' : 'Thêm mức phí mới'}</DialogTitle>
-          <DialogDescription>Khung phí sàn/trần áp dụng cho đề xuất phí của chuyên gia.</DialogDescription>
+          <DialogTitle>{editItem ? 'Chỉnh sửa khung mức phí' : 'Thêm khung mức phí mới'}</DialogTitle>
+          <DialogDescription>Khung mức phí sàn và trần áp dụng cho đề xuất biểu phí của chuyên gia tư vấn.</DialogDescription>
         </DialogHeader>
 
         <ErrorAlert message={formError} />
@@ -1163,19 +1282,19 @@ function FeeConfigFormDialog({ editItem, loading, onSave, onOpenChange }) {
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="fee-duration">Thời lượng (phút)</Label>
+          <Label htmlFor="fee-duration">Thời lượng buổi tư vấn (phút)</Label>
           <Input id="fee-duration" type="number" min={15} max={240} value={durationMinutes}
             onChange={(e) => setDurationMinutes(e.target.value)} />
-          {(d < 15 || d > 240) && <span className="text-[11px] text-red-500">Thời lượng từ 15 đến 240 phút</span>}
+          {(d < 15 || d > 240) && <span className="text-[11px] text-red-500">Thời lượng hợp lệ từ 15 đến 240 phút</span>}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="fee-min">Phí sàn (VNĐ)</Label>
+            <Label htmlFor="fee-min">Mức phí sàn tối thiểu (VNĐ)</Label>
             <Input id="fee-min" type="number" min={0} max={100000000} value={minFee} onChange={(e) => setMinFee(e.target.value)} />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="fee-max">Phí trần (VNĐ)</Label>
+            <Label htmlFor="fee-max">Mức phí trần tối đa (VNĐ)</Label>
             <Input id="fee-max" type="number" min={0} max={100000000} value={maxFee} onChange={(e) => setMaxFee(e.target.value)} />
           </div>
         </div>
@@ -1183,16 +1302,17 @@ function FeeConfigFormDialog({ editItem, loading, onSave, onOpenChange }) {
 
         <label className="flex items-center gap-2 cursor-pointer text-sm text-on-surface">
           <Checkbox id="fee-active" checked={isActive} onCheckedChange={setIsActive} />
-          Kích hoạt
+          Áp dụng ngay trên hệ thống
         </label>
 
         <DialogFooter>
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>Hủy</Button>
-          <Button type="submit" size="sm" disabled={loading || !isValid} id="fee-submit">
-            {loading ? 'Đang lưu...' : editItem ? 'Cập nhật' : 'Tạo mới'}
+          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>Hủy bỏ</Button>
+          <Button type="submit" size="sm" disabled={loading || !isValid} id="fee-submit" className="font-bold">
+            {loading ? 'Đang lưu...' : editItem ? 'Lưu thay đổi' : 'Thêm mới'}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
+

@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { NotificationDialog, ConfirmDialog } from '@/components/ui/notification-dialog'
 import { expertPortalService } from '@/services/expertPortalService'
 
 function formatCurrency(val) {
@@ -83,6 +84,12 @@ export function ExpertProfileTab() {
   // Submitting application
   const [submitting, setSubmitting] = useState(false)
 
+  // Dialog states
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+  const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false)
+  const [certToDelete, setCertToDelete] = useState(null)
+  const [deletingCert, setDeletingCert] = useState(false)
+
   const loadData = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -131,11 +138,22 @@ export function ExpertProfileTab() {
 
     setAvatarUploading(true)
     try {
-      const res = await expertPortalService.uploadAvatar(file)
+      await expertPortalService.uploadAvatar(file)
       setSuccessMsg('Tải lên ảnh đại diện thành công!')
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Cập nhật ảnh đại diện thành công',
+        description: 'Ảnh đại diện mới đã được cập nhật vào hồ sơ chuyên gia của bạn.',
+      })
       await loadData()
     } catch (err) {
-      alert(err.message || 'Lỗi khi tải lên ảnh đại diện.')
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Lỗi tải ảnh đại diện',
+        description: err.message || 'Không thể tải lên ảnh đại diện.',
+      })
     } finally {
       setAvatarUploading(false)
       if (avatarInputRef.current) avatarInputRef.current.value = ''
@@ -148,25 +166,56 @@ export function ExpertProfileTab() {
     try {
       await expertPortalService.saveDraft(formData)
       setSuccessMsg('Lưu bản nháp hồ sơ thành công!')
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Đã lưu bản nháp',
+        description: 'Thông tin hồ sơ chuyên gia đã được lưu thành công vào bản nháp.',
+      })
       setIsEditing(false)
       await loadData()
     } catch (err) {
-      setError(err.message || 'Lỗi khi lưu bản nháp.')
+      const msg = err.message || 'Lỗi khi lưu bản nháp.'
+      setError(msg)
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Lỗi khi lưu bản nháp',
+        description: msg,
+      })
     } finally {
       setSubmitting(false)
     }
   }
 
-  const handleSubmitApplication = async () => {
-    if (!confirm('Bạn có chắc chắn muốn nộp hồ sơ này để thẩm định?')) return
+  const handleSubmitApplication = () => {
+    setConfirmSubmitOpen(true)
+  }
+
+  const executeSubmitApplication = async () => {
     setSubmitting(true)
     setError(null)
     try {
       await expertPortalService.submitApplication()
+      setConfirmSubmitOpen(false)
       setSuccessMsg('Hồ sơ của bạn đã được gửi thành công và đang chờ xét duyệt!')
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Nộp hồ sơ thành công!',
+        description: 'Hồ sơ đã được gửi đến ban quản trị để thẩm định. Kết quả sẽ được cập nhật tại đây khi xét duyệt xong.',
+      })
       await loadData()
     } catch (err) {
-      setError(err.message || 'Lỗi khi nộp hồ sơ.')
+      setConfirmSubmitOpen(false)
+      const msg = err.message || 'Lỗi khi nộp hồ sơ.'
+      setError(msg)
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Không thể nộp hồ sơ',
+        description: msg,
+      })
     } finally {
       setSubmitting(false)
     }
@@ -175,7 +224,12 @@ export function ExpertProfileTab() {
   const handleUploadCertSubmit = async (e) => {
     e.preventDefault()
     if (!certForm.file) {
-      alert('Vui lòng chọn tệp chứng chỉ.')
+      setNotice({
+        open: true,
+        type: 'warning',
+        title: 'Chưa chọn tệp',
+        description: 'Vui lòng chọn tệp chứng chỉ (ảnh hoặc PDF) trước khi tải lên.',
+      })
       return
     }
 
@@ -194,22 +248,53 @@ export function ExpertProfileTab() {
         expiryDate: '',
       })
       setSuccessMsg('Tải lên chứng chỉ thành công!')
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Tải lên chứng chỉ thành công',
+        description: 'Chứng chỉ hành nghề đã được lưu vào hồ sơ để thẩm định.',
+      })
       await loadData()
     } catch (err) {
-      alert(err.message || 'Lỗi khi tải lên chứng chỉ.')
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Lỗi khi tải chứng chỉ',
+        description: err.message || 'Không thể tải lên tệp chứng chỉ.',
+      })
     } finally {
       setCertUploading(false)
     }
   }
 
-  const handleDeleteCert = async (certId) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa chứng chỉ này?')) return
+  const handleDeleteCert = (cert) => {
+    setCertToDelete(cert)
+  }
+
+  const executeDeleteCert = async () => {
+    if (!certToDelete) return
+    setDeletingCert(true)
     try {
-      await expertPortalService.deleteCertificate(certId)
+      await expertPortalService.deleteCertificate(certToDelete.id)
+      setCertToDelete(null)
       setSuccessMsg('Xóa chứng chỉ thành công.')
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Đã xóa chứng chỉ',
+        description: 'Chứng chỉ hành nghề đã được gỡ khỏi hồ sơ của bạn.',
+      })
       await loadData()
     } catch (err) {
-      alert(err.message || 'Lỗi khi xóa chứng chỉ.')
+      setCertToDelete(null)
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Không thể xóa chứng chỉ',
+        description: err.message || 'Đã có lỗi xảy ra khi xóa chứng chỉ.',
+      })
+    } finally {
+      setDeletingCert(false)
     }
   }
 
@@ -746,7 +831,7 @@ export function ExpertProfileTab() {
 
                           {canEdit && (
                             <button
-                              onClick={() => handleDeleteCert(cert.id)}
+                              onClick={() => handleDeleteCert(cert)}
                               className="text-red-500 hover:text-red-700 text-[11px] font-bold cursor-pointer"
                             >
                               Xóa
@@ -880,6 +965,41 @@ export function ExpertProfileTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Thông báo chung (Notification Dialog) */}
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
+      />
+
+      {/* Xác nhận nộp hồ sơ xét duyệt */}
+      <ConfirmDialog
+        open={confirmSubmitOpen}
+        onOpenChange={setConfirmSubmitOpen}
+        type="primary"
+        title="Xác nhận nộp hồ sơ thẩm định"
+        description="Sau khi nộp, hồ sơ của bạn sẽ chuyển sang trạng thái 'Chờ thẩm định' và được hội đồng xét duyệt. Bạn sẽ tạm thời không thể chỉnh sửa thông tin cho đến khi có phản hồi. Bạn có chắc chắn muốn gửi hồ sơ?"
+        confirmText="Nộp hồ sơ ngay"
+        cancelText="Xem lại"
+        loading={submitting}
+        onConfirm={executeSubmitApplication}
+      />
+
+      {/* Xác nhận xóa chứng chỉ */}
+      <ConfirmDialog
+        open={Boolean(certToDelete)}
+        onOpenChange={(open) => !open && setCertToDelete(null)}
+        type="destructive"
+        title="Xác nhận xóa chứng chỉ"
+        description={`Bạn có chắc chắn muốn xóa chứng chỉ "${certToDelete?.certificateName || 'này'}"? Thao tác này sẽ gỡ chứng chỉ khỏi hồ sơ và không thể hoàn tác.`}
+        confirmText="Xóa chứng chỉ"
+        cancelText="Hủy"
+        loading={deletingCert}
+        onConfirm={executeDeleteCert}
+      />
     </div>
   )
 }

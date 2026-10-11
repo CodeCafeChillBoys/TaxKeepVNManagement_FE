@@ -47,7 +47,7 @@ export function AppRoutes() {
       <Route
         path="/admin"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['admin']}>
             <AdminDashboard />
           </ProtectedRoute>
         }
@@ -55,7 +55,7 @@ export function AppRoutes() {
       <Route
         path="/admin/:section"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['admin']}>
             <AdminDashboard />
           </ProtectedRoute>
         }
@@ -63,7 +63,7 @@ export function AppRoutes() {
       <Route
         path="/admin/:section/:id"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['admin']}>
             <AdminDashboard />
           </ProtectedRoute>
         }
@@ -73,7 +73,7 @@ export function AppRoutes() {
       <Route
         path="/expert"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['expert']}>
             <ExpertDashboard />
           </ProtectedRoute>
         }
@@ -81,7 +81,7 @@ export function AppRoutes() {
       <Route
         path="/expert/:section"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['expert']}>
             <ExpertDashboard />
           </ProtectedRoute>
         }
@@ -89,7 +89,7 @@ export function AppRoutes() {
       <Route
         path="/expert/:section/:id"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['expert']}>
             <ExpertDashboard />
           </ProtectedRoute>
         }

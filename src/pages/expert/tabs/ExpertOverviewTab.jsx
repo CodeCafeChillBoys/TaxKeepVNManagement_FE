@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { NotificationDialog, ConfirmDialog } from '@/components/ui/notification-dialog'
 import { expertPortalService } from '@/services/expertPortalService'
 
 function formatCurrency(val) {
@@ -81,6 +82,7 @@ function SlaCountdown({ deadline }) {
 
 export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [pendingBookings, setPendingBookings] = useState([])
   const [confirmedBookings, setConfirmedBookings] = useState([])
   const [allBookings, setAllBookings] = useState([])
@@ -91,51 +93,76 @@ export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
     totalRevenue: 0,
   })
 
+  // Dialog states
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+  const [slaModalOpen, setSlaModalOpen] = useState(false)
+  const [revenueInfoOpen, setRevenueInfoOpen] = useState(false)
+
+  const fetchData = useCallback(async () => {
+    const [pendingRes, allRes] = await Promise.all([
+      expertPortalService.getPendingBookings({ page: 1, size: 5 }).catch(() => ({ items: [] })),
+      expertPortalService.getExpertBookings({ page: 1, size: 50 }).catch(() => ({ items: [] })),
+    ])
+
+    const pendingItems = pendingRes?.items || []
+    const allItems = allRes?.items || []
+
+    const confirmedItems = allItems.filter((b) => b.status === 'CONFIRMED')
+    const completedItems = allItems.filter((b) => b.status === 'COMPLETED')
+
+    // Doanh thu tạm tính từ các ca đã chốt hoặc đã hoàn thành
+    const revenue = [...confirmedItems, ...completedItems].reduce(
+      (sum, b) => sum + (Number(b.fee) || 0),
+      0
+    )
+
+    setPendingBookings(pendingItems)
+    setConfirmedBookings(confirmedItems.slice(0, 5))
+    setAllBookings(allItems)
+    setStats({
+      pending: pendingRes?.pagination?.totalItems ?? pendingItems.length,
+      confirmed: confirmedItems.length,
+      completed: completedItems.length,
+      totalRevenue: revenue,
+    })
+  }, [])
+
   useEffect(() => {
     let isMounted = true
-    const fetchData = async () => {
-      setLoading(true)
-      try {
-        const [pendingRes, allRes] = await Promise.all([
-          expertPortalService.getPendingBookings({ page: 1, size: 5 }).catch(() => ({ items: [] })),
-          expertPortalService.getExpertBookings({ page: 1, size: 50 }).catch(() => ({ items: [] })),
-        ])
-
-        if (!isMounted) return
-
-        const pendingItems = pendingRes?.items || []
-        const allItems = allRes?.items || []
-
-        const confirmedItems = allItems.filter((b) => b.status === 'CONFIRMED')
-        const completedItems = allItems.filter((b) => b.status === 'COMPLETED')
-
-        // Doanh thu tạm tính từ các ca đã chốt hoặc đã hoàn thành
-        const revenue = [...confirmedItems, ...completedItems].reduce(
-          (sum, b) => sum + (Number(b.fee) || 0),
-          0
-        )
-
-        setPendingBookings(pendingItems)
-        setConfirmedBookings(confirmedItems.slice(0, 5))
-        setAllBookings(allItems)
-        setStats({
-          pending: pendingRes?.pagination?.totalItems ?? pendingItems.length,
-          confirmed: confirmedItems.length,
-          completed: completedItems.length,
-          totalRevenue: revenue,
-        })
-      } catch (err) {
-        console.error('Lỗi khi tải dữ liệu tổng quan:', err)
-      } finally {
-        if (isMounted) setLoading(false)
-      }
-    }
-
+    setLoading(true)
     fetchData()
+      .catch((err) => {
+        console.error('Lỗi khi tải dữ liệu tổng quan:', err)
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false)
+      })
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [fetchData])
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await fetchData()
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Đã cập nhật dữ liệu mới nhất',
+        description: 'Số liệu tổng quan về các ca tư vấn và doanh thu đã được đồng bộ với máy chủ.',
+      })
+    } catch (err) {
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Không thể làm mới dữ liệu',
+        description: err.message || 'Lỗi kết nối khi đồng bộ dữ liệu mới nhất.',
+      })
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   return (
     <div className="p-8 flex flex-col gap-6 max-w-7xl mx-auto">
@@ -174,18 +201,35 @@ export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
             <span className="material-symbols-outlined text-[20px]">calendar_month</span>
             <span>Xem toàn bộ lịch hẹn</span>
           </Button>
+          <Button
+            variant="outline"
+            onClick={handleManualRefresh}
+            disabled={loading || refreshing}
+            className="border-white/20 bg-white/10 text-white hover:bg-white/20 font-bold gap-1.5"
+            title="Đồng bộ dữ liệu mới nhất"
+          >
+            <span className={`material-symbols-outlined text-[18px] ${refreshing ? 'animate-spin' : ''}`}>
+              refresh
+            </span>
+            <span>{refreshing ? 'Đang tải...' : 'Làm mới'}</span>
+          </Button>
         </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Chờ tiếp nhận (SLA 2h) */}
-        <Card className={`border shadow-sm transition-all hover:shadow-md ${
-          stats.pending > 0 ? 'border-amber-400/60 bg-amber-50/40' : 'border-outline-variant/30'
-        }`}>
+        <Card
+          onClick={() => setSlaModalOpen(true)}
+          className={`border shadow-sm transition-all hover:shadow-md cursor-pointer ${
+            stats.pending > 0 ? 'border-amber-400/60 bg-amber-50/40 ring-1 ring-amber-400/30' : 'border-outline-variant/30'
+          }`}
+          title="Nhấn để xem quy chế phản hồi SLA 2 giờ"
+        >
           <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-              Ca chờ duyệt (SLA 2h)
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-1">
+              <span>Ca chờ duyệt (SLA 2h)</span>
+              <span className="material-symbols-outlined text-[14px] text-amber-600">help</span>
             </CardTitle>
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
               stats.pending > 0 ? 'bg-amber-500 text-white animate-pulse' : 'bg-surface-container text-on-surface-variant'
@@ -245,10 +289,15 @@ export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
         </Card>
 
         {/* Card 4: Doanh thu tạm tính */}
-        <Card className="border border-outline-variant/30 shadow-sm hover:shadow-md transition-all bg-gradient-to-br from-white to-amber-50/20">
+        <Card
+          onClick={() => setRevenueInfoOpen(true)}
+          className="border border-outline-variant/30 shadow-sm hover:shadow-md transition-all bg-gradient-to-br from-white to-amber-50/20 cursor-pointer"
+          title="Nhấn để xem thông tin cơ chế tính phí"
+        >
           <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-              Phí tư vấn ước tính
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-1">
+              <span>Phí tư vấn ước tính</span>
+              <span className="material-symbols-outlined text-[14px] text-amber-600">info</span>
             </CardTitle>
             <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center border border-amber-300">
               <span className="material-symbols-outlined text-[22px]">payments</span>
@@ -455,6 +504,44 @@ export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Thông báo chung (Notification Dialog) */}
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
+      />
+
+      {/* Hướng dẫn / Cảnh báo SLA 2 giờ (Dialog) */}
+      <ConfirmDialog
+        open={slaModalOpen}
+        onOpenChange={setSlaModalOpen}
+        type="warning"
+        title="Quy chế tiếp nhận ca tư vấn (SLA 2 giờ)"
+        description={
+          stats.pending > 0
+            ? `Hiện tại bạn có ${stats.pending} ca tư vấn đang chờ xử lý. Theo quy định cam kết chất lượng dịch vụ (SLA) của TaxKeep VN, chuyên gia cần tiếp nhận hoặc từ chối trong vòng 2 giờ kể từ khi khách hàng hoàn tất thanh toán. Quá thời gian này, hệ thống sẽ tự động hoàn trả 100% chi phí cho khách hàng.`
+            : "Chính sách SLA 2 giờ đảm bảo người nộp thuế được hỗ trợ kịp thời. Khi có khách hàng đặt lịch và thanh toán thành công, bạn sẽ nhận được thông báo và có đúng 2 giờ để duyệt hoặc từ chối ca."
+        }
+        confirmText="Đi đến ca chờ tiếp nhận"
+        cancelText="Đóng"
+        onConfirm={() => {
+          setSlaModalOpen(false)
+          onNavigate('cho-tiep-nhan')
+        }}
+      />
+
+      {/* Thông tin giải thích phí ước tính (Dialog) */}
+      <NotificationDialog
+        open={revenueInfoOpen}
+        onOpenChange={setRevenueInfoOpen}
+        type="info"
+        title="Cơ chế tính phí tư vấn ước tính"
+        description="Mức phí tư vấn ước tính được tổng hợp tự động từ các ca tư vấn có trạng thái 'Đã xác nhận' và 'Đã hoàn thành'. Thu nhập thực tế sẽ được nền tảng đối soát và quyết toán theo chu kỳ thanh toán định kỳ."
+        confirmText="Đã hiểu"
+      />
     </div>
   )
 }

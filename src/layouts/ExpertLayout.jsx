@@ -82,9 +82,6 @@ export function ExpertLayout({
     { id: 'ho-so', label: 'Hồ sơ chuyên gia', icon: 'badge' },
   ]
 
-  const userRole = (user?.userRole || user?.role || '').toLowerCase()
-  const isAdmin = userRole === 'admin'
-
   return (
     <div className="bg-surface font-body-md text-on-surface antialiased min-h-screen flex">
       {/* Sidebar */}
@@ -138,22 +135,6 @@ export function ExpertLayout({
               </button>
             )
           })}
-
-          {/* Switch to Admin if admin */}
-          {isAdmin && (
-            <div className="mt-4 pt-3 border-t border-white/10">
-              <span className="px-3 text-[10px] uppercase font-bold tracking-wider text-white/40 block mb-1">
-                Quản trị viên
-              </span>
-              <button
-                onClick={() => navigate('/admin')}
-                className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition-all text-left cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[20px] text-primary-fixed">admin_panel_settings</span>
-                <span className="text-xs font-semibold">Chuyển sang Quản trị Admin</span>
-              </button>
-            </div>
-          )}
         </nav>
 
         {/* User profile footer with Submenu Popover */}

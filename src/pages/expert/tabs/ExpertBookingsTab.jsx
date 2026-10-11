@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { NotificationDialog } from '@/components/ui/notification-dialog'
 import { expertPortalService } from '@/services/expertPortalService'
 
 const ALL = '__ALL__'
@@ -68,6 +69,9 @@ export function ExpertBookingsTab({ initialBookingId }) {
   const [detailLoading, setDetailLoading] = useState(false)
   const [downloadingAttId, setDownloadingAttId] = useState(null)
 
+  // Notification dialog
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+
   const fetchBookings = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -105,7 +109,12 @@ export function ExpertBookingsTab({ initialBookingId }) {
       const data = await expertPortalService.getBookingDetail(id)
       setSelectedBooking(data)
     } catch (err) {
-      alert(err.message || 'Không thể xem chi tiết lịch hẹn.')
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Không thể xem chi tiết lịch hẹn',
+        description: err.message || 'Lỗi khi tải thông tin lịch hẹn.',
+      })
     } finally {
       setDetailLoading(false)
     }
@@ -121,7 +130,12 @@ export function ExpertBookingsTab({ initialBookingId }) {
         window.open(attachment.fileUrl, '_blank')
       }
     } catch (err) {
-      alert(err.message || 'Không thể tải tệp đính kèm.')
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Không thể tải tệp đính kèm',
+        description: err.message || 'Lỗi khi tải tài liệu đính kèm.',
+      })
     } finally {
       setDownloadingAttId(null)
     }
@@ -493,7 +507,26 @@ export function ExpertBookingsTab({ initialBookingId }) {
                 </div>
               </div>
 
-              <DialogFooter>
+              <DialogFooter className="flex-row items-center justify-between sm:justify-between w-full">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (selectedBooking?.bookingCode) {
+                      navigator.clipboard?.writeText(selectedBooking.bookingCode)
+                      setNotice({
+                        open: true,
+                        type: 'success',
+                        title: 'Đã sao chép mã lịch hẹn',
+                        description: `Đã sao chép mã #${selectedBooking.bookingCode} vào bộ nhớ tạm.`,
+                      })
+                    }
+                  }}
+                  className="gap-1 text-xs"
+                >
+                  <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                  <span>Sao chép mã</span>
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => setSelectedBooking(null)}>
                   Đóng
                 </Button>
@@ -502,6 +535,15 @@ export function ExpertBookingsTab({ initialBookingId }) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Thông báo chung (Notification Dialog) */}
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
+      />
     </div>
   )
 }
