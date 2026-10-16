@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
@@ -13,14 +15,26 @@ const ALL = '__ALL__'
 
 const STATUS_MAP = {
   PENDING_PAYMENT: { label: 'Chờ thanh toán', variant: 'warning', color: 'text-amber-700 bg-amber-50' },
-  AWAITING_EXPERT_APPROVAL: { label: 'Chờ duyệt (SLA 2h)', variant: 'orange', color: 'text-orange-700 bg-orange-50' },
+  AWAITING_EXPERT_APPROVAL: { label: 'Chờ duyệt', variant: 'orange', color: 'text-orange-700 bg-orange-50' },
   CONFIRMED: { label: 'Đã xác nhận', variant: 'success', color: 'text-emerald-700 bg-emerald-50' },
+  IN_PROGRESS: { label: 'Đang tư vấn', variant: 'warning', color: 'text-amber-800 bg-amber-100' },
   COMPLETED: { label: 'Đã hoàn thành', variant: 'default', color: 'text-blue-700 bg-blue-50' },
+  SETTLED: { label: 'Đã giải ngân', variant: 'success', color: 'text-emerald-800 bg-emerald-100' },
   REJECTED_BY_EXPERT: { label: 'Đã từ chối', variant: 'destructive', color: 'text-red-700 bg-red-50' },
   CANCELLED_BY_USER: { label: 'Khách đã hủy', variant: 'muted', color: 'text-stone-600 bg-stone-100' },
   CANCELLED_BY_EXPERT: { label: 'Chuyên gia hủy', variant: 'muted', color: 'text-stone-600 bg-stone-100' },
   EXPIRED_NO_RESPONSE: { label: 'Hết hạn phản hồi', variant: 'destructive', color: 'text-red-700 bg-red-50' },
   EXPIRED_UNPAID: { label: 'Hết hạn thanh toán', variant: 'muted', color: 'text-stone-600 bg-stone-100' },
+}
+
+const ESCROW_STATUS_MAP = {
+  PendingPayment: { label: 'Chờ thanh toán', variant: 'warning' },
+  HeldInEscrow: { label: 'Đang tạm giữ bảo đảm', variant: 'success' },
+  CoolingDown: { label: 'Chờ kết toán (24h)', variant: 'orange' },
+  Settled: { label: 'Đã giải ngân về ví', variant: 'default' },
+  Refunded: { label: 'Đã hoàn tiền 100%', variant: 'muted' },
+  PartiallyRefunded: { label: 'Hoàn tiền một phần', variant: 'orange' },
+  Cancelled: { label: 'Đã hủy', variant: 'destructive' },
 }
 
 const SESSION_TYPE_MAP = {
@@ -68,6 +82,12 @@ export function ExpertBookingsTab({ initialBookingId }) {
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [downloadingAttId, setDownloadingAttId] = useState(null)
+
+  // Live Consultation & Dossier dialog states
+  const [dossierState, setDossierState] = useState({ open: false, loading: false, data: null, booking: null, error: null })
+  const [completeState, setCompleteState] = useState({ open: false, loading: false, booking: null, sharedNotes: '', error: null })
+  const [noShowState, setNoShowState] = useState({ open: false, loading: false, booking: null, noShowParty: 'CUSTOMER', reason: '', error: null })
+  const [escrowState, setEscrowState] = useState({ open: false, loading: false, data: null, booking: null, error: null })
 
   // Notification dialog
   const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
@@ -138,6 +158,126 @@ export function ExpertBookingsTab({ initialBookingId }) {
       })
     } finally {
       setDownloadingAttId(null)
+    }
+  }
+
+  // Live Consultation Handlers
+  const handleJoinConsultation = async (bookingId) => {
+    try {
+      const res = await expertPortalService.joinConsultation(bookingId)
+      if (res?.roomUrl) {
+        window.open(res.roomUrl, '_blank')
+        setNotice({
+          open: true,
+          type: 'success',
+          title: 'Đang mở phòng tư vấn trực tuyến',
+          description: `Đã mở phòng tư vấn trực tuyến (Jitsi Meet). Hệ thống đã tự động cập nhật trạng thái buổi tư vấn sang "Đang tư vấn".`,
+        })
+        fetchBookings()
+        if (selectedBooking && selectedBooking.id === bookingId) {
+          handleOpenDetail(bookingId)
+        }
+      } else {
+        throw new Error('Không nhận được đường dẫn phòng họp từ hệ thống.')
+      }
+    } catch (err) {
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Chưa thể vào phòng tư vấn',
+        description: err.message || 'Lỗi khi kết nối tới phòng tư vấn.',
+      })
+    }
+  }
+
+  const handleOpenDossier = async (booking) => {
+    setDossierState({ open: true, loading: true, data: null, booking, error: null })
+    try {
+      const data = await expertPortalService.getSharedTaxDossier(booking.id)
+      setDossierState({ open: true, loading: false, data, booking, error: null })
+    } catch (err) {
+      setDossierState((prev) => ({
+        ...prev,
+        loading: false,
+        error: err.message || 'Không thể tải hồ sơ thuế chia sẻ của khách hàng.',
+      }))
+    }
+  }
+
+  const handleOpenComplete = (booking) => {
+    setCompleteState({
+      open: true,
+      loading: false,
+      booking,
+      sharedNotes: booking.sharedNotes || '',
+      error: null,
+    })
+  }
+
+  const handleSubmitComplete = async () => {
+    if (!completeState.booking) return
+    const notes = completeState.sharedNotes?.trim() || ''
+    if (notes.length < 10) {
+      setCompleteState((p) => ({ ...p, error: 'Biên bản tóm tắt kết quả tư vấn phải có ít nhất 10 ký tự.' }))
+      return
+    }
+    setCompleteState((p) => ({ ...p, loading: true, error: null }))
+    try {
+      await expertPortalService.completeConsultation(completeState.booking.id, { sharedNotes: notes })
+      setCompleteState({ open: false, loading: false, booking: null, sharedNotes: '', error: null })
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Hoàn thành ca tư vấn',
+        description: 'Ca tư vấn đã được hoàn tất thành công. Số tiền ký quỹ được chuyển sang giai đoạn chờ kết toán 24h (Cooling-down) để bảo vệ quyền lợi hai bên trước khi giải ngân vào ví.',
+      })
+      fetchBookings()
+      if (selectedBooking) setSelectedBooking(null)
+    } catch (err) {
+      setCompleteState((p) => ({ ...p, loading: false, error: err.message || 'Không thể hoàn tất ca tư vấn.' }))
+    }
+  }
+
+  const handleOpenNoShow = (booking) => {
+    setNoShowState({
+      open: true,
+      loading: false,
+      booking,
+      noShowParty: 'CUSTOMER',
+      reason: '',
+      error: null,
+    })
+  }
+
+  const handleSubmitNoShow = async () => {
+    if (!noShowState.booking) return
+    setNoShowState((p) => ({ ...p, loading: true, error: null }))
+    try {
+      await expertPortalService.reportNoShow(noShowState.booking.id, {
+        noShowParty: noShowState.noShowParty,
+        reason: noShowState.reason?.trim() || undefined,
+      })
+      setNoShowState({ open: false, loading: false, booking: null, noShowParty: 'CUSTOMER', reason: '', error: null })
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Đã ghi nhận vắng mặt (No-Show)',
+        description: 'Hệ thống đã tự động xử lý và bảo vệ quyền lợi theo quy định chính sách vắng mặt ca tư vấn.',
+      })
+      fetchBookings()
+      if (selectedBooking) setSelectedBooking(null)
+    } catch (err) {
+      setNoShowState((p) => ({ ...p, loading: false, error: err.message || 'Không thể báo vắng mặt.' }))
+    }
+  }
+
+  const handleOpenEscrow = async (booking) => {
+    setEscrowState({ open: true, loading: true, data: null, booking, error: null })
+    try {
+      const data = await expertPortalService.getBookingEscrow(booking.id)
+      setEscrowState({ open: true, loading: false, data, booking, error: null })
+    } catch (err) {
+      setEscrowState((p) => ({ ...p, loading: false, error: err.message || 'Không thể tải thông tin ký quỹ bảo đảm.' }))
     }
   }
 
@@ -287,14 +427,28 @@ export function ExpertBookingsTab({ initialBookingId }) {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleOpenDetail(b.id)}
-                        className="text-xs h-8"
-                      >
-                        Chi tiết
-                      </Button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        {(b.status === 'CONFIRMED' || b.status === 'IN_PROGRESS') && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => handleJoinConsultation(b.id)}
+                            className="text-xs h-8 gap-1 bg-primary text-on-primary hover:bg-primary/90 font-medium"
+                            title="Vào phòng tư vấn trực tuyến Jitsi Meet"
+                          >
+                            <span className="material-symbols-outlined text-[15px]">videocam</span>
+                            <span>Vào phòng</span>
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleOpenDetail(b.id)}
+                          className="text-xs h-8"
+                        >
+                          Chi tiết
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )
@@ -431,7 +585,92 @@ export function ExpertBookingsTab({ initialBookingId }) {
                       )}
                     </div>
                   )}
+
+                  <div className="flex items-center justify-between pt-2 border-t border-outline-variant/20">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleOpenEscrow(selectedBooking)}
+                      className="gap-1.5 text-xs h-8 text-primary font-medium hover:bg-primary/5"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">lock_clock</span>
+                      <span>Xem trạng thái ký quỹ bảo đảm Escrow</span>
+                    </Button>
+                  </div>
                 </div>
+
+                {/* Hành động ca tư vấn trực tuyến */}
+                {(selectedBooking.status === 'CONFIRMED' || selectedBooking.status === 'IN_PROGRESS') && (
+                  <div className="p-3.5 rounded-xl border-2 border-primary/20 bg-primary/5 flex flex-col gap-2.5">
+                    <span className="font-bold text-primary uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[18px]">video_chat</span>
+                      <span>Thao tác buổi tư vấn trực tuyến</span>
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => handleJoinConsultation(selectedBooking.id)}
+                        className="gap-1.5 text-xs h-9 bg-primary text-on-primary hover:bg-primary/90 font-bold"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">videocam</span>
+                        <span>Vào phòng tư vấn (Jitsi Meet)</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenDossier(selectedBooking)}
+                        className="gap-1.5 text-xs h-9 font-medium"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">folder_shared</span>
+                        <span>Hồ sơ thuế chia sẻ</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleOpenComplete(selectedBooking)}
+                        className="gap-1.5 text-xs h-9 font-medium"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">assignment_turned_in</span>
+                        <span>Biên bản & Kết thúc ca</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenNoShow(selectedBooking)}
+                        className="gap-1.5 text-xs h-9 font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">person_off</span>
+                        <span>Báo vắng mặt</span>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {(selectedBooking.status === 'COMPLETED' || selectedBooking.status === 'SETTLED') && (
+                  <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-200 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-blue-900 uppercase tracking-wider text-[11px] flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[16px]">task_alt</span>
+                        <span>Ca tư vấn đã hoàn thành</span>
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenDossier(selectedBooking)}
+                        className="gap-1 text-xs h-7"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">folder_shared</span>
+                        <span>Xem hồ sơ thuế</span>
+                      </Button>
+                    </div>
+                    {selectedBooking.sharedNotes && (
+                      <div className="bg-white p-2.5 rounded-lg border border-blue-100 text-xs text-on-surface">
+                        <span className="font-semibold text-on-surface-variant block mb-1">Biên bản kết thúc ca:</span>
+                        <p className="whitespace-pre-wrap">{selectedBooking.sharedNotes}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Problem Description */}
                 <div className="p-3.5 rounded-xl bg-surface-container-low flex flex-col gap-1.5">
@@ -544,6 +783,508 @@ export function ExpertBookingsTab({ initialBookingId }) {
         title={notice.title}
         description={notice.description}
       />
+
+      {/* Modal: Hồ sơ thuế chia sẻ (Shared Tax Dossier) */}
+      <SharedTaxDossierDialog
+        state={dossierState}
+        onClose={() => setDossierState((p) => ({ ...p, open: false }))}
+      />
+
+      {/* Modal: Biên bản & Kết thúc ca tư vấn */}
+      <CompleteConsultationDialog
+        state={completeState}
+        onChangeNotes={(notes) => setCompleteState((p) => ({ ...p, sharedNotes: notes, error: null }))}
+        onSubmit={handleSubmitComplete}
+        onClose={() => setCompleteState((p) => ({ ...p, open: false }))}
+      />
+
+      {/* Modal: Báo vắng mặt (No-Show) */}
+      <NoShowReportDialog
+        state={noShowState}
+        onChangeParty={(party) => setNoShowState((p) => ({ ...p, noShowParty: party }))}
+        onChangeReason={(reason) => setNoShowState((p) => ({ ...p, reason }))}
+        onSubmit={handleSubmitNoShow}
+        onClose={() => setNoShowState((p) => ({ ...p, open: false }))}
+      />
+
+      {/* Modal: Chi tiết Ký quỹ Escrow */}
+      <BookingEscrowDialog
+        state={escrowState}
+        onClose={() => setEscrowState((p) => ({ ...p, open: false }))}
+      />
     </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
+// SUB-DIALOGS FOR CONSULTATION FEATURES
+// ═══════════════════════════════════════════════════════════
+
+function SharedTaxDossierDialog({ state, onClose }) {
+  const { open, loading, data, booking, error } = state
+  const [activeTab, setActiveTab] = useState('income')
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-primary">
+            <span className="material-symbols-outlined text-[24px]">folder_shared</span>
+            Hồ sơ Thuế Chia sẻ: {booking?.userFullName}
+          </DialogTitle>
+          <DialogDescription>
+            Tài liệu và dữ liệu thuế khách hàng đã đồng ý chia sẻ phục vụ phiên tư vấn #{booking?.bookingCode}
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading ? (
+          <div className="py-20 flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs text-on-surface-variant">Đang tải hồ sơ thuế...</span>
+          </div>
+        ) : error ? (
+          <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">{error}</div>
+        ) : !data ? null : (
+          <div className="flex-1 overflow-y-auto flex flex-col gap-4 text-xs pr-1">
+            {/* Taxpayer Overview */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl bg-surface-container-low border">
+              <div>
+                <span className="text-on-surface-variant block">Mã số thuế:</span>
+                <span className="font-bold font-mono text-on-surface">{data.taxpayerInfo?.taxCode || 'Chưa cung cấp'}</span>
+              </div>
+              <div>
+                <span className="text-on-surface-variant block">Số CMND/CCCD:</span>
+                <span className="font-bold font-mono text-on-surface">{data.taxpayerInfo?.idNumber || '—'}</span>
+              </div>
+              <div>
+                <span className="text-on-surface-variant block">Giảm trừ gia cảnh:</span>
+                <span className="font-bold text-on-surface">{data.taxpayerInfo?.hasFamilyDeduction ? 'Có đăng ký' : 'Chưa đăng ký'}</span>
+              </div>
+              <div>
+                <span className="text-on-surface-variant block">Email liên hệ:</span>
+                <span className="font-medium text-on-surface">{data.taxpayerInfo?.email || '—'}</span>
+              </div>
+            </div>
+
+            {/* Sub-tabs */}
+            <div className="flex gap-2 border-b border-outline-variant/30 pb-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('income')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${activeTab === 'income' ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-on-surface hover:bg-surface-container'}`}
+              >
+                Nguồn thu nhập ({data.incomeSources?.length || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('monthly')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${activeTab === 'monthly' ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-on-surface hover:bg-surface-container'}`}
+              >
+                Kê khai tháng ({data.monthlyIncomes?.length || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('dependents')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${activeTab === 'dependents' ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-on-surface hover:bg-surface-container'}`}
+              >
+                Người phụ thuộc TT87 ({data.dependents?.length || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('documents')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${activeTab === 'documents' ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-on-surface hover:bg-surface-container'}`}
+              >
+                Chứng từ y tế / GD ({data.documents?.length || 0})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('settlement')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${activeTab === 'settlement' ? 'bg-primary text-on-primary' : 'bg-surface-container-low text-on-surface hover:bg-surface-container'}`}
+              >
+                Nháp quyết toán
+              </button>
+            </div>
+
+            {/* Tab: Income Sources */}
+            {activeTab === 'income' && (
+              <div className="flex flex-col gap-2">
+                {(!data.incomeSources || data.incomeSources.length === 0) ? (
+                  <p className="text-on-surface-variant p-4 text-center">Khách hàng chưa thêm nguồn thu nhập nào.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Đơn vị chi trả</TableHead>
+                        <TableHead>Mã số thuế</TableHead>
+                        <TableHead>Loại thu nhập</TableHead>
+                        <TableHead className="text-right">Thu nhập ước tính</TableHead>
+                        <TableHead className="text-right">Thuế đã khấu trừ</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.incomeSources.map((s, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="font-semibold text-on-surface">{s.companyName}</TableCell>
+                          <TableCell className="font-mono">{s.taxCode || '—'}</TableCell>
+                          <TableCell>{s.incomeType || 'Tiền lương, tiền công'}</TableCell>
+                          <TableCell className="text-right font-mono font-bold text-on-surface">{formatCurrency(s.estimatedAnnualIncome)}</TableCell>
+                          <TableCell className="text-right font-mono text-emerald-700">{formatCurrency(s.taxWithheld)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            )}
+
+            {/* Tab: Monthly Incomes */}
+            {activeTab === 'monthly' && (
+              <div className="flex flex-col gap-2">
+                {(!data.monthlyIncomes || data.monthlyIncomes.length === 0) ? (
+                  <p className="text-on-surface-variant p-4 text-center">Chưa có dữ liệu kê khai thu nhập hàng tháng.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tháng/Năm</TableHead>
+                        <TableHead className="text-right">Tổng thu nhập (Gross)</TableHead>
+                        <TableHead className="text-right">Thu nhập tính thuế</TableHead>
+                        <TableHead className="text-right">Thuế đã tạm nộp</TableHead>
+                        <TableHead className="text-right">BHXH / Trừ bảo hiểm</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.monthlyIncomes.map((m, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="font-bold text-on-surface">Tháng {m.month}/{m.year}</TableCell>
+                          <TableCell className="text-right font-mono">{formatCurrency(m.grossIncome)}</TableCell>
+                          <TableCell className="text-right font-mono font-semibold">{formatCurrency(m.taxableIncome)}</TableCell>
+                          <TableCell className="text-right font-mono text-emerald-700">{formatCurrency(m.taxDeducted)}</TableCell>
+                          <TableCell className="text-right font-mono text-on-surface-variant">{formatCurrency(m.insuranceDeduction)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            )}
+
+            {/* Tab: Dependents */}
+            {activeTab === 'dependents' && (
+              <div className="flex flex-col gap-2">
+                {(!data.dependents || data.dependents.length === 0) ? (
+                  <p className="text-on-surface-variant p-4 text-center">Khách hàng chưa đăng ký người phụ thuộc nào.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Họ và tên</TableHead>
+                        <TableHead>Quan hệ</TableHead>
+                        <TableHead>Ngày sinh</TableHead>
+                        <TableHead>MST / CCCD</TableHead>
+                        <TableHead>Thời gian tính giảm trừ</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.dependents.map((dep, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="font-bold text-on-surface">{dep.fullName}</TableCell>
+                          <TableCell>{dep.relationship}</TableCell>
+                          <TableCell>{formatDate(dep.dateOfBirth)}</TableCell>
+                          <TableCell className="font-mono">{dep.taxCodeOrId || '—'}</TableCell>
+                          <TableCell>{dep.deductionFromMonth || '—'} đến {dep.deductionToMonth || 'Hiện tại'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            )}
+
+            {/* Tab: Documents */}
+            {activeTab === 'documents' && (
+              <div className="flex flex-col gap-2">
+                {(!data.documents || data.documents.length === 0) ? (
+                  <p className="text-on-surface-variant p-4 text-center">Chưa có chứng từ y tế / giáo dục nào được tải lên.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {data.documents.map((doc, idx) => (
+                      <div key={idx} className="p-3 rounded-xl border bg-surface-container-lowest flex items-center justify-between">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="material-symbols-outlined text-primary text-[22px]">receipt_long</span>
+                          <div className="min-w-0">
+                            <span className="font-bold text-on-surface block truncate">{doc.title || doc.documentType}</span>
+                            <span className="text-[11px] text-on-surface-variant block">
+                              Số tiền: {formatCurrency(doc.amount)} • {formatDate(doc.documentDate)}
+                            </span>
+                          </div>
+                        </div>
+                        {doc.fileUrl && (
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => window.open(doc.fileUrl, '_blank')}>
+                            Xem
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab: Settlement Draft */}
+            {activeTab === 'settlement' && (
+              <div className="flex flex-col gap-3">
+                {!data.draftSettlement ? (
+                  <p className="text-on-surface-variant p-4 text-center">Chưa có bảng nháp quyết toán thuế.</p>
+                ) : (
+                  <div className="p-4 rounded-xl border bg-surface-container-low space-y-2">
+                    <span className="font-bold text-on-surface text-sm block">Quyết toán tạm tính năm {data.draftSettlement.taxYear}</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div className="p-2.5 rounded-lg bg-white border">
+                        <span className="text-on-surface-variant block text-[11px]">Tổng thu nhập chịu thuế</span>
+                        <span className="font-bold text-on-surface text-sm">{formatCurrency(data.draftSettlement.totalTaxableIncome)}</span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-white border">
+                        <span className="text-on-surface-variant block text-[11px]">Giảm trừ bản thân & NPT</span>
+                        <span className="font-bold text-on-surface text-sm">{formatCurrency((data.draftSettlement.personalDeduction || 0) + (data.draftSettlement.dependentDeductions || 0))}</span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-white border">
+                        <span className="text-on-surface-variant block text-[11px]">Thu nhập tính thuế sau giảm trừ</span>
+                        <span className="font-bold text-primary text-sm">{formatCurrency(data.draftSettlement.netTaxableIncome)}</span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-white border">
+                        <span className="text-on-surface-variant block text-[11px]">Thuế TNCN phải nộp cả năm</span>
+                        <span className="font-bold text-on-surface text-sm">{formatCurrency(data.draftSettlement.taxPayable)}</span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-white border">
+                        <span className="text-on-surface-variant block text-[11px]">Thuế đã tạm nộp / khấu trừ</span>
+                        <span className="font-bold text-emerald-700 text-sm">{formatCurrency(data.draftSettlement.taxPaid)}</span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-white border">
+                        <span className="text-on-surface-variant block text-[11px]">Chênh lệch (Hoàn lại / Nộp thêm)</span>
+                        <span className={`font-bold text-sm ${data.draftSettlement.taxRefundOrDue >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                          {data.draftSettlement.taxRefundOrDue >= 0 ? `Hoàn lại: ${formatCurrency(data.draftSettlement.taxRefundOrDue)}` : `Nộp thêm: ${formatCurrency(Math.abs(data.draftSettlement.taxRefundOrDue))}`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter className="mt-4">
+          <Button variant="outline" size="sm" onClick={onClose}>Đóng</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CompleteConsultationDialog({ state, onChangeNotes, onSubmit, onClose }) {
+  const { open, loading, booking, sharedNotes, error } = state
+  const noteLength = (sharedNotes || '').trim().length
+  const isValid = noteLength >= 10
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-primary">
+            <span className="material-symbols-outlined text-[24px]">assignment_turned_in</span>
+            Ghi Biên Bản & Hoàn Tất Ca Tư Vấn
+          </DialogTitle>
+          <DialogDescription>
+            Tóm tắt kết luận và hướng dẫn cho khách hàng #{booking?.bookingCode}. Biên bản này sẽ được lưu vào hồ sơ và hiển thị cho khách hàng.
+          </DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
+            {error}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2 py-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="shared-notes" className="text-xs font-bold text-on-surface">
+              Nội dung biên bản tóm tắt kết quả tư vấn <span className="text-red-500">*</span>
+            </Label>
+            <span className={`text-[11px] ${noteLength < 10 ? 'text-red-500 font-semibold' : 'text-on-surface-variant'}`}>
+              {noteLength}/5000 (Tối thiểu 10 ký tự)
+            </span>
+          </div>
+          <Textarea
+            id="shared-notes"
+            rows={5}
+            value={sharedNotes}
+            onChange={(e) => onChangeNotes(e.target.value)}
+            placeholder="Ghi rõ tóm tắt buổi làm việc, các điểm lưu ý về nghĩa vụ thuế, tài liệu khách hàng cần bổ sung hoặc các bước tiếp theo..."
+            className="text-xs"
+          />
+          <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] space-y-1">
+            <div className="font-bold flex items-center gap-1">
+              <span className="material-symbols-outlined text-[15px]">info</span>
+              Quy tắc thanh toán bảo chứng:
+            </div>
+            <p>
+              Sau khi bạn xác nhận hoàn tất ca, tiền ký quỹ sẽ chuyển sang trạng thái <strong>Chờ kết toán 24h (Cooling-down)</strong>. Nếu khách hàng không có khiếu nại trong 24 giờ, tiền thù lao sẽ tự động được giải ngân vào ví chuyên gia.
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={loading}>Hủy</Button>
+          <Button
+            size="sm"
+            onClick={onSubmit}
+            disabled={loading || !isValid}
+            className="font-bold bg-primary text-on-primary"
+          >
+            {loading ? 'Đang hoàn tất...' : 'Xác nhận hoàn tất ca'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function NoShowReportDialog({ state, onChangeParty, onChangeReason, onSubmit, onClose }) {
+  const { open, loading, booking, noShowParty, reason, error } = state
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-red-600">
+            <span className="material-symbols-outlined text-[24px]">person_off</span>
+            Báo Vắng Mặt Ca Tư Vấn (No-Show)
+          </DialogTitle>
+          <DialogDescription>
+            Áp dụng khi một bên không tham gia phòng tư vấn trực tuyến sau 15 phút kể từ giờ bắt đầu #{booking?.bookingCode}.
+          </DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
+            {error}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3 py-2 text-xs">
+          <div className="flex flex-col gap-1.5">
+            <Label className="font-bold text-on-surface">Đối tượng vắng mặt</Label>
+            <Select value={noShowParty} onValueChange={onChangeParty}>
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CUSTOMER">Khách hàng vắng mặt (Customer No-Show)</SelectItem>
+                <SelectItem value="EXPERT">Chuyên gia có việc đột xuất không thể dự</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="noshow-reason" className="font-bold text-on-surface">Lý do vắng mặt / ghi chú</Label>
+            <Textarea
+              id="noshow-reason"
+              rows={3}
+              value={reason}
+              onChange={(e) => onChangeReason(e.target.value)}
+              placeholder="Ghi rõ lý do vắng mặt hoặc thời điểm đã chờ quá 15 phút..."
+              className="text-xs"
+            />
+          </div>
+
+          <div className="p-3 rounded-lg bg-surface-container-low border text-[11px] text-on-surface-variant space-y-1">
+            <p>• <strong>Khách vắng mặt:</strong> Chuyên gia vẫn được bảo vệ mức thù lao theo chính sách nền tảng.</p>
+            <p>• <strong>Chuyên gia vắng mặt:</strong> Hệ thống hoàn tiền 100% cho người nộp thuế.</p>
+            <p className="text-red-600 font-semibold">• Lưu ý: Hệ thống chỉ chấp nhận báo sau khi quá 15 phút so với giờ hẹn bắt đầu.</p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={loading}>Hủy</Button>
+          <Button size="sm" variant="destructive" onClick={onSubmit} disabled={loading} className="font-bold">
+            {loading ? 'Đang gửi...' : 'Xác nhận báo vắng mặt'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function BookingEscrowDialog({ state, onClose }) {
+  const { open, loading, data, booking, error } = state
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-primary">
+            <span className="material-symbols-outlined text-[24px]">verified_user</span>
+            Ký Quỹ Bảo Đảm (Escrow)
+          </DialogTitle>
+          <DialogDescription>
+            Bản ghi quỹ bảo đảm ca tư vấn #{booking?.bookingCode}
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading ? (
+          <div className="py-12 flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs text-on-surface-variant">Đang tải thông tin ký quỹ...</span>
+          </div>
+        ) : error ? (
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">{error}</div>
+        ) : !data ? null : (
+          <div className="flex flex-col gap-3 py-2 text-xs">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-surface-container-low border">
+              <span className="text-on-surface-variant">Trạng thái ký quỹ:</span>
+              <Badge variant={ESCROW_STATUS_MAP[data.escrowStatus]?.variant || 'outline'}>
+                {ESCROW_STATUS_MAP[data.escrowStatus]?.label || data.escrowStatus}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-3 rounded-lg border bg-white">
+                <span className="text-[11px] text-on-surface-variant block">Tổng tiền khách trả</span>
+                <span className="font-bold text-base text-on-surface">{formatCurrency(data.amount)}</span>
+              </div>
+              <div className="p-3 rounded-lg border bg-white">
+                <span className="text-[11px] text-on-surface-variant block">Chuyên gia thực nhận</span>
+                <span className="font-bold text-base text-primary">{formatCurrency(data.expertReceivable)}</span>
+              </div>
+              <div className="p-3 rounded-lg border bg-white">
+                <span className="text-[11px] text-on-surface-variant block">Hoa hồng nền tảng</span>
+                <span className="font-semibold text-emerald-700 text-sm">
+                  {formatCurrency(data.commissionAmount)} ({data.commissionRate * 100}%)
+                </span>
+              </div>
+              <div className="p-3 rounded-lg border bg-white">
+                <span className="text-[11px] text-on-surface-variant block">Cổng thanh toán</span>
+                <span className="font-mono text-on-surface text-sm">{data.paymentGateway || 'PAYOS'}</span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-lg bg-surface-container-low border flex flex-col gap-1 text-[11px] text-on-surface-variant">
+              <div>Thời gian thanh toán: <strong className="text-on-surface">{formatDateTime(data.paidAt)}</strong></div>
+              <div>Thời gian giải ngân: <strong className="text-on-surface">{formatDateTime(data.settledAt)}</strong></div>
+              {data.refundAmount > 0 && (
+                <div className="text-red-700">
+                  Đã hoàn trả: <strong>{formatCurrency(data.refundAmount)}</strong> lúc {formatDateTime(data.refundedAt)}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>Đóng</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

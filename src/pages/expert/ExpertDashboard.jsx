@@ -4,13 +4,15 @@ import { ExpertLayout } from '@/layouts/ExpertLayout'
 import { ExpertOverviewTab } from './tabs/ExpertOverviewTab'
 import { ExpertPendingBookingsTab } from './tabs/ExpertPendingBookingsTab'
 import { ExpertBookingsTab } from './tabs/ExpertBookingsTab'
+import { ExpertSlotsTab } from './tabs/ExpertSlotsTab'
 import { ExpertProfileTab } from './tabs/ExpertProfileTab'
 import { expertPortalService } from '@/services/expertPortalService'
 
 const SECTION_TITLES = {
   'tong-quan': 'Tổng quan & Thống kê',
-  'cho-tiep-nhan': 'Ca tư vấn chờ tiếp nhận (SLA 2 giờ)',
+  'cho-tiep-nhan': 'Ca tư vấn chờ tiếp nhận',
   'lich-hen': 'Quản lý lịch hẹn tư vấn',
+  'khung-gio': 'Quản lý lịch làm việc (Slot)',
   'ho-so': 'Hồ sơ chuyên gia & Chứng chỉ',
 }
 
@@ -77,6 +79,8 @@ export function ExpertDashboard() {
       {currentRoute === 'lich-hen' && (
         <ExpertBookingsTab initialBookingId={selectedBookingId} />
       )}
+
+      {currentRoute === 'khung-gio' && <ExpertSlotsTab />}
 
       {currentRoute === 'ho-so' && <ExpertProfileTab />}
     </ExpertLayout>

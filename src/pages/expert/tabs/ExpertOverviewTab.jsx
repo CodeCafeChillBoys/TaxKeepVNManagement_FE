@@ -25,9 +25,11 @@ const SESSION_TYPE_MAP = {
 
 const STATUS_MAP = {
   PENDING_PAYMENT: { label: 'Chờ thanh toán', variant: 'warning' },
-  AWAITING_EXPERT_APPROVAL: { label: 'Chờ duyệt (SLA 2h)', variant: 'orange' },
+  AWAITING_EXPERT_APPROVAL: { label: 'Chờ duyệt', variant: 'orange' },
   CONFIRMED: { label: 'Đã xác nhận', variant: 'success' },
+  IN_PROGRESS: { label: 'Đang tư vấn', variant: 'warning' },
   COMPLETED: { label: 'Đã hoàn thành', variant: 'default' },
+  SETTLED: { label: 'Đã giải ngân', variant: 'success' },
   REJECTED_BY_EXPERT: { label: 'Đã từ chối', variant: 'destructive' },
   CANCELLED_BY_USER: { label: 'Khách đã hủy', variant: 'muted' },
   CANCELLED_BY_EXPERT: { label: 'Chuyên gia hủy', variant: 'muted' },
@@ -92,6 +94,8 @@ export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
     completed: 0,
     totalRevenue: 0,
   })
+  const [upcomingReminder, setUpcomingReminder] = useState(null)
+  const [joiningMeeting, setJoiningMeeting] = useState(false)
 
   // Dialog states
   const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
@@ -99,9 +103,10 @@ export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
   const [revenueInfoOpen, setRevenueInfoOpen] = useState(false)
 
   const fetchData = useCallback(async () => {
-    const [pendingRes, allRes] = await Promise.all([
+    const [pendingRes, allRes, reminderRes] = await Promise.all([
       expertPortalService.getPendingBookings({ page: 1, size: 5 }).catch(() => ({ items: [] })),
       expertPortalService.getExpertBookings({ page: 1, size: 50 }).catch(() => ({ items: [] })),
+      expertPortalService.getUpcomingReminder().catch(() => null),
     ])
 
     const pendingItems = pendingRes?.items || []
@@ -119,6 +124,7 @@ export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
     setPendingBookings(pendingItems)
     setConfirmedBookings(confirmedItems.slice(0, 5))
     setAllBookings(allItems)
+    setUpcomingReminder(reminderRes?.hasUpcomingMeeting ? reminderRes : null)
     setStats({
       pending: pendingRes?.pagination?.totalItems ?? pendingItems.length,
       confirmed: confirmedItems.length,
@@ -161,6 +167,35 @@ export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
       })
     } finally {
       setRefreshing(false)
+    }
+  }
+
+  const handleJoinUpcomingMeeting = async () => {
+    if (!upcomingReminder?.bookingId) return
+    setJoiningMeeting(true)
+    try {
+      const res = await expertPortalService.joinConsultation(upcomingReminder.bookingId)
+      if (res?.roomUrl) {
+        window.open(res.roomUrl, '_blank')
+        setNotice({
+          open: true,
+          type: 'success',
+          title: 'Đang mở phòng tư vấn trực tuyến',
+          description: 'Hệ thống đã kết nối và mở phòng tư vấn Jitsi Meet thành công.',
+        })
+        fetchData()
+      } else {
+        throw new Error('Chưa nhận được đường dẫn phòng họp từ hệ thống.')
+      }
+    } catch (err) {
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Chưa thể vào phòng tư vấn',
+        description: err.message || 'Lỗi khi kết nối tới phòng tư vấn.',
+      })
+    } finally {
+      setJoiningMeeting(false)
     }
   }
 
@@ -216,6 +251,101 @@ export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
         </div>
       </div>
 
+      {/* Upcoming Meeting Alert Banner */}
+      {upcomingReminder && (
+        <div className={`rounded-2xl p-6 border shadow-md flex flex-col md:flex-row md:items-center justify-between gap-5 transition-all ${
+          upcomingReminder.isRoomOpen || upcomingReminder.canJoinRoom
+            ? 'bg-gradient-to-r from-emerald-950/90 via-emerald-900/90 to-teal-950/90 border-emerald-500/50 text-white ring-2 ring-emerald-400/40'
+            : 'bg-gradient-to-r from-amber-950/90 via-stone-900/90 to-amber-950/80 border-amber-500/40 text-white'
+        }`}>
+          <div className="flex items-start gap-4 flex-1">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-md ${
+              upcomingReminder.isRoomOpen || upcomingReminder.canJoinRoom
+                ? 'bg-emerald-500 text-white animate-pulse'
+                : 'bg-amber-500 text-stone-950'
+            }`}>
+              <span className="material-symbols-outlined text-[28px]">videocam</span>
+            </div>
+
+            <div className="flex flex-col gap-1.5 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                  upcomingReminder.isRoomOpen || upcomingReminder.canJoinRoom
+                    ? 'bg-emerald-400 text-stone-950'
+                    : 'bg-amber-400 text-stone-950'
+                }`}>
+                  <span className="material-symbols-outlined text-[13px]">
+                    {upcomingReminder.isRoomOpen ? 'meeting_room' : 'schedule'}
+                  </span>
+                  <span>{upcomingReminder.isRoomOpen ? 'PHÒNG HỌP ĐÃ MỞ' : 'LỊCH HẸN SẮP TỚI'}</span>
+                </span>
+
+                <span className="text-xs text-white/70">
+                  Mã: <span className="font-mono font-bold text-amber-300">{upcomingReminder.bookingCode || '—'}</span>
+                </span>
+              </div>
+
+              <h3 className="text-lg font-bold tracking-tight text-white">
+                {upcomingReminder.topicTitle || 'Buổi tư vấn thuế'}
+              </h3>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/80">
+                <span className="flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[15px] text-amber-300">person</span>
+                  <span>Khách hàng: <strong className="text-white">{upcomingReminder.partnerName || 'Khách hàng'}</strong></span>
+                </span>
+
+                <span className="flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[15px] text-amber-300">event</span>
+                  <span>{upcomingReminder.slotDate}</span>
+                </span>
+
+                <span className="flex items-center gap-1 font-mono font-semibold">
+                  <span className="material-symbols-outlined text-[15px] text-amber-300">schedule</span>
+                  <span>
+                    {upcomingReminder.startTime ? String(upcomingReminder.startTime).slice(0, 5) : ''} -{' '}
+                    {upcomingReminder.endTime ? String(upcomingReminder.endTime).slice(0, 5) : ''}
+                  </span>
+                </span>
+              </div>
+
+              {upcomingReminder.reminderMessage && (
+                <p className="text-xs text-emerald-200/90 font-medium mt-0.5">
+                  {upcomingReminder.reminderMessage}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
+            {upcomingReminder.canJoinRoom || upcomingReminder.isRoomOpen ? (
+              <Button
+                onClick={handleJoinUpcomingMeeting}
+                disabled={joiningMeeting}
+                className="bg-emerald-400 hover:bg-emerald-300 text-stone-950 font-bold gap-2 shadow-lg shadow-emerald-400/20 px-5 py-2.5 text-sm cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">videocam</span>
+                <span>{joiningMeeting ? 'Đang kết nối...' : 'Vào phòng họp ngay'}</span>
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (onSelectBooking && upcomingReminder.bookingId) {
+                    onSelectBooking(upcomingReminder.bookingId)
+                  }
+                  onNavigate('lich-hen')
+                }}
+                className="border-white/30 bg-white/10 text-white hover:bg-white/20 font-bold gap-1.5 text-xs cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">visibility</span>
+                <span>Xem chi tiết lịch hẹn</span>
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Chờ tiếp nhận (SLA 2h) */}
@@ -224,11 +354,11 @@ export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
           className={`border shadow-sm transition-all hover:shadow-md cursor-pointer ${
             stats.pending > 0 ? 'border-amber-400/60 bg-amber-50/40 ring-1 ring-amber-400/30' : 'border-outline-variant/30'
           }`}
-          title="Nhấn để xem quy chế phản hồi SLA 2 giờ"
+          title="Nhấn để xem quy chế phản hồi trong 2 giờ"
         >
           <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
             <CardTitle className="text-xs font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-1">
-              <span>Ca chờ duyệt (SLA 2h)</span>
+              <span>Ca chờ duyệt</span>
               <span className="material-symbols-outlined text-[14px] text-amber-600">help</span>
             </CardTitle>
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
@@ -519,11 +649,11 @@ export function ExpertOverviewTab({ onNavigate, onSelectBooking }) {
         open={slaModalOpen}
         onOpenChange={setSlaModalOpen}
         type="warning"
-        title="Quy chế tiếp nhận ca tư vấn (SLA 2 giờ)"
+        title="Quy chế tiếp nhận ca tư vấn"
         description={
           stats.pending > 0
-            ? `Hiện tại bạn có ${stats.pending} ca tư vấn đang chờ xử lý. Theo quy định cam kết chất lượng dịch vụ (SLA) của TaxKeep VN, chuyên gia cần tiếp nhận hoặc từ chối trong vòng 2 giờ kể từ khi khách hàng hoàn tất thanh toán. Quá thời gian này, hệ thống sẽ tự động hoàn trả 100% chi phí cho khách hàng.`
-            : "Chính sách SLA 2 giờ đảm bảo người nộp thuế được hỗ trợ kịp thời. Khi có khách hàng đặt lịch và thanh toán thành công, bạn sẽ nhận được thông báo và có đúng 2 giờ để duyệt hoặc từ chối ca."
+            ? `Hiện tại bạn có ${stats.pending} ca tư vấn đang chờ xử lý. Theo quy chế của TaxKeep VN, chuyên gia cần tiếp nhận hoặc từ chối trong vòng 2 giờ kể từ khi khách hàng hoàn tất thanh toán. Quá thời gian này, hệ thống sẽ tự động hoàn trả 100% chi phí cho khách hàng.`
+            : "Chính sách phản hồi trong 2 giờ đảm bảo người nộp thuế được hỗ trợ kịp thời. Khi có khách hàng đặt lịch và thanh toán thành công, bạn sẽ nhận được thông báo và có đúng 2 giờ để duyệt hoặc từ chối ca."
         }
         confirmText="Đi đến ca chờ tiếp nhận"
         cancelText="Đóng"

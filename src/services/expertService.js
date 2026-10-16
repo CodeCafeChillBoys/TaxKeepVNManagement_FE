@@ -214,4 +214,85 @@ export const expertService = {
     const res = await apiClient.delete(`/api/v1/consultation-fee-configs/${id}`)
     return unwrap(res, 'Không thể xóa cấu hình mức phí.')
   },
+
+  // ═══════════════════════════════════════════
+  // VÍ NỀN TẢNG & SỔ CÁI KÝ QUỸ (ADMIN PLATFORM WALLET & ESCROW LEDGER)
+  // ═══════════════════════════════════════════
+
+  /**
+   * Lấy tổng quan Ví Nền Tảng & Sổ cái tài chính của Admin
+   * GET /api/v1/admin/platform-wallet
+   */
+  getAdminPlatformWallet: async () => {
+    const res = await apiClient.get('/api/v1/admin/platform-wallet')
+    return unwrap(res, 'Không thể tải thông tin Ví Nền tảng.')
+  },
+
+  /**
+   * Lấy danh sách giao dịch ký quỹ Escrow (phân trang, lọc, tìm kiếm, sắp xếp)
+   * GET /api/v1/escrow-transactions
+   */
+  getEscrowTransactions: async ({ page = 1, size = 10, status, search, sort } = {}) => {
+    const params = { page, size }
+    if (status && status !== '__ALL__') params.status = status
+    if (search?.trim()) params.search = search.trim()
+    if (sort) params.sort = sort
+    const res = await apiClient.get('/api/v1/escrow-transactions', { params })
+    return unwrap(res, 'Không thể tải danh sách giao dịch ký quỹ.')
+  },
+
+  /**
+   * Xem chi tiết ký quỹ của một ca tư vấn
+   * GET /api/v1/bookings/{bookingId}/escrow
+   */
+  getBookingEscrow: async (bookingId) => {
+    const res = await apiClient.get(`/api/v1/bookings/${bookingId}/escrow`)
+    return unwrap(res, 'Không thể tải thông tin ký quỹ.')
+  },
+
+  // ═══════════════════════════════════════════
+  // CHÍNH SÁCH SÀN TƯ VẤN & ESCROW (PLATFORM POLICY)
+  // ═══════════════════════════════════════════
+
+  /**
+   * [Admin] Xem toàn bộ thông số vận hành sàn tư vấn và quy chế Escrow hiện hành
+   * GET /api/v1/admin/platform-policy
+   */
+  getPlatformPolicy: async () => {
+    const res = await apiClient.get('/api/v1/admin/platform-policy')
+    return unwrap(res, 'Không thể tải thông tin chính sách sàn và Escrow.')
+  },
+
+  /**
+   * [Admin] Cập nhật các tham số chính sách sàn tư vấn (hoa hồng, thời gian giữ slot, timeout, escrow cooldown...)
+   * PUT /api/v1/admin/platform-policy
+   */
+  updatePlatformPolicy: async (data) => {
+    const res = await apiClient.put('/api/v1/admin/platform-policy', data)
+    return unwrap(res, 'Không thể cập nhật chính sách sàn tư vấn.')
+  },
+
+  // ═══════════════════════════════════════════
+  // LỊCH TRÌNH QUYẾT TOÁN THUẾ (TAX SETTLEMENT SCHEDULE)
+  // ═══════════════════════════════════════════
+
+  /**
+   * [Admin] Lấy cấu hình lịch trình quyết toán thuế TNCN hiện hành
+   * GET /api/v1/admin/tax-settlement-schedule?taxYear=...
+   */
+  getTaxSettlementSchedule: async (taxYear) => {
+    const params = taxYear ? { taxYear } : {}
+    const res = await apiClient.get('/api/v1/admin/tax-settlement-schedule', { params })
+    return unwrap(res, 'Không thể tải lịch trình quyết toán thuế.')
+  },
+
+  /**
+   * [Admin] Cập nhật hạn chót và các mốc ngày nhắc nhở quyết toán thuế
+   * PUT /api/v1/admin/tax-settlement-schedule
+   */
+  updateTaxSettlementSchedule: async (data) => {
+    const res = await apiClient.put('/api/v1/admin/tax-settlement-schedule', data)
+    return unwrap(res, 'Không thể cập nhật lịch trình quyết toán thuế.')
+  },
 }
+

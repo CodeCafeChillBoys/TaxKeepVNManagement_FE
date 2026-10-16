@@ -271,7 +271,7 @@ export function ExpertPendingBookingsTab({ initialBookingId, onRefreshStats }) {
           <div>
             <h2 className="text-lg font-bold text-on-surface">Ca tư vấn chờ tiếp nhận</h2>
             <p className="text-xs text-on-surface-variant">
-              Khách hàng đã thanh toán. Chuyên gia có 2 giờ (SLA) để xem xét tiếp nhận hoặc từ chối.
+              Khách hàng đã thanh toán. Chuyên gia có 2 giờ để xem xét tiếp nhận hoặc từ chối.
             </p>
           </div>
         </div>
@@ -369,7 +369,7 @@ export function ExpertPendingBookingsTab({ initialBookingId, onRefreshStats }) {
                 <TableHead>Hình thức</TableHead>
                 <TableHead className="text-center">Lịch hẹn</TableHead>
                 <TableHead className="text-right">Mức phí</TableHead>
-                <TableHead className="text-center">Hạn duyệt SLA (2h)</TableHead>
+                <TableHead className="text-center">Thời gian chờ duyệt</TableHead>
                 <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>

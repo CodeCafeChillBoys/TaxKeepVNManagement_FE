@@ -73,12 +73,13 @@ export function ExpertLayout({
     { id: 'tong-quan', label: 'Tổng quan & Thống kê', icon: 'dashboard' },
     {
       id: 'cho-tiep-nhan',
-      label: 'Ca chờ duyệt (SLA 2h)',
+      label: 'Ca chờ duyệt',
       icon: 'hourglass_top',
       badge: pendingCount > 0 ? pendingCount : null,
       badgeColor: 'bg-amber-500 text-white animate-pulse',
     },
     { id: 'lich-hen', label: 'Lịch hẹn tư vấn', icon: 'calendar_month' },
+    { id: 'khung-gio', label: 'Lịch làm việc (Slot)', icon: 'more_time' },
     { id: 'ho-so', label: 'Hồ sơ chuyên gia', icon: 'badge' },
   ]
 
@@ -238,7 +239,7 @@ export function ExpertLayout({
                 className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-300 text-amber-800 text-xs font-bold animate-pulse cursor-pointer hover:bg-amber-100 transition-all"
               >
                 <span className="material-symbols-outlined text-[16px] text-amber-600">hourglass_top</span>
-                <span>{pendingCount} ca chờ duyệt (SLA 2h)</span>
+                <span>{pendingCount} ca chờ duyệt</span>
               </button>
             )}
 
