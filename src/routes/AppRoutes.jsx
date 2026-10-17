@@ -3,6 +3,7 @@ import { LoginPage } from '@/pages/LoginPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { AdminDashboard } from '@/pages/admin/AdminDashboard'
 import { ExpertDashboard } from '@/pages/expert/ExpertDashboard'
+import { PaymentResultPage } from '@/pages/PaymentResultPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { ProtectedRoute } from './ProtectedRoute'
 import { PublicRoute } from './PublicRoute'
@@ -42,6 +43,7 @@ export function AppRoutes() {
           </PublicRoute>
         }
       />
+      <Route path="/payments/vnpay-return" element={<PaymentResultPage />} />
 
       {/* Protected Admin Routes */}
       <Route

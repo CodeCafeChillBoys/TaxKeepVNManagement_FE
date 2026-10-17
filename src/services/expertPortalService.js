@@ -148,6 +148,11 @@ export const expertPortalService = {
     return unwrap(res, 'Không thể tải thông tin ký quỹ bảo đảm.')
   },
 
+  handleVnPayReturn: async (params) => {
+    const res = await apiClient.get('/api/v1/payments/vnpay-return', { params })
+    return unwrap(res, 'Không thể xử lý kết quả thanh toán VNPay.')
+  },
+
   // ── 8. PHIÊN TƯ VẤN TRỰC TUYẾN 1-1 (LIVE CONSULTATION EXECUTION) ───
   joinConsultation: async (bookingId) => {
     const res = await apiClient.post(`/api/v1/consultations/${bookingId}/join`)
