@@ -63,20 +63,33 @@ export function PaymentResultPage() {
   const bankCode = vnpParams.vnp_BankCode
   const vnpAmount = vnpParams.vnp_Amount ? Number(vnpParams.vnp_Amount) / 100 : null
 
-  const isSuccess = responseCode === '00' || escrow?.escrowStatus === 'HeldInEscrow'
+  // Đã xác nhận thành công trong cơ sở dữ liệu (Database)
+  const isConfirmedInDb =
+    escrow?.escrowStatus === 'HeldInEscrow' ||
+    escrow?.bookingStatus === 'AWAITING_EXPERT_APPROVAL' ||
+    escrow?.bookingStatus === 'CONFIRMED' ||
+    escrow?.bookingStatus === 'IN_PROGRESS'
+
+  // Chỉ xem là thành công khi DB xác nhận hoặc VNPay báo 00 và không có lỗi backend
+  const isSuccess = isConfirmedInDb || (responseCode === '00' && !errorMessage && !loading && escrow !== null)
 
   // Deep Link mở lại Mobile App: hỗ trợ cả Expo Go (exp://) và Bản cài APK (taxkeep://)
   const { deepLink, expoUrl, standaloneUrl } = useMemo(() => {
     const host = typeof window !== 'undefined' ? window.location.hostname || 'localhost' : 'localhost'
     const effectiveBookingId = escrow?.bookingId || vnpParams.bookingId || ''
 
-    // Tạo query string sạch sẽ chuyển về app (bookingId, isSuccess, mã phản hồi)
-    // Tránh gửi lại chữ ký đã qua decode làm lỗi xác thực chữ ký VNPay
     const qParams = new URLSearchParams()
     if (effectiveBookingId) qParams.set('bookingId', effectiveBookingId)
     qParams.set('isSuccess', isSuccess ? 'true' : 'false')
     if (responseCode) qParams.set('vnp_ResponseCode', responseCode)
     if (orderCode) qParams.set('vnp_TxnRef', orderCode)
+
+    // Chuyển toàn bộ các tham số vnp_ sang deep link để Mobile App có thể fallback đối soát
+    Object.entries(vnpParams).forEach(([k, v]) => {
+      if (k.startsWith('vnp_') && !qParams.has(k)) {
+        qParams.set(k, v)
+      }
+    })
 
     const cleanQuery = qParams.toString() ? `?${qParams.toString()}` : (window.location.search || '')
     const exp = `exp://${host}:8081/--/payments/vnpay-return${cleanQuery}`
@@ -89,7 +102,7 @@ export function PaymentResultPage() {
       expoUrl: exp,
       standaloneUrl: app,
     }
-  }, [escrow?.bookingId, vnpParams.bookingId, isSuccess, responseCode, orderCode])
+  }, [escrow?.bookingId, isSuccess, responseCode, orderCode, vnpParams])
 
   const handleOpenApp = (e) => {
     if (e && e.preventDefault) e.preventDefault()
@@ -102,33 +115,26 @@ export function PaymentResultPage() {
   }
 
   // Gọi Backend để xử lý đối soát & kích hoạt cập nhật trạng thái
-  useEffect(() => {
-    let isMounted = true
-
-    async function processVnPayReturn() {
-      setLoading(true)
-      try {
-        if (Object.keys(vnpParams).length > 0) {
-          const res = await expertPortalService.handleVnPayReturn(vnpParams)
-          if (isMounted && res) {
-            setEscrow(res)
-          }
+  const processVnPayReturn = async () => {
+    setLoading(true)
+    setErrorMessage('')
+    try {
+      if (Object.keys(vnpParams).length > 0) {
+        const res = await expertPortalService.handleVnPayReturn(vnpParams)
+        if (res) {
+          setEscrow(res)
         }
-      } catch (err) {
-        console.warn('VnPay return verification error:', err)
-        if (isMounted) {
-          setErrorMessage(err?.message || 'Không thể xác thực kết quả thanh toán.')
-        }
-      } finally {
-        if (isMounted) setLoading(false)
       }
+    } catch (err) {
+      console.warn('VnPay return verification error:', err)
+      setErrorMessage(err?.message || 'Không thể kết nối máy chủ để xác thực kết quả thanh toán.')
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     processVnPayReturn()
-
-    return () => {
-      isMounted = false
-    }
   }, [vnpParams])
 
   const handleCopyOrder = () => {
@@ -141,6 +147,9 @@ export function PaymentResultPage() {
 
   // Diễn giải kết quả nếu không thành công
   const getFailureReason = (code) => {
+    if (code === '00') {
+      return errorMessage || 'Thanh toán tại VNPay thành công nhưng chưa thể đồng bộ với hệ thống. Vui lòng bấm thử lại.'
+    }
     switch (code) {
       case '24':
         return 'Bạn đã hủy giao dịch.'
@@ -307,7 +316,7 @@ export function PaymentResultPage() {
                   </div>
                   <div>
                     <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-                      Thanh toán chưa hoàn tất
+                      {responseCode === '00' ? 'Đang đồng bộ thanh toán' : 'Thanh toán chưa hoàn tất'}
                     </h1>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                       {getFailureReason(responseCode)}
@@ -324,13 +333,25 @@ export function PaymentResultPage() {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500 dark:text-slate-400">Trạng thái:</span>
-                    <span className="font-medium text-rose-600 dark:text-rose-400">
-                      {responseCode === '24' ? 'Đã hủy' : 'Chưa hoàn tất'}
+                    <span className={`font-medium ${responseCode === '00' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      {responseCode === '00' ? 'Chưa đồng bộ máy chủ' : (responseCode === '24' ? 'Đã hủy' : 'Chưa hoàn tất')}
                     </span>
                   </div>
                 </div>
 
-                <div className="pt-1">
+                <div className="pt-1 space-y-2">
+                  {responseCode === '00' && (
+                    <button
+                      type="button"
+                      onClick={processVnPayReturn}
+                      disabled={loading}
+                      className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] transition text-sm shadow-md"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                      Thử xác thực lại với máy chủ
+                    </button>
+                  )}
+
                   <a
                     href={deepLink}
                     onClick={handleOpenApp}

@@ -1,10 +1,24 @@
 import axios from 'axios'
 
-export const MANAGEMENT_API_URL =
-  import.meta.env.VITE_API_GATEWAY_URL ||
-  import.meta.env.VITE_MANAGEMENT_API_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  'http://localhost:5000'
+const getManagementApiUrl = () => {
+  const envUrl =
+    import.meta.env.VITE_API_GATEWAY_URL ||
+    import.meta.env.VITE_MANAGEMENT_API_URL ||
+    import.meta.env.VITE_API_BASE_URL;
+
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const host = window.location.hostname;
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      const portMatch = envUrl?.match(/:(\d+)/);
+      const port = portMatch ? portMatch[1] : '5000';
+      return `${window.location.protocol}//${host}:${port}`;
+    }
+  }
+
+  return envUrl || 'http://localhost:5000';
+};
+
+export const MANAGEMENT_API_URL = getManagementApiUrl();
 
 export const apiClient = axios.create({
   baseURL: MANAGEMENT_API_URL,
