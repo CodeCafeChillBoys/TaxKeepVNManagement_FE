@@ -50,11 +50,11 @@ const CERT_TYPE_MAP = {
 
 const ESCROW_STATUS_MAP = {
   PendingPayment: { label: 'Chờ thanh toán', variant: 'warning' },
-  HeldInEscrow: { label: 'Đang tạm giữ bảo đảm', variant: 'success' },
-  CoolingDown: { label: 'Chờ kết toán (24h)', variant: 'orange' },
-  Settled: { label: 'Đã giải ngân', variant: 'default' },
-  Refunded: { label: 'Đã hoàn tiền 100%', variant: 'muted' },
-  PartiallyRefunded: { label: 'Hoàn tiền một phần', variant: 'orange' },
+  HeldInEscrow: { label: 'Đang giữ cọc', variant: 'success' },
+  CoolingDown: { label: 'Chờ hoàn tất (24h)', variant: 'orange' },
+  Settled: { label: 'Đã trả chuyên gia', variant: 'default' },
+  Refunded: { label: 'Đã hoàn 100%', variant: 'muted' },
+  PartiallyRefunded: { label: 'Hoàn một phần', variant: 'orange' },
   Cancelled: { label: 'Đã hủy', variant: 'destructive' },
 }
 
@@ -184,39 +184,49 @@ export function AdminExpertManagementPage() {
     <div className="p-space-xl flex flex-col gap-space-lg">
       <div className="rounded-2xl bg-gradient-to-r from-primary to-primary-container p-space-xl text-on-primary flex flex-col gap-space-xs shadow-md">
         <span className="font-label-sm uppercase tracking-widest text-secondary-fixed font-bold">
-          QUẢN LÝ TƯ VẤN CHUYÊN GIA
+          QUẢN LÝ DỊCH VỤ TƯ VẤN
         </span>
         <h1 className="font-headline-lg text-headline-lg font-bold">Quản lý Chuyên gia Tư vấn Thuế</h1>
         <p className="font-body-md text-on-primary/80 max-w-xl">
-          Thẩm định hồ sơ đăng ký hành nghề, kiểm tra chứng chỉ chuyên môn, quản lý danh mục lĩnh vực tư vấn, khung mức phí và theo dõi ví quỹ ký quỹ bảo đảm.
+          Duyệt hồ sơ hành nghề, xét duyệt rút tiền, giải quyết khiếu nại, quản lý lĩnh vực tư vấn và biểu phí.
         </p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="applications" id="tab-expert-applications">
             <Icon name="badge" className="text-[20px]" />
             <span className="hidden sm:inline">Hồ sơ chuyên gia</span>
+          </TabsTrigger>
+          <TabsTrigger value="withdrawals" id="tab-expert-withdrawals">
+            <Icon name="payments" className="text-[20px]" />
+            <span className="hidden sm:inline">Duyệt rút tiền</span>
+          </TabsTrigger>
+          <TabsTrigger value="disputes" id="tab-expert-disputes">
+            <Icon name="gavel" className="text-[20px]" />
+            <span className="hidden sm:inline">Giải quyết khiếu nại</span>
           </TabsTrigger>
           <TabsTrigger value="specializations" id="tab-expert-specializations">
             <Icon name="category" className="text-[20px]" />
             <span className="hidden sm:inline">Lĩnh vực chuyên môn</span>
           </TabsTrigger>
           <TabsTrigger value="fee-configs" id="tab-expert-fee-configs">
-            <Icon name="payments" className="text-[20px]" />
-            <span className="hidden sm:inline">Khung mức phí tư vấn</span>
+            <Icon name="price_change" className="text-[20px]" />
+            <span className="hidden sm:inline">Khung mức phí</span>
           </TabsTrigger>
           <TabsTrigger value="escrow-wallet" id="tab-expert-escrow-wallet">
             <Icon name="account_balance_wallet" className="text-[20px]" />
-            <span className="hidden sm:inline">Ví Nền tảng & Ký quỹ</span>
+            <span className="hidden sm:inline">Ví sàn & Tiền cọc</span>
           </TabsTrigger>
           <TabsTrigger value="platform-policy" id="tab-expert-platform-policy">
             <Icon name="tune" className="text-[20px]" />
-            <span className="hidden sm:inline">Chính sách sàn & Escrow</span>
+            <span className="hidden sm:inline">Chính sách & Biểu phí</span>
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="applications"><ApplicationsTab /></TabsContent>
+        <TabsContent value="withdrawals"><WithdrawalsTab /></TabsContent>
+        <TabsContent value="disputes"><DisputesTab /></TabsContent>
         <TabsContent value="specializations"><SpecializationsTab /></TabsContent>
         <TabsContent value="fee-configs"><FeeConfigsTab /></TabsContent>
         <TabsContent value="escrow-wallet"><PlatformWalletTab /></TabsContent>
@@ -823,6 +833,1194 @@ function CertVerifyDialog({ cert, loading, onVerify, onOpenChange }) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// TAB: XÉT DUYỆT RÚT TIỀN (WITHDRAWALS)
+// ═══════════════════════════════════════════════════════════
+
+const WITHDRAWAL_STATUS_MAP = {
+  PENDING: { label: 'Chờ duyệt', variant: 'warning', icon: 'hourglass_top' },
+  APPROVE: { label: 'Đã chuyển tiền', variant: 'success', icon: 'check_circle' },
+  APPROVED: { label: 'Đã chuyển tiền', variant: 'success', icon: 'check_circle' },
+  REJECT: { label: 'Đã từ chối', variant: 'destructive', icon: 'cancel' },
+  REJECTED: { label: 'Đã từ chối', variant: 'destructive', icon: 'cancel' },
+}
+
+function WithdrawalStatusBadge({ status }) {
+  const s = WITHDRAWAL_STATUS_MAP[status] || { label: status || '—', variant: 'outline', icon: 'help' }
+  return (
+    <Badge variant={s.variant} className="gap-1 inline-flex items-center">
+      <Icon name={s.icon} className="text-[13px]" />
+      <span>{s.label}</span>
+    </Badge>
+  )
+}
+
+function WithdrawalsTab() {
+  const [withdrawals, setWithdrawals] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [statusFilter, setStatusFilter] = useState('PENDING')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
+
+  // Dialog duyệt / từ chối
+  const [actionModal, setActionModal] = useState(null) // { type: 'APPROVE' | 'REJECT', item }
+  const [transactionReference, setTransactionReference] = useState('')
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [adminNotes, setAdminNotes] = useState('')
+  const [actionLoading, setActionLoading] = useState(false)
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+
+  const fetchWithdrawals = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await expertService.getAdminWithdrawals({
+        status: statusFilter === ALL ? undefined : statusFilter,
+        page,
+        size: 10,
+      })
+      const items = extractItems(res)
+      setWithdrawals(items)
+      const pagination = res?.pagination || res?.data?.pagination
+      setTotalPages(pagination?.totalPages || res?.totalPages || 1)
+      setTotalItems(pagination?.totalItems ?? res?.totalItems ?? items.length)
+    } catch (err) {
+      setError(err?.message || 'Không thể tải danh sách yêu cầu rút tiền.')
+    } finally {
+      setLoading(false)
+    }
+  }, [statusFilter, page])
+
+  useEffect(() => {
+    fetchWithdrawals()
+  }, [fetchWithdrawals])
+
+  const openApproveModal = (item) => {
+    setActionModal({ type: 'APPROVE', item })
+    setTransactionReference('')
+    setAdminNotes('')
+  }
+
+  const openRejectModal = (item) => {
+    setActionModal({ type: 'REJECT', item })
+    setRejectionReason('')
+    setAdminNotes('')
+  }
+
+  const handleProcessSubmit = async (e) => {
+    e.preventDefault()
+    if (!actionModal?.item) return
+
+    const isApprove = actionModal.type === 'APPROVE'
+    if (isApprove && !transactionReference.trim()) {
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Thiếu thông tin',
+        description: 'Vui lòng nhập mã giao dịch ngân hàng hoặc số ủy nhiệm chi đã chuyển khoản.',
+      })
+      return
+    }
+
+    if (!isApprove && !rejectionReason.trim()) {
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Thiếu thông tin',
+        description: 'Vui lòng nhập lý do từ chối để thông báo cho người yêu cầu.',
+      })
+      return
+    }
+
+    setActionLoading(true)
+    try {
+      await expertService.processWithdrawal(actionModal.item.id, {
+        action: actionModal.type,
+        transactionReference: isApprove ? transactionReference.trim() : undefined,
+        rejectionReason: !isApprove ? rejectionReason.trim() : undefined,
+        adminNotes: adminNotes.trim() || undefined,
+      })
+
+      setActionModal(null)
+      setNotice({
+        open: true,
+        type: 'success',
+        title: isApprove ? 'Duyệt thành công' : 'Đã từ chối',
+        description: isApprove
+          ? 'Đã ghi nhận chuyển tiền thành công.'
+          : 'Đã từ chối lệnh rút tiền và hoàn trả số tiền về ví người nhận.',
+      })
+      fetchWithdrawals()
+    } catch (err) {
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Xử lý thất bại',
+        description: err?.message || 'Đã có lỗi xảy ra khi xử lý yêu cầu.',
+      })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <ErrorAlert message={error} onClose={() => setError(null)} />
+
+      {/* Thẻ thống kê trạng thái nhanh */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card
+          className={`cursor-pointer transition-all border-l-4 ${statusFilter === 'PENDING' ? 'border-l-amber-500 bg-amber-50/40 shadow-md ring-1 ring-amber-400' : 'border-l-amber-500 hover:shadow-sm'}`}
+          onClick={() => { setStatusFilter('PENDING'); setPage(1) }}
+        >
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+              <Icon name="hourglass_top" className="text-amber-600 text-[18px]" />
+              Yêu cầu chờ duyệt
+            </CardDescription>
+            <CardTitle className="text-2xl font-bold text-amber-700">
+              {statusFilter === 'PENDING' ? totalItems : 'Xem danh sách'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-on-surface-variant pt-0">
+            Các yêu cầu đang chờ quản trị viên chuyển khoản và xác nhận.
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`cursor-pointer transition-all border-l-4 ${statusFilter === 'APPROVED' ? 'border-l-emerald-600 bg-emerald-50/40 shadow-md ring-1 ring-emerald-400' : 'border-l-emerald-600 hover:shadow-sm'}`}
+          onClick={() => { setStatusFilter('APPROVED'); setPage(1) }}
+        >
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
+              <Icon name="check_circle" className="text-emerald-600 text-[18px]" />
+              Đã chuyển tiền
+            </CardDescription>
+            <CardTitle className="text-2xl font-bold text-emerald-700">
+              {statusFilter === 'APPROVED' ? totalItems : 'Xem lịch sử'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-on-surface-variant pt-0">
+            Các lệnh rút tiền đã được chuyển khoản thành công qua ngân hàng.
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`cursor-pointer transition-all border-l-4 ${statusFilter === 'REJECTED' ? 'border-l-red-500 bg-red-50/40 shadow-md ring-1 ring-red-400' : 'border-l-red-500 hover:shadow-sm'}`}
+          onClick={() => { setStatusFilter('REJECTED'); setPage(1) }}
+        >
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold text-red-800">
+              <Icon name="cancel" className="text-red-500 text-[18px]" />
+              Đã từ chối
+            </CardDescription>
+            <CardTitle className="text-2xl font-bold text-red-600">
+              {statusFilter === 'REJECTED' ? totalItems : 'Xem danh sách'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-on-surface-variant pt-0">
+            Các lệnh không hợp lệ đã được hoàn trả số dư về ví.
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Bảng danh sách yêu cầu rút tiền */}
+      <Card className="shadow-sm">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Icon name="account_balance" className="text-primary text-[22px]" />
+              Danh sách yêu cầu rút tiền
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Kiểm tra thông tin tài khoản ngân hàng của người dùng/chuyên gia để thực hiện chuyển khoản và xác nhận.
+            </CardDescription>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setPage(1) }}>
+              <SelectTrigger className="w-52 h-9 text-xs">
+                <SelectValue placeholder="Lọc trạng thái" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Tất cả trạng thái</SelectItem>
+                <SelectItem value="PENDING">Chờ duyệt</SelectItem>
+                <SelectItem value="APPROVED">Đã chuyển tiền</SelectItem>
+                <SelectItem value="REJECTED">Đã từ chối</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button variant="outline" size="sm" onClick={fetchWithdrawals} title="Làm mới">
+              <Icon name="refresh" className="text-[18px]" />
+            </Button>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          {loading ? (
+            <LoadingState text="Đang tải danh sách yêu cầu rút tiền..." />
+          ) : withdrawals.length === 0 ? (
+            <EmptyState icon="savings" text="Không có yêu cầu rút tiền nào." />
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ngày gửi</TableHead>
+                    <TableHead>Người nhận</TableHead>
+                    <TableHead className="text-right">Số tiền rút</TableHead>
+                    <TableHead>Tài khoản nhận tiền</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                    <TableHead>Chi tiết xử lý</TableHead>
+                    <TableHead className="text-center">Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {withdrawals.map((item) => (
+                    <TableRow key={item.id} className="hover:bg-surface-container-lowest">
+                      <TableCell className="text-xs text-on-surface-variant font-mono whitespace-nowrap">
+                        {formatDateTime(item.createdAt)}
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-semibold text-sm text-on-surface block">
+                          {item.userFullName || '—'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap font-bold text-sm text-primary">
+                        {formatCurrency(item.amount)}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="font-medium text-on-surface">{item.bankName || '—'}</div>
+                        <div className="font-mono text-primary font-semibold">{item.accountNumber || '—'}</div>
+                        <div className="text-on-surface-variant uppercase text-[11px]">{item.accountName || '—'}</div>
+                      </TableCell>
+                      <TableCell>
+                        <WithdrawalStatusBadge status={item.status} />
+                      </TableCell>
+                      <TableCell className="text-xs max-w-xs">
+                        {item.status === 'APPROVED' || item.status === 'APPROVE' ? (
+                          <div className="space-y-0.5">
+                            <div className="text-emerald-700 font-medium">
+                              Mã GD: <span className="font-mono font-bold">{item.transactionReference || '—'}</span>
+                            </div>
+                            {item.processedAt && (
+                              <div className="text-[11px] text-on-surface-variant">
+                                Lúc: {formatDateTime(item.processedAt)}
+                              </div>
+                            )}
+                            {item.adminNotes && (
+                              <div className="text-[11px] text-on-surface-variant italic">
+                                Ghi chú: {item.adminNotes}
+                              </div>
+                            )}
+                          </div>
+                        ) : item.status === 'REJECTED' || item.status === 'REJECT' ? (
+                          <div className="space-y-0.5">
+                            <div className="text-red-700 font-medium">
+                              Lý do: {item.rejectionReason || '—'}
+                            </div>
+                            {item.adminNotes && (
+                              <div className="text-[11px] text-on-surface-variant italic">
+                                Ghi chú: {item.adminNotes}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-on-surface-variant italic text-[11px]">
+                            Đang chờ chuyển tiền
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center whitespace-nowrap">
+                        {item.status === 'PENDING' ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-8 gap-1"
+                              onClick={() => openApproveModal(item)}
+                            >
+                              <Icon name="check" className="text-[16px]" />
+                              Duyệt chuyển tiền
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 text-xs h-8 gap-1"
+                              onClick={() => openRejectModal(item)}
+                            >
+                              <Icon name="close" className="text-[16px]" />
+                              Từ chối
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-on-surface-variant font-medium">Đã hoàn tất</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {/* Phân trang */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t text-xs text-on-surface-variant">
+              <span>Trang {page} / {totalPages} (Tổng số {totalItems} yêu cầu)</span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Trước
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Sau
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Hộp thoại Duyệt chuyển tiền */}
+      <Dialog
+        open={actionModal?.type === 'APPROVE'}
+        onOpenChange={(open) => !open && setActionModal(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-700">
+              <Icon name="payments" className="text-[22px]" />
+              Xác nhận Đã Chuyển Tiền
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Vui lòng chuyển khoản ngân hàng theo thông tin bên dưới, sau đó nhập mã giao dịch để hoàn tất duyệt lệnh rút tiền.
+            </DialogDescription>
+          </DialogHeader>
+
+          {actionModal?.item && (
+            <div className="flex flex-col gap-3 py-2">
+              <div className="rounded-xl bg-surface-container-low p-3.5 border border-outline-variant space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-on-surface-variant">Người nhận:</span>
+                  <strong className="text-on-surface text-sm">{actionModal.item.userFullName}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-on-surface-variant">Số tiền cần chuyển:</span>
+                  <strong className="text-emerald-700 text-base">{formatCurrency(actionModal.item.amount)}</strong>
+                </div>
+                <div className="border-t border-outline-variant/30 my-1 pt-1 space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-on-surface-variant">Ngân hàng:</span>
+                    <span className="font-semibold text-on-surface">{actionModal.item.bankName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-on-surface-variant">Số tài khoản:</span>
+                    <span className="font-mono font-bold text-primary text-sm">{actionModal.item.accountNumber}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-on-surface-variant">Tên chủ tài khoản:</span>
+                    <span className="font-bold text-on-surface uppercase">{actionModal.item.accountName}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-semibold text-on-surface">
+                  Mã giao dịch ngân hàng / Ủy nhiệm chi <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  placeholder="Ví dụ: FT24102209876543 hoặc mã UNC..."
+                  value={transactionReference}
+                  onChange={(e) => setTransactionReference(e.target.value)}
+                  className="h-9 text-xs font-mono"
+                  autoFocus
+                />
+                <span className="text-[11px] text-on-surface-variant">
+                  Nhập mã tham chiếu từ ứng dụng ngân hàng khi bạn chuyển tiền thành công.
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-semibold text-on-surface">Ghi chú nội bộ</Label>
+                <Textarea
+                  placeholder="Ghi chú thêm nếu cần..."
+                  value={adminNotes}
+                  onChange={(e) => setAdminNotes(e.target.value)}
+                  className="text-xs min-h-[60px]"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setActionModal(null)}
+              disabled={actionLoading}
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 font-semibold"
+              onClick={handleProcessSubmit}
+              disabled={actionLoading}
+            >
+              {actionLoading ? 'Đang xác nhận...' : 'Xác nhận Đã Chuyển Tiền'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Hộp thoại Từ chối */}
+      <Dialog
+        open={actionModal?.type === 'REJECT'}
+        onOpenChange={(open) => !open && setActionModal(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Icon name="cancel" className="text-[22px]" />
+              Từ chối Yêu cầu Rút tiền
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Số tiền yêu cầu sẽ được tự động hoàn trả đầy đủ về ví của người nhận.
+            </DialogDescription>
+          </DialogHeader>
+
+          {actionModal?.item && (
+            <div className="flex flex-col gap-3 py-2">
+              <div className="rounded-xl bg-red-50 p-3 border border-red-200 text-xs text-red-900 space-y-1">
+                <div className="flex justify-between">
+                  <span>Người yêu cầu:</span>
+                  <strong>{actionModal.item.userFullName}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>Số tiền hoàn trả về ví:</span>
+                  <strong className="text-red-700 text-sm">{formatCurrency(actionModal.item.amount)}</strong>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-semibold text-on-surface">
+                  Lý do từ chối <span className="text-red-500">*</span>
+                </Label>
+                <Textarea
+                  placeholder="Ví dụ: Tên tài khoản ngân hàng không khớp với họ tên đăng ký, số tài khoản không tồn tại..."
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  className="text-xs min-h-[80px]"
+                  autoFocus
+                />
+                <span className="text-[11px] text-on-surface-variant">
+                  Lý do này sẽ được hiển thị cho người nhận biết.
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs font-semibold text-on-surface">Ghi chú nội bộ</Label>
+                <Textarea
+                  placeholder="Ghi chú thêm nếu cần..."
+                  value={adminNotes}
+                  onChange={(e) => setAdminNotes(e.target.value)}
+                  className="text-xs min-h-[50px]"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setActionModal(null)}
+              disabled={actionLoading}
+            >
+              Hủy
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="font-semibold"
+              onClick={handleProcessSubmit}
+              disabled={actionLoading}
+            >
+              {actionLoading ? 'Đang xử lý...' : 'Xác nhận Từ Chối'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
+      />
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
+// TAB: GIẢI QUYẾT KHIẾU NẠI (DISPUTES)
+// ═══════════════════════════════════════════════════════════
+
+const DISPUTE_REASON_MAP = {
+  WRONG_TAX_LAW_ADVICE: 'Tư vấn sai quy định thuế',
+  UNPROFESSIONAL_BEHAVIOR: 'Thái độ thiếu chuẩn mực',
+  EARLY_DISCONNECT: 'Chuyên gia rời phòng sớm',
+  NETWORK_ISSUE: 'Sự cố kết nối từ chuyên gia',
+  OTHER: 'Lý do khác',
+}
+
+const DISPUTE_STATUS_MAP = {
+  PENDING_EXPERT_RESPONSE: { label: 'Chờ chuyên gia giải trình', variant: 'warning', icon: 'hourglass_top' },
+  PENDING_ADMIN_REVIEW: { label: 'Chờ quản trị viên xử lý', variant: 'orange', icon: 'gavel' },
+  RESOLVED: { label: 'Đã giải quyết', variant: 'success', icon: 'check_circle' },
+  CANCELLED: { label: 'Đã hủy', variant: 'muted', icon: 'cancel' },
+}
+
+function DisputeStatusBadge({ status }) {
+  const s = DISPUTE_STATUS_MAP[status] || { label: status || '—', variant: 'outline', icon: 'help' }
+  return (
+    <Badge variant={s.variant} className="gap-1 inline-flex items-center">
+      <Icon name={s.icon} className="text-[13px]" />
+      <span>{s.label}</span>
+    </Badge>
+  )
+}
+
+function DisputesTab() {
+  const [disputes, setDisputes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [statusFilter, setStatusFilter] = useState('PENDING_ADMIN_REVIEW')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
+
+  // Chi tiết & phán quyết
+  const [selectedDisputeId, setSelectedDisputeId] = useState(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detail, setDetail] = useState(null)
+
+  // Form phán quyết
+  const [decisionType, setDecisionType] = useState('FULL_REFUND') // FULL_REFUND | SETTLE_EXPERT | PARTIAL
+  const [refundRatePercent, setRefundRatePercent] = useState('50')
+  const [resolution, setResolution] = useState('')
+  const [adminNotes, setAdminNotes] = useState('')
+  const [resolveLoading, setResolveLoading] = useState(false)
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+
+  const fetchDisputes = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await expertService.getAdminDisputes({
+        status: statusFilter === ALL ? undefined : statusFilter,
+        page,
+        size: 10,
+      })
+      const items = extractItems(res)
+      setDisputes(items)
+      const pagination = res?.pagination || res?.data?.pagination
+      setTotalPages(pagination?.totalPages || res?.totalPages || 1)
+      setTotalItems(pagination?.totalItems ?? res?.totalItems ?? items.length)
+    } catch (err) {
+      setError(err?.message || 'Không thể tải danh sách khiếu nại.')
+    } finally {
+      setLoading(false)
+    }
+  }, [statusFilter, page])
+
+  useEffect(() => {
+    fetchDisputes()
+  }, [fetchDisputes])
+
+  const openDetailModal = async (id) => {
+    setSelectedDisputeId(id)
+    setDetail(null)
+    setDetailLoading(true)
+    setDecisionType('FULL_REFUND')
+    setRefundRatePercent('50')
+    setResolution('')
+    setAdminNotes('')
+    try {
+      const data = await expertService.getDisputeDetail(id)
+      setDetail(data)
+    } catch (err) {
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Lỗi tải hồ sơ',
+        description: err?.message || 'Không thể tải chi tiết vụ việc khiếu nại.',
+      })
+      setSelectedDisputeId(null)
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  const handleResolveSubmit = async (e) => {
+    e.preventDefault()
+    if (!detail) return
+
+    if (!resolution.trim()) {
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Thiếu lý do phán quyết',
+        description: 'Vui lòng nhập nội dung giải thích căn cứ phán quyết để thông báo cho hai bên.',
+      })
+      return
+    }
+
+    if (decisionType === 'PARTIAL') {
+      const rate = Number(refundRatePercent)
+      if (isNaN(rate) || rate <= 0 || rate >= 100) {
+        setNotice({
+          open: true,
+          type: 'error',
+          title: 'Tỷ lệ không hợp lệ',
+          description: 'Tỷ lệ hoàn tiền cho khách phải nằm trong khoảng từ 1% đến 99%.',
+        })
+        return
+      }
+    }
+
+    setResolveLoading(true)
+    try {
+      await expertService.resolveDispute(detail.id, {
+        decisionType,
+        refundRatePercent: decisionType === 'PARTIAL' ? Number(refundRatePercent) : undefined,
+        resolution: resolution.trim(),
+        adminNotes: adminNotes.trim() || undefined,
+      })
+
+      setNotice({
+        open: true,
+        type: 'success',
+        title: 'Phán quyết thành công',
+        description: 'Đã hoàn tất xử lý tranh chấp và tự động điều chuyển số dư ví cho hai bên.',
+      })
+      setSelectedDisputeId(null)
+      fetchDisputes()
+    } catch (err) {
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Xử lý thất bại',
+        description: err?.message || 'Đã có lỗi xảy ra khi thực thi phán quyết.',
+      })
+    } finally {
+      setResolveLoading(false)
+    }
+  }
+
+  const totalFee = Number(detail?.totalFee || 0)
+  const calcRefundAmount = decisionType === 'FULL_REFUND'
+    ? totalFee
+    : decisionType === 'SETTLE_EXPERT'
+      ? 0
+      : Math.round((totalFee * (Number(refundRatePercent) || 0)) / 100)
+  const calcExpertAmount = Math.max(0, totalFee - calcRefundAmount)
+
+  return (
+    <div className="flex flex-col gap-6">
+      <ErrorAlert message={error} onClose={() => setError(null)} />
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card
+          className={`cursor-pointer transition-all border-l-4 ${statusFilter === 'PENDING_ADMIN_REVIEW' ? 'border-l-orange-500 bg-orange-50/40 shadow-md ring-1 ring-orange-400' : 'border-l-orange-500 hover:shadow-sm'}`}
+          onClick={() => { setStatusFilter('PENDING_ADMIN_REVIEW'); setPage(1) }}
+        >
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold text-orange-800">
+              <Icon name="gavel" className="text-orange-600 text-[18px]" />
+              Chờ quản trị viên xử lý
+            </CardDescription>
+            <CardTitle className="text-2xl font-bold text-orange-700">
+              {statusFilter === 'PENDING_ADMIN_REVIEW' ? totalItems : 'Xem danh sách'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-on-surface-variant pt-0">
+            Các ca đã có giải trình hoặc quá hạn, cần đưa ra phán quyết cuối cùng.
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`cursor-pointer transition-all border-l-4 ${statusFilter === 'PENDING_EXPERT_RESPONSE' ? 'border-l-amber-500 bg-amber-50/40 shadow-md ring-1 ring-amber-400' : 'border-l-amber-500 hover:shadow-sm'}`}
+          onClick={() => { setStatusFilter('PENDING_EXPERT_RESPONSE'); setPage(1) }}
+        >
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+              <Icon name="hourglass_top" className="text-amber-600 text-[18px]" />
+              Chờ chuyên gia giải trình
+            </CardDescription>
+            <CardTitle className="text-2xl font-bold text-amber-700">
+              {statusFilter === 'PENDING_EXPERT_RESPONSE' ? totalItems : 'Xem danh sách'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-on-surface-variant pt-0">
+            Chuyên gia đang trong thời hạn gửi ý kiến phản biện (24h).
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`cursor-pointer transition-all border-l-4 ${statusFilter === 'RESOLVED' ? 'border-l-emerald-600 bg-emerald-50/40 shadow-md ring-1 ring-emerald-400' : 'border-l-emerald-600 hover:shadow-sm'}`}
+          onClick={() => { setStatusFilter('RESOLVED'); setPage(1) }}
+        >
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
+              <Icon name="check_circle" className="text-emerald-600 text-[18px]" />
+              Đã giải quyết xong
+            </CardDescription>
+            <CardTitle className="text-2xl font-bold text-emerald-700">
+              {statusFilter === 'RESOLVED' ? totalItems : 'Xem lịch sử'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-on-surface-variant pt-0">
+            Các vụ việc đã có phán quyết và hoàn tất điều phối tiền cọc.
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Table Card */}
+      <Card className="shadow-sm">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Icon name="balance" className="text-primary text-[22px]" />
+              Danh sách khiếu nại buổi tư vấn
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Tiếp nhận ý kiến từ khách hàng và chuyên gia để đưa ra phán quyết xử lý công bằng, minh bạch.
+            </CardDescription>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setPage(1) }}>
+              <SelectTrigger className="w-56 h-9 text-xs">
+                <SelectValue placeholder="Lọc trạng thái" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Tất cả trạng thái</SelectItem>
+                <SelectItem value="PENDING_ADMIN_REVIEW">Chờ quản trị viên xử lý</SelectItem>
+                <SelectItem value="PENDING_EXPERT_RESPONSE">Chờ chuyên gia giải trình</SelectItem>
+                <SelectItem value="RESOLVED">Đã giải quyết</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button variant="outline" size="sm" onClick={fetchDisputes} title="Làm mới">
+              <Icon name="refresh" className="text-[18px]" />
+            </Button>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          {loading ? (
+            <LoadingState text="Đang tải danh sách khiếu nại..." />
+          ) : disputes.length === 0 ? (
+            <EmptyState icon="gavel" text="Hiện không có vụ việc khiếu nại nào." />
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ngày gửi</TableHead>
+                    <TableHead>Mã ca hẹn</TableHead>
+                    <TableHead>Khách hàng</TableHead>
+                    <TableHead>Chuyên gia</TableHead>
+                    <TableHead className="text-right">Tiền cọc</TableHead>
+                    <TableHead>Lý do khiếu nại</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                    <TableHead className="text-center">Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {disputes.map((item) => (
+                    <TableRow key={item.id} className="hover:bg-surface-container-lowest">
+                      <TableCell className="text-xs text-on-surface-variant font-mono whitespace-nowrap">
+                        {formatDateTime(item.createdAt)}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs font-semibold text-primary">
+                        {item.bookingCode || '—'}
+                      </TableCell>
+                      <TableCell className="text-xs font-semibold text-on-surface">
+                        {item.taxpayerFullName || '—'}
+                      </TableCell>
+                      <TableCell className="text-xs font-semibold text-on-surface">
+                        {item.expertFullName || '—'}
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap font-bold text-xs text-primary">
+                        {formatCurrency(item.totalFee)}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <span className="font-medium text-on-surface">
+                          {DISPUTE_REASON_MAP[item.reason] || item.reason || '—'}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <DisputeStatusBadge status={item.status} />
+                      </TableCell>
+                      <TableCell className="text-center whitespace-nowrap">
+                        <Button
+                          size="sm"
+                          variant={item.status === 'PENDING_ADMIN_REVIEW' ? 'default' : 'outline'}
+                          className={`text-xs h-8 gap-1 font-semibold ${item.status === 'PENDING_ADMIN_REVIEW' ? 'bg-orange-600 hover:bg-orange-700 text-white' : ''}`}
+                          onClick={() => openDetailModal(item.id)}
+                        >
+                          <Icon name="visibility" className="text-[16px]" />
+                          {item.status === 'RESOLVED' ? 'Xem biên bản' : 'Xem & Phán quyết'}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {/* Phân trang */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-6 py-4 border-t text-xs text-on-surface-variant">
+              <span>Trang {page} / {totalPages} (Tổng số {totalItems} vụ việc)</span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Trước
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Sau
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Detail & Resolution Dialog */}
+      <Dialog
+        open={Boolean(selectedDisputeId)}
+        onOpenChange={(open) => !open && setSelectedDisputeId(null)}
+      >
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-primary">
+              <Icon name="gavel" className="text-[22px]" />
+              Hồ Sơ Khiếu Nại Buổi Tư Vấn
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Mã ca hẹn: <strong className="font-mono text-on-surface">{detail?.bookingCode}</strong> • Tiền cọc: <strong className="text-primary">{formatCurrency(detail?.totalFee)}</strong>
+            </DialogDescription>
+          </DialogHeader>
+
+          {detailLoading ? (
+            <LoadingState text="Đang tải hồ sơ khiếu nại..." />
+          ) : detail ? (
+            <div className="flex flex-col gap-4 py-2 text-xs">
+              {/* Thông tin 2 bên */}
+              <div className="grid grid-cols-2 gap-3 p-3 bg-surface-container-low rounded-xl border border-outline-variant">
+                <div>
+                  <span className="text-on-surface-variant block text-[11px]">Người khiếu nại (Khách hàng):</span>
+                  <strong className="text-sm text-on-surface">{detail.taxpayerFullName}</strong>
+                  {detail.taxpayerPhone && (
+                    <div className="text-on-surface-variant text-[11px] font-mono mt-0.5">SĐT: {detail.taxpayerPhone}</div>
+                  )}
+                </div>
+                <div>
+                  <span className="text-on-surface-variant block text-[11px]">Bên bị khiếu nại (Chuyên gia):</span>
+                  <strong className="text-sm text-on-surface">{detail.expertFullName}</strong>
+                  <div className="mt-1">
+                    <DisputeStatusBadge status={detail.status} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Khối ý kiến khách hàng */}
+              <Card className="border border-red-200 bg-red-50/20">
+                <CardHeader className="pb-2 pt-3 px-3.5">
+                  <CardTitle className="text-xs font-bold text-red-900 flex items-center gap-1.5">
+                    <Icon name="report_problem" className="text-red-600 text-[18px]" />
+                    Nội dung khiếu nại từ khách hàng
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-3.5 pb-3 text-xs space-y-2">
+                  <div>
+                    <span className="text-on-surface-variant">Lý do chính: </span>
+                    <strong className="text-on-surface">{DISPUTE_REASON_MAP[detail.reason] || detail.reason}</strong>
+                  </div>
+                  <div>
+                    <span className="text-on-surface-variant block">Mô tả cụ thể:</span>
+                    <p className="p-2.5 bg-white rounded-lg border text-on-surface leading-relaxed mt-1 whitespace-pre-wrap">
+                      {detail.description || 'Không có mô tả chi tiết.'}
+                    </p>
+                  </div>
+                  {detail.evidenceUrls && detail.evidenceUrls.length > 0 && (
+                    <div>
+                      <span className="text-on-surface-variant block mb-1">Tài liệu / Hình ảnh chứng cứ:</span>
+                      <div className="flex flex-wrap gap-2">
+                        {detail.evidenceUrls.map((url, i) => (
+                          <a
+                            key={i}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white border text-primary hover:underline text-[11px]"
+                          >
+                            <Icon name="attachment" className="text-[14px]" />
+                            Bằng chứng #{i + 1}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Khối giải trình của chuyên gia */}
+              <Card className="border border-blue-200 bg-blue-50/20">
+                <CardHeader className="pb-2 pt-3 px-3.5">
+                  <CardTitle className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                    <Icon name="forum" className="text-blue-600 text-[18px]" />
+                    Ý kiến phản biện / Giải trình của chuyên gia
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-3.5 pb-3 text-xs space-y-2">
+                  {detail.expertResponse ? (
+                    <>
+                      <div className="flex justify-between items-center text-[11px] text-on-surface-variant">
+                        <span>Đã gửi lúc: {formatDateTime(detail.expertRespondedAt)}</span>
+                      </div>
+                      <p className="p-2.5 bg-white rounded-lg border text-on-surface leading-relaxed whitespace-pre-wrap">
+                        {detail.expertResponse}
+                      </p>
+                      {detail.expertEvidenceUrls && detail.expertEvidenceUrls.length > 0 && (
+                        <div>
+                          <span className="text-on-surface-variant block mb-1">Bằng chứng phản biện:</span>
+                          <div className="flex flex-wrap gap-2">
+                            {detail.expertEvidenceUrls.map((url, i) => (
+                              <a
+                                key={i}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white border text-primary hover:underline text-[11px]"
+                              >
+                                <Icon name="attachment" className="text-[14px]" />
+                                Bằng chứng #{i + 1}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="p-3 bg-white rounded-lg border border-dashed text-on-surface-variant text-center">
+                      <span>Chuyên gia chưa gửi giải trình. Hạn phản hồi: </span>
+                      <strong className="text-amber-800">{formatDateTime(detail.expertResponseDeadline)}</strong>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Nếu đã phán quyết xong */}
+              {detail.status === 'RESOLVED' ? (
+                <Card className="border border-emerald-300 bg-emerald-50/30">
+                  <CardHeader className="pb-2 pt-3 px-3.5">
+                    <CardTitle className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                      <Icon name="verified" className="text-emerald-600 text-[18px]" />
+                      Biên bản phán quyết của Quản trị viên
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3.5 pb-3 text-xs space-y-2">
+                    <div className="grid grid-cols-2 gap-2 p-2.5 bg-white rounded-lg border">
+                      <div>
+                        <span className="text-on-surface-variant block text-[11px]">Khách hàng nhận lại:</span>
+                        <strong className="text-sm text-emerald-700">{formatCurrency(detail.userRefundAmount)}</strong>
+                      </div>
+                      <div>
+                        <span className="text-on-surface-variant block text-[11px]">Chuyên gia nhận thù lao:</span>
+                        <strong className="text-sm text-primary">{formatCurrency(detail.expertSettlementAmount)}</strong>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-on-surface-variant block">Căn cứ & Lý do phán quyết:</span>
+                      <p className="p-2.5 bg-white rounded-lg border text-on-surface leading-relaxed mt-1 whitespace-pre-wrap">
+                        {detail.adminResolution || '—'}
+                      </p>
+                    </div>
+                    {detail.adminNotes && (
+                      <div className="text-[11px] text-on-surface-variant italic">
+                        Ghi chú nội bộ: {detail.adminNotes}
+                      </div>
+                    )}
+                    <div className="text-[11px] text-on-surface-variant">
+                      Thời gian phán quyết: {formatDateTime(detail.resolvedAt)}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                /* Form phán quyết nếu chưa xong */
+                <form onSubmit={handleResolveSubmit} className="flex flex-col gap-3 pt-2 border-t">
+                  <div className="flex items-center gap-2">
+                    <Icon name="gavel" className="text-primary text-[20px]" />
+                    <h3 className="text-sm font-bold text-on-surface">Đưa ra phán quyết xử lý tranh chấp</h3>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label className="text-xs font-semibold text-on-surface">
+                      Phương án phán quyết <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDecisionType('FULL_REFUND')}
+                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${decisionType === 'FULL_REFUND' ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-outline-variant bg-white hover:bg-surface-container-low'}`}
+                      >
+                        <div className="font-bold text-xs text-on-surface">Hoàn tiền 100% cho khách</div>
+                        <div className="text-[10px] text-on-surface-variant mt-0.5">Khách nhận đủ tiền cọc, chuyên gia 0 ₫.</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDecisionType('SETTLE_EXPERT')}
+                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${decisionType === 'SETTLE_EXPERT' ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-outline-variant bg-white hover:bg-surface-container-low'}`}
+                      >
+                        <div className="font-bold text-xs text-on-surface">Bác bỏ khiếu nại</div>
+                        <div className="text-[10px] text-on-surface-variant mt-0.5">Trả đủ tiền cho chuyên gia, khách 0 ₫.</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDecisionType('PARTIAL')}
+                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${decisionType === 'PARTIAL' ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-outline-variant bg-white hover:bg-surface-container-low'}`}
+                      >
+                        <div className="font-bold text-xs text-on-surface">Phân chia theo tỷ lệ (%)</div>
+                        <div className="text-[10px] text-on-surface-variant mt-0.5">Chia tiền theo tỷ lệ hai bên thỏa thuận.</div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {decisionType === 'PARTIAL' && (
+                    <div className="flex flex-col gap-1.5 p-3 bg-surface-container-low rounded-xl border">
+                      <Label className="text-xs font-semibold text-on-surface">
+                        Tỷ lệ hoàn tiền cho khách hàng (%):
+                      </Label>
+                      <div className="flex items-center gap-3">
+                        <Input
+                          type="number"
+                          min="1"
+                          max="99"
+                          value={refundRatePercent}
+                          onChange={(e) => setRefundRatePercent(e.target.value)}
+                          className="w-28 h-9 text-xs font-bold text-primary"
+                        />
+                        <span className="text-xs text-on-surface-variant">
+                          (Chuyên gia nhận phần còn lại: <strong>{Math.max(0, 100 - (Number(refundRatePercent) || 0))}%</strong>)
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bảng tóm tắt số tiền phân bổ */}
+                  <div className="grid grid-cols-2 gap-2 p-2.5 bg-amber-50/60 rounded-xl border border-amber-200">
+                    <div>
+                      <span className="text-[11px] text-amber-900 block">Khách hàng sẽ nhận lại:</span>
+                      <strong className="text-sm text-emerald-700">{formatCurrency(calcRefundAmount)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-amber-900 block">Chuyên gia sẽ nhận thù lao:</span>
+                      <strong className="text-sm text-primary">{formatCurrency(calcExpertAmount)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label className="text-xs font-semibold text-on-surface">
+                      Căn cứ & Nội dung phán quyết <span className="text-red-500">*</span>
+                    </Label>
+                    <Textarea
+                      placeholder="Giải thích rõ lý do chấp thuận hoặc bác bỏ khiếu nại (sẽ hiển thị cho cả khách hàng và chuyên gia)..."
+                      value={resolution}
+                      onChange={(e) => setResolution(e.target.value)}
+                      className="text-xs min-h-[70px]"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label className="text-xs font-semibold text-on-surface">Ghi chú nội bộ</Label>
+                    <Textarea
+                      placeholder="Ghi chú nội bộ cho ban quản trị..."
+                      value={adminNotes}
+                      onChange={(e) => setAdminNotes(e.target.value)}
+                      className="text-xs min-h-[50px]"
+                    />
+                  </div>
+
+                  <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedDisputeId(null)}
+                      disabled={resolveLoading}
+                    >
+                      Đóng
+                    </Button>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      className="bg-primary text-on-primary font-bold"
+                      disabled={resolveLoading}
+                    >
+                      {resolveLoading ? 'Đang thực thi phán quyết...' : 'Xác nhận phán quyết'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              )}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
+      />
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
 // TAB 2: SPECIALIZATIONS
 // ═══════════════════════════════════════════════════════════
 
@@ -1411,7 +2609,7 @@ function PlatformWalletTab() {
     }, 400)
   }
 
-  if (loading) return <LoadingState text="Đang tải dữ liệu Ví Nền tảng và Sổ cái Ký quỹ..." />
+  if (loading) return <LoadingState text="Đang tải dữ liệu ví sàn..." />
 
   const stats = wallet?.stats || {}
 
@@ -1426,14 +2624,14 @@ function PlatformWalletTab() {
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5 text-xs font-semibold">
               <Icon name="payments" className="text-primary text-[18px]" />
-              Tổng Dòng Tiền Giao Dịch (GMV)
+              Tổng doanh thu dịch vụ
             </CardDescription>
             <CardTitle className="text-2xl font-bold text-on-surface">
               {formatCurrency(wallet?.totalGrossVolume ?? 0)}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-on-surface-variant pt-0">
-            Tổng giá trị tất cả các ca tư vấn đã thanh toán qua cổng trung gian.
+            Tổng giá trị tất cả các ca tư vấn đã thanh toán thành công.
           </CardContent>
         </Card>
 
@@ -1442,15 +2640,15 @@ function PlatformWalletTab() {
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5 text-xs font-semibold">
               <Icon name="lock" className="text-amber-500 text-[18px]" />
-              Quỹ Tạm Giữ Bảo Đảm (Escrow)
+              Tiền cọc đang tạm giữ
             </CardDescription>
             <CardTitle className="text-2xl font-bold text-amber-600">
               {formatCurrency(wallet?.escrowHoldingBalance ?? 0)}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-on-surface-variant pt-0 space-y-0.5">
-            <div>Giữ hộ Chuyên gia: <strong className="text-on-surface">{formatCurrency(wallet?.pendingExpertReceivable ?? 0)}</strong></div>
-            <div>Hoa hồng tạm giữ: <strong className="text-on-surface">{formatCurrency(wallet?.pendingPlatformCommission ?? 0)}</strong></div>
+            <div>Chờ trả Chuyên gia: <strong className="text-on-surface">{formatCurrency(wallet?.pendingExpertReceivable ?? 0)}</strong></div>
+            <div>Hoa hồng sàn tạm giữ: <strong className="text-on-surface">{formatCurrency(wallet?.pendingPlatformCommission ?? 0)}</strong></div>
           </CardContent>
         </Card>
 
@@ -1459,14 +2657,14 @@ function PlatformWalletTab() {
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5 text-xs font-semibold">
               <Icon name="trending_up" className="text-emerald-600 text-[18px]" />
-              Doanh Thu Hoa Hồng Thực Nhận
+              Hoa hồng sàn thực nhận
             </CardDescription>
             <CardTitle className="text-2xl font-bold text-emerald-600">
               {formatCurrency(wallet?.realizedPlatformRevenue ?? 0)}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-on-surface-variant pt-0">
-            Tổng tích lũy: <strong className="text-on-surface">{formatCurrency(wallet?.totalAccumulatedRevenue ?? 0)}</strong> (từ ca đã hoàn tất)
+            Tổng tích lũy: <strong className="text-on-surface">{formatCurrency(wallet?.totalAccumulatedRevenue ?? 0)}</strong> (từ ca đã xong)
           </CardContent>
         </Card>
 
@@ -1475,15 +2673,15 @@ function PlatformWalletTab() {
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5 text-xs font-semibold">
               <Icon name="swap_horiz" className="text-blue-600 text-[18px]" />
-              Đã Giải Ngân / Hoàn Tiền
+              Đã chi trả & Hoàn tiền
             </CardDescription>
             <CardTitle className="text-xl font-bold text-on-surface">
               {formatCurrency(wallet?.totalSettledToExperts ?? 0)}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-xs text-on-surface-variant pt-0 space-y-0.5">
-            <div>Đã chi trả chuyên gia: <strong className="text-on-surface">{formatCurrency(wallet?.totalSettledToExperts ?? 0)}</strong></div>
-            <div>Đã hoàn trả khách hàng: <strong className="text-on-surface">{formatCurrency(wallet?.totalRefundedToTaxpayers ?? 0)}</strong></div>
+            <div>Đã trả chuyên gia: <strong className="text-on-surface">{formatCurrency(wallet?.totalSettledToExperts ?? 0)}</strong></div>
+            <div>Đã hoàn trả khách: <strong className="text-on-surface">{formatCurrency(wallet?.totalRefundedToTaxpayers ?? 0)}</strong></div>
           </CardContent>
         </Card>
       </div>
@@ -1496,9 +2694,9 @@ function PlatformWalletTab() {
         </span>
         <span className="px-2.5 py-1 rounded-md bg-white border text-on-surface">Tổng đơn: <strong>{stats.totalTransactions ?? 0}</strong></span>
         <span className="px-2.5 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-800">Chờ thanh toán: <strong>{stats.pendingPaymentCount ?? 0}</strong></span>
-        <span className="px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-800">Đang giữ bảo đảm: <strong>{stats.heldInEscrowCount ?? 0}</strong></span>
-        <span className="px-2.5 py-1 rounded-md bg-orange-50 border border-orange-200 text-orange-800">Chờ giải ngân 24h: <strong>{stats.coolingDownCount ?? 0}</strong></span>
-        <span className="px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800">Đã giải ngân: <strong>{stats.settledCount ?? 0}</strong></span>
+        <span className="px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-800">Đang giữ cọc: <strong>{stats.heldInEscrowCount ?? 0}</strong></span>
+        <span className="px-2.5 py-1 rounded-md bg-orange-50 border border-orange-200 text-orange-800">Chờ hoàn tất 24h: <strong>{stats.coolingDownCount ?? 0}</strong></span>
+        <span className="px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800">Đã trả chuyên gia: <strong>{stats.settledCount ?? 0}</strong></span>
         <span className="px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-800">Đã hoàn tiền: <strong>{(stats.refundedCount ?? 0) + (stats.partiallyRefundedCount ?? 0)}</strong></span>
         <span className="px-2.5 py-1 rounded-md bg-gray-50 border border-gray-200 text-gray-700">Đã hủy: <strong>{stats.cancelledCount ?? 0}</strong></span>
       </div>
@@ -1509,10 +2707,10 @@ function PlatformWalletTab() {
           <div>
             <CardTitle className="text-lg flex items-center gap-2">
               <Icon name="receipt_long" className="text-primary text-[22px]" />
-              Sổ Cái Giao Dịch Ký Quỹ & Thanh Toán
+              Lịch sử đặt cọc & thanh toán
             </CardTitle>
             <CardDescription className="text-xs">
-              Theo dõi chi tiết từng khoản thanh toán của khách hàng, tạm giữ bảo đảm, phân bổ hoa hồng sàn và giải ngân cho chuyên gia.
+              Chi tiết các khoản khách thanh toán, tiền cọc đang giữ và tiền chi trả cho chuyên gia.
             </CardDescription>
           </div>
 
@@ -1809,7 +3007,7 @@ function PlatformPolicyTab() {
         open: true,
         type: 'success',
         title: 'Cập nhật chính sách thành công',
-        description: 'Các thông số vận hành sàn tư vấn và quy chế ký quỹ Escrow đã được cập nhật và có hiệu lực ngay lập tức.',
+        description: 'Các thông số vận hành sàn tư vấn và quy chế ký quỹ bảo đảm đã được cập nhật và có hiệu lực ngay lập tức.',
       })
       fetchPolicy()
     } catch (err) {
@@ -1824,7 +3022,7 @@ function PlatformPolicyTab() {
     }
   }
 
-  if (loading) return <LoadingState text="Đang tải chính sách sàn tư vấn và quy chế Escrow..." />
+  if (loading) return <LoadingState text="Đang tải chính sách sàn tư vấn và quy chế ký quỹ bảo đảm..." />
 
   if (!policy) {
     return (
@@ -1850,7 +3048,7 @@ function PlatformPolicyTab() {
           </div>
           <div>
             <h2 className="text-base font-bold text-white tracking-tight">
-              Quy chế vận hành sàn tư vấn & Tạm giữ ký quỹ (Escrow)
+              Quy chế vận hành sàn tư vấn & Giữ tiền bảo đảm
             </h2>
             <p className="text-xs text-amber-200/90 mt-0.5">
               Cấu hình các tham số nghiệp vụ toàn hệ thống: hoa hồng sàn, mốc hoàn tiền, thời gian chờ và hạn mức giao dịch.
@@ -1979,24 +3177,24 @@ function PlatformPolicyTab() {
           </CardContent>
         </Card>
 
-        {/* Khối 2: Đặt lịch & Tiếp nhận SLA */}
+        {/* Khối 2: Đặt lịch & Tiếp nhận */}
         <Card className="shadow-sm border border-outline-variant/30">
           <CardHeader className="pb-3 border-b border-surface-container/80">
             <div className="flex items-center gap-2">
               <Icon name="hourglass_top" className="text-blue-600 text-[20px]" />
               <CardTitle className="text-sm font-bold text-on-surface">
-                Quy chế đặt lịch & Tiếp nhận SLA
+                Quy chế đặt và nhận lịch hẹn
               </CardTitle>
             </div>
             <CardDescription className="text-xs">
-              Thời hạn phản hồi của chuyên gia và quy tắc giữ chỗ khi đặt lịch
+              Quy định thời gian giữ chỗ thanh toán và thời hạn chuyên gia nhận lịch.
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-4 flex flex-col gap-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold text-on-surface">
-                  Thời gian tạm giữ slot (Phút)
+                  Thời gian giữ chỗ thanh toán (Phút)
                 </Label>
                 <Input
                   type="number"
@@ -2007,13 +3205,13 @@ function PlatformPolicyTab() {
                   className="h-9 text-xs"
                 />
                 <span className="text-[11px] text-on-surface-variant">
-                  Khóa tạm để khách thanh toán VNPay
+                  Tạm giữ chỗ để người dùng thanh toán
                 </span>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold text-on-surface">
-                  Thời hạn tiếp nhận SLA (Giờ)
+                  Thời hạn chuyên gia nhận lịch (Giờ)
                 </Label>
                 <Input
                   type="number"
@@ -2024,7 +3222,7 @@ function PlatformPolicyTab() {
                   className="h-9 text-xs font-bold text-amber-700"
                 />
                 <span className="text-[11px] text-on-surface-variant">
-                  Hết hạn tự động hủy và hoàn tiền
+                  Quá giờ tự động hủy và hoàn tiền cho khách
                 </span>
               </div>
             </div>
@@ -2043,13 +3241,13 @@ function PlatformPolicyTab() {
                   className="h-9 text-xs"
                 />
                 <span className="text-[11px] text-on-surface-variant">
-                  Lead-time tối thiểu trước buổi hẹn
+                  Thời gian đặt trước giờ bắt đầu hẹn
                 </span>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold text-on-surface">
-                  Số slot tối đa trong ngày
+                  Số ca tư vấn tối đa trong ngày
                 </Label>
                 <Input
                   type="number"
@@ -2060,7 +3258,7 @@ function PlatformPolicyTab() {
                   className="h-9 text-xs"
                 />
                 <span className="text-[11px] text-on-surface-variant">
-                  Giới hạn số khung giờ/ngày của chuyên gia
+                  Giới hạn số ca tư vấn mỗi ngày của chuyên gia
                 </span>
               </div>
             </div>
@@ -2077,7 +3275,7 @@ function PlatformPolicyTab() {
               </CardTitle>
             </div>
             <CardDescription className="text-xs">
-              Quy tắc mở phòng trực tuyến Jitsi Meet và thời gian ghi nhận vắng mặt
+              Quy tắc mở phòng trực tuyến và thời gian ghi nhận vắng mặt
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-4 flex flex-col gap-4">
@@ -2089,19 +3287,19 @@ function PlatformPolicyTab() {
                 <Input
                   type="number"
                   min="0"
-                  max="60"
+                  max="10000"
                   value={policy.sessionOpenBeforeMinutes ?? 10}
                   onChange={(e) => handleChange('sessionOpenBeforeMinutes', e.target.value)}
                   className="h-9 text-xs"
                 />
                 <span className="text-[11px] text-on-surface-variant">
-                  Cho phép hai bên vào chuẩn bị
+                  Cho phép hai bên vào chuẩn bị trước ca
                 </span>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold text-on-surface">
-                  Thời gian chờ vắng mặt (Phút)
+                  Thời gian chờ tối đa khi muộn (Phút)
                 </Label>
                 <Input
                   type="number"
@@ -2112,7 +3310,7 @@ function PlatformPolicyTab() {
                   className="h-9 text-xs font-bold text-red-600"
                 />
                 <span className="text-[11px] text-on-surface-variant">
-                  Quá X phút được báo vắng mặt (No-Show)
+                  Quá thời gian này sẽ ghi nhận vắng mặt
                 </span>
               </div>
             </div>
@@ -2136,24 +3334,24 @@ function PlatformPolicyTab() {
           </CardContent>
         </Card>
 
-        {/* Khối 4: Quy chế Escrow & Hủy lịch hoàn tiền */}
+        {/* Khối 4: Tiền cọc & Hủy lịch hoàn tiền */}
         <Card className="shadow-sm border border-outline-variant/30">
           <CardHeader className="pb-3 border-b border-surface-container/80">
             <div className="flex items-center gap-2">
               <Icon name="shield" className="text-indigo-600 text-[20px]" />
               <CardTitle className="text-sm font-bold text-on-surface">
-                Quy chế Escrow & Hủy lịch hoàn tiền
+                Tiền cọc & Hủy lịch hoàn tiền
               </CardTitle>
             </div>
             <CardDescription className="text-xs">
-              Quy chế đóng băng tiền bảo đảm (Cooling-down) và chính sách hoàn tiền bảo vệ quyền lợi
+              Thời gian bảo đảm sau buổi hẹn và chính sách hoàn tiền bảo vệ quyền lợi
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-4 flex flex-col gap-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold text-on-surface">
-                  Thời gian giữ tiền kết toán (Giờ)
+                  Thời gian chờ bảo đảm sau ca (Giờ)
                 </Label>
                 <Input
                   type="number"
@@ -2164,13 +3362,13 @@ function PlatformPolicyTab() {
                   className="h-9 text-xs font-bold text-indigo-700"
                 />
                 <span className="text-[11px] text-on-surface-variant">
-                  Cooling-down trước khi giải ngân vào ví chuyên gia
+                  Thời gian bảo đảm trước khi cộng tiền vào ví chuyên gia
                 </span>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold text-on-surface">
-                  Hủy hoàn tiền 100% trước (Giờ)
+                  Khách hủy hoàn tiền 100% trước (Giờ)
                 </Label>
                 <Input
                   type="number"
@@ -2181,7 +3379,7 @@ function PlatformPolicyTab() {
                   className="h-9 text-xs text-emerald-700 font-bold"
                 />
                 <span className="text-[11px] text-on-surface-variant">
-                  Khách hủy trước X giờ được hoàn 100%
+                  Hủy trước thời gian này được hoàn trả 100%
                 </span>
               </div>
             </div>

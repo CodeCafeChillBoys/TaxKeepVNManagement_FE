@@ -294,5 +294,62 @@ export const expertService = {
     const res = await apiClient.put('/api/v1/admin/tax-settlement-schedule', data)
     return unwrap(res, 'Không thể cập nhật lịch trình quyết toán thuế.')
   },
+
+  // ═══════════════════════════════════════════
+  // XÉT DUYỆT RÚT TIỀN (ADMIN WITHDRAWALS)
+  // ═══════════════════════════════════════════
+
+  /**
+   * [Admin] Lấy danh sách yêu cầu rút tiền
+   * GET /api/v1/admin/withdrawals?status=...&page=1&size=10
+   */
+  getAdminWithdrawals: async ({ status, page = 1, size = 10 } = {}) => {
+    const params = { page, size }
+    if (status && status !== '__ALL__') params.status = status
+    const res = await apiClient.get('/api/v1/admin/withdrawals', { params })
+    return unwrap(res, 'Không thể tải danh sách yêu cầu rút tiền.')
+  },
+
+  /**
+   * [Admin] Xử lý duyệt hoặc từ chối yêu cầu rút tiền
+   * POST /api/v1/admin/withdrawals/{id}/process
+   */
+  processWithdrawal: async (id, payload) => {
+    const res = await apiClient.post(`/api/v1/admin/withdrawals/${id}/process`, payload)
+    return unwrap(res, 'Không thể xử lý yêu cầu rút tiền.')
+  },
+
+  // ═══════════════════════════════════════════
+  // GIẢI QUYẾT KHIẾU NẠI (ADMIN DISPUTES)
+  // ═══════════════════════════════════════════
+
+  /**
+   * [Admin] Lấy danh sách các vụ khiếu nại tranh chấp
+   * GET /api/v1/disputes?status=...&page=1&size=10
+   */
+  getAdminDisputes: async ({ status, page = 1, size = 10 } = {}) => {
+    const params = { page, size }
+    if (status && status !== '__ALL__') params.status = status
+    const res = await apiClient.get('/api/v1/disputes', { params })
+    return unwrap(res, 'Không thể tải danh sách khiếu nại.')
+  },
+
+  /**
+   * [Admin] Xem chi tiết hồ sơ khiếu nại
+   * GET /api/v1/disputes/{id}
+   */
+  getDisputeDetail: async (id) => {
+    const res = await apiClient.get(`/api/v1/disputes/${id}`)
+    return unwrap(res, 'Không thể tải chi tiết khiếu nại.')
+  },
+
+  /**
+   * [Admin] Phán quyết giải quyết tranh chấp
+   * POST /api/v1/admin/disputes/{id}/resolve
+   */
+  resolveDispute: async (id, payload) => {
+    const res = await apiClient.post(`/api/v1/admin/disputes/${id}/resolve`, payload)
+    return unwrap(res, 'Không thể phán quyết giải quyết khiếu nại.')
+  },
 }
 

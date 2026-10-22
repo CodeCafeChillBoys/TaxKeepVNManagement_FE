@@ -820,6 +820,19 @@ export function ExpertBookingsTab({ initialBookingId }) {
 // SUB-DIALOGS FOR CONSULTATION FEATURES
 // ═══════════════════════════════════════════════════════════
 
+const formatRelationship = (rel) => {
+  if (!rel) return '—'
+  switch (String(rel).toUpperCase()) {
+    case 'CHILD': return 'Con'
+    case 'SPOUSE': return 'Vợ / Chồng'
+    case 'PARENT': return 'Cha / Mẹ'
+    case 'PARENT_IN_LAW': return 'Cha / Mẹ kế'
+    case 'OTHER_DEPENDENT':
+    case 'OTHER': return 'Cá nhân khác'
+    default: return rel
+  }
+}
+
 function SharedTaxDossierDialog({ state, onClose }) {
   const { open, loading, data, booking, error } = state
   const [activeTab, setActiveTab] = useState('income')
@@ -989,7 +1002,7 @@ function SharedTaxDossierDialog({ state, onClose }) {
                       {data.dependents.map((dep, idx) => (
                         <TableRow key={idx}>
                           <TableCell className="font-bold text-on-surface">{dep.fullName}</TableCell>
-                          <TableCell>{dep.relationship}</TableCell>
+                          <TableCell>{formatRelationship(dep.relationship)}</TableCell>
                           <TableCell>{formatDate(dep.dateOfBirth)}</TableCell>
                           <TableCell className="font-mono">{dep.taxCodeOrId || '—'}</TableCell>
                           <TableCell>{dep.deductionFromMonth || '—'} đến {dep.deductionToMonth || 'Hiện tại'}</TableCell>
