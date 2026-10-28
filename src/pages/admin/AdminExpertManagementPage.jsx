@@ -1,1368 +1,1656 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { expertService } from '@/services/expertService'
+import { expertCertificateConfigService } from '@/services/expertCertificateConfigService'
+import { ExpertSearchConfigTab } from '@/components/admin/ExpertSearchConfigTab'
+import { ExpertCertificateConfigTab } from '@/components/admin/ExpertCertificateConfigTab'
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { NotificationDialog, ConfirmDialog } from '@/components/ui/notification-dialog'
 
-// ═══════════════════════════════════════════════════════════
-// CONSTANTS & HELPERS
-// ═══════════════════════════════════════════════════════════
+const POPULAR_BANKS = [
+  'Vietcombank',
+  'Techcombank',
+  'MB Bank',
+  'BIDV',
+  'VietinBank',
+  'ACB',
+  'VPBank',
+  'TPBank',
+  'Sacombank',
+  'HDBank',
+  'VIB',
+  'Agribank',
+]
 
-const ALL = '__ALL__'
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS & STATUS METADATA (TỐI GIẢN, KHÔNG MÀU MÈ, KHÔNG THUẬT NGỮ IT)
+// ─────────────────────────────────────────────────────────────────────────────
 
-const APPLICATION_STATUS_MAP = {
-  Draft: { label: 'Bản nháp', variant: 'muted', icon: 'edit_note' },
-  PendingReview: { label: 'Chờ duyệt', variant: 'warning', icon: 'hourglass_top' },
-  NeedSupplement: { label: 'Cần bổ sung', variant: 'orange', icon: 'warning' },
-  Rejected: { label: 'Từ chối', variant: 'destructive', icon: 'cancel' },
-  Approved: { label: 'Đã duyệt', variant: 'success', icon: 'check_circle' },
+const APP_STATUS_MAP = {
+  Draft: { label: 'Bản nháp', dot: 'bg-stone-400' },
+  DRAFT: { label: 'Bản nháp', dot: 'bg-stone-400' },
+  PendingReview: { label: 'Chờ thẩm định', dot: 'bg-amber-500' },
+  PENDING_REVIEW: { label: 'Chờ thẩm định', dot: 'bg-amber-500' },
+  NeedSupplement: { label: 'Cần bổ sung', dot: 'bg-amber-600' },
+  NEED_SUPPLEMENT: { label: 'Cần bổ sung', dot: 'bg-amber-600' },
+  Approved: { label: 'Đã phê duyệt', dot: 'bg-emerald-600' },
+  APPROVED: { label: 'Đã phê duyệt', dot: 'bg-emerald-600' },
+  Rejected: { label: 'Từ chối', dot: 'bg-red-600' },
+  REJECTED: { label: 'Từ chối', dot: 'bg-red-600' },
 }
 
 const CERT_STATUS_MAP = {
-  PendingVerification: { label: 'Chờ xác minh', variant: 'warning' },
-  Verified: { label: 'Hợp lệ', variant: 'success' },
-  Rejected: { label: 'Không hợp lệ', variant: 'destructive' },
-  Expired: { label: 'Hết hạn', variant: 'muted' },
+  PendingVerification: { label: 'Chờ xác minh', dot: 'bg-amber-500' },
+  PENDING_VERIFICATION: { label: 'Chờ xác minh', dot: 'bg-amber-500' },
+  Verified: { label: 'Hợp lệ', dot: 'bg-emerald-600' },
+  VERIFIED: { label: 'Hợp lệ', dot: 'bg-emerald-600' },
+  Rejected: { label: 'Không hợp lệ', dot: 'bg-red-600' },
+  REJECTED: { label: 'Không hợp lệ', dot: 'bg-red-600' },
+  Expired: { label: 'Hết hạn', dot: 'bg-stone-400' },
+  EXPIRED: { label: 'Hết hạn', dot: 'bg-stone-400' },
+}
+
+const CERT_TYPE_FALLBACK = {
+  CPA: 'Chứng chỉ Kiểm toán viên',
+  TAX_AGENT: 'Chứng chỉ Hành nghề dịch vụ làm thủ tục về thuế',
+  OTHER: 'Chứng chỉ chuyên môn khác',
 }
 
 const SESSION_TYPE_MAP = {
-  ONLINE_MEETING: { label: 'Họp trực tuyến', icon: 'videocam' },
-  CHAT: { label: 'Nhắn tin tư vấn', icon: 'chat' },
-  VOICE_CALL: { label: 'Gọi thoại trực tiếp', icon: 'call' },
-}
-
-const CERT_TYPE_MAP = {
-  TAX_AGENT: 'Chứng chỉ hành nghề đại lý thuế',
-  CPA: 'Chứng chỉ kiểm toán viên',
-  ACCOUNTANT: 'Chứng chỉ hành nghề kế toán',
-  CHIEF_ACCOUNTANT: 'Chứng chỉ kế toán trưởng',
-  OTHER: 'Chứng chỉ chuyên môn liên quan',
+  ONLINE_MEETING: 'Tư vấn trực tuyến 1-1',
+  OnlineMeeting: 'Tư vấn trực tuyến 1-1',
+  CHAT: 'Tư vấn qua tin nhắn',
+  Chat: 'Tư vấn qua tin nhắn',
+  VOICE_CALL: 'Tư vấn qua cuộc gọi',
+  VoiceCall: 'Tư vấn qua cuộc gọi',
 }
 
 const ESCROW_STATUS_MAP = {
-  PendingPayment: { label: 'Chờ thanh toán', variant: 'warning' },
-  HeldInEscrow: { label: 'Đang giữ cọc', variant: 'success' },
-  CoolingDown: { label: 'Chờ hoàn tất (24h)', variant: 'orange' },
-  Settled: { label: 'Đã trả chuyên gia', variant: 'default' },
-  Refunded: { label: 'Đã hoàn 100%', variant: 'muted' },
-  PartiallyRefunded: { label: 'Hoàn một phần', variant: 'orange' },
-  Cancelled: { label: 'Đã hủy', variant: 'destructive' },
+  PendingPayment: { label: 'Chờ thanh toán', dot: 'bg-stone-400' },
+  PENDING_PAYMENT: { label: 'Chờ thanh toán', dot: 'bg-stone-400' },
+  0: { label: 'Chờ thanh toán', dot: 'bg-stone-400' },
+  HeldInEscrow: { label: 'Đang tạm giữ', dot: 'bg-amber-500' },
+  HELD_IN_ESCROW: { label: 'Đang tạm giữ', dot: 'bg-amber-500' },
+  1: { label: 'Đang tạm giữ', dot: 'bg-amber-500' },
+  CoolingDown: { label: 'Chờ đối soát', dot: 'bg-amber-600' },
+  COOLING_DOWN: { label: 'Chờ đối soát', dot: 'bg-amber-600' },
+  2: { label: 'Chờ đối soát', dot: 'bg-amber-600' },
+  Settled: { label: 'Đã giải ngân', dot: 'bg-emerald-600' },
+  SETTLED: { label: 'Đã giải ngân', dot: 'bg-emerald-600' },
+  3: { label: 'Đã giải ngân', dot: 'bg-emerald-600' },
+  Refunded: { label: 'Đã hoàn tiền', dot: 'bg-stone-500' },
+  REFUNDED: { label: 'Đã hoàn tiền', dot: 'bg-stone-500' },
+  4: { label: 'Đã hoàn tiền', dot: 'bg-stone-500' },
+  PartiallyRefunded: { label: 'Hoàn một phần', dot: 'bg-stone-500' },
+  PARTIALLY_REFUNDED: { label: 'Hoàn một phần', dot: 'bg-stone-500' },
+  5: { label: 'Hoàn một phần', dot: 'bg-stone-500' },
+  Cancelled: { label: 'Đã hủy', dot: 'bg-stone-400' },
+  CANCELLED: { label: 'Đã hủy', dot: 'bg-stone-400' },
+  6: { label: 'Đã hủy', dot: 'bg-stone-400' },
+  Disputed: { label: 'Đang khiếu nại', dot: 'bg-red-600' },
+  DISPUTED: { label: 'Đang khiếu nại', dot: 'bg-red-600' },
+  UNDER_DISPUTE: { label: 'Đang khiếu nại', dot: 'bg-red-600' },
+  7: { label: 'Đang khiếu nại', dot: 'bg-red-600' },
 }
 
-const AUDIT_ACTION_MAP = {
-  DRAFT_CREATED: 'Khởi tạo hồ sơ',
-  DRAFT_SAVED: 'Lưu bản nháp hồ sơ',
-  SUBMITTED: 'Nộp hồ sơ xét duyệt',
-  UNDER_REVIEW: 'Hội đồng tiếp nhận thẩm định',
-  SUPPLEMENT_REQUESTED: 'Yêu cầu bổ sung thông tin/chứng chỉ',
-  SUPPLEMENT_SUBMITTED: 'Đã nộp bổ sung hồ sơ',
-  APPROVED: 'Phê duyệt hồ sơ chính thức',
-  REJECTED: 'Từ chối hồ sơ',
-  CERTIFICATE_VERIFIED: 'Thẩm định chứng chỉ: Hợp lệ',
-  CERTIFICATE_REJECTED: 'Thẩm định chứng chỉ: Không hợp lệ',
+const BOOKING_STATUS_MAP = {
+  PENDING_PAYMENT: { label: 'Chờ thanh toán', dot: 'bg-stone-400' },
+  PendingPayment: { label: 'Chờ thanh toán', dot: 'bg-stone-400' },
+  0: { label: 'Chờ thanh toán', dot: 'bg-stone-400' },
+  EXPIRED_UNPAID: { label: 'Hết hạn thanh toán', dot: 'bg-stone-400' },
+  ExpiredUnpaid: { label: 'Hết hạn thanh toán', dot: 'bg-stone-400' },
+  1: { label: 'Hết hạn thanh toán', dot: 'bg-stone-400' },
+  AWAITING_EXPERT_APPROVAL: { label: 'Chờ chuyên gia nhận', dot: 'bg-amber-500' },
+  AwaitingExpertApproval: { label: 'Chờ chuyên gia nhận', dot: 'bg-amber-500' },
+  2: { label: 'Chờ chuyên gia nhận', dot: 'bg-amber-500' },
+  CONFIRMED: { label: 'Đã xác nhận lịch', dot: 'bg-emerald-600' },
+  Confirmed: { label: 'Đã xác nhận lịch', dot: 'bg-emerald-600' },
+  3: { label: 'Đã xác nhận lịch', dot: 'bg-emerald-600' },
+  REJECTED_BY_EXPERT: { label: 'Chuyên gia từ chối', dot: 'bg-red-500' },
+  RejectedByExpert: { label: 'Chuyên gia từ chối', dot: 'bg-red-500' },
+  4: { label: 'Chuyên gia từ chối', dot: 'bg-red-500' },
+  EXPIRED_NO_RESPONSE: { label: 'Quá hạn nhận lịch', dot: 'bg-stone-400' },
+  ExpiredNoResponse: { label: 'Quá hạn nhận lịch', dot: 'bg-stone-400' },
+  EXPIRED_UNCONFIRMED: { label: 'Quá hạn nhận lịch', dot: 'bg-stone-400' },
+  ExpiredUnconfirmed: { label: 'Quá hạn nhận lịch', dot: 'bg-stone-400' },
+  5: { label: 'Quá hạn nhận lịch', dot: 'bg-stone-400' },
+  CANCELLED_BY_USER: { label: 'Khách hủy lịch', dot: 'bg-stone-400' },
+  CancelledByUser: { label: 'Khách hủy lịch', dot: 'bg-stone-400' },
+  6: { label: 'Khách hủy lịch', dot: 'bg-stone-400' },
+  CANCELLED_BY_EXPERT: { label: 'Chuyên gia hủy', dot: 'bg-red-500' },
+  CancelledByExpert: { label: 'Chuyên gia hủy', dot: 'bg-red-500' },
+  7: { label: 'Chuyên gia hủy', dot: 'bg-red-500' },
+  IN_PROGRESS: { label: 'Đang tư vấn', dot: 'bg-primary' },
+  InProgress: { label: 'Đang tư vấn', dot: 'bg-primary' },
+  8: { label: 'Đang tư vấn', dot: 'bg-primary' },
+  COMPLETED: { label: 'Đã hoàn thành', dot: 'bg-emerald-600' },
+  Completed: { label: 'Đã hoàn thành', dot: 'bg-emerald-600' },
+  9: { label: 'Đã hoàn thành', dot: 'bg-emerald-600' },
+  SETTLED: { label: 'Đã quyết toán', dot: 'bg-emerald-600' },
+  Settled: { label: 'Đã quyết toán', dot: 'bg-emerald-600' },
+  10: { label: 'Đã quyết toán', dot: 'bg-emerald-600' },
+  UNDER_DISPUTE: { label: 'Đang khiếu nại', dot: 'bg-red-600' },
+  UnderDispute: { label: 'Đang khiếu nại', dot: 'bg-red-600' },
+  DISPUTED: { label: 'Đang khiếu nại', dot: 'bg-red-600' },
+  Disputed: { label: 'Đang khiếu nại', dot: 'bg-red-600' },
+  11: { label: 'Đang khiếu nại', dot: 'bg-red-600' },
+  NO_SHOW: { label: 'Vắng mặt', dot: 'bg-red-600' },
+  NO_SHOW_BY_USER: { label: 'Khách vắng mặt', dot: 'bg-red-600' },
+  NO_SHOW_BY_EXPERT: { label: 'Chuyên gia vắng mặt', dot: 'bg-red-600' },
+  NO_SHOW_BOTH: { label: 'Hai bên vắng mặt', dot: 'bg-red-600' },
+  CANCELLED: { label: 'Đã hủy', dot: 'bg-stone-400' },
+  Cancelled: { label: 'Đã hủy', dot: 'bg-stone-400' },
 }
 
-const REVIEWABLE = ['PendingReview', 'NeedSupplement']
-
-function formatCurrency(val) {
-  if (val === null || val === undefined) return '—'
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(val)
+const WITHDRAWAL_STATUS_MAP = {
+  PENDING: { label: 'Chờ xử lý', dot: 'bg-amber-500' },
+  Pending: { label: 'Chờ xử lý', dot: 'bg-amber-500' },
+  APPROVED: { label: 'Đã chuyển khoản', dot: 'bg-emerald-600' },
+  Approved: { label: 'Đã chuyển khoản', dot: 'bg-emerald-600' },
+  COMPLETED: { label: 'Đã chuyển khoản', dot: 'bg-emerald-600' },
+  Completed: { label: 'Đã chuyển khoản', dot: 'bg-emerald-600' },
+  REJECTED: { label: 'Từ chối', dot: 'bg-red-600' },
+  Rejected: { label: 'Từ chối', dot: 'bg-red-600' },
+  CANCELLED: { label: 'Đã hủy', dot: 'bg-stone-400' },
+  Cancelled: { label: 'Đã hủy', dot: 'bg-stone-400' },
 }
 
-function formatDate(d) {
-  if (!d) return '—'
-  const dt = new Date(d)
-  return isNaN(dt) ? String(d) : dt.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+const DISPUTE_STATUS_MAP = {
+  PENDING_EXPERT_RESPONSE: { label: 'Chờ chuyên gia giải trình', dot: 'bg-amber-500' },
+  PendingExpertResponse: { label: 'Chờ chuyên gia giải trình', dot: 'bg-amber-500' },
+  AWAITING_ADMIN_RESOLUTION: { label: 'Chờ phán quyết', dot: 'bg-red-600' },
+  AwaitingAdminResolution: { label: 'Chờ phán quyết', dot: 'bg-red-600' },
+  RESOLVED_FULL_REFUND: { label: 'Đã hoàn 100% cho khách', dot: 'bg-emerald-600' },
+  RESOLVED_REFUND_USER: { label: 'Đã hoàn 100% cho khách', dot: 'bg-emerald-600' },
+  ResolvedFullRefund: { label: 'Đã hoàn 100% cho khách', dot: 'bg-emerald-600' },
+  RESOLVED_SETTLE_EXPERT: { label: 'Đã giải ngân chuyên gia', dot: 'bg-emerald-600' },
+  ResolvedSettleExpert: { label: 'Đã giải ngân chuyên gia', dot: 'bg-emerald-600' },
+  RESOLVED_PARTIAL: { label: 'Hoàn tiền một phần', dot: 'bg-stone-500' },
+  RESOLVED_PARTIAL_SPLIT: { label: 'Hoàn tiền một phần', dot: 'bg-stone-500' },
+  ResolvedPartial: { label: 'Hoàn tiền một phần', dot: 'bg-stone-500' },
+  CANCELLED: { label: 'Đã rút khiếu nại', dot: 'bg-stone-400' },
+  Cancelled: { label: 'Đã rút khiếu nại', dot: 'bg-stone-400' },
 }
 
-function formatDateTime(d) {
-  if (!d) return '—'
-  const dt = new Date(d)
-  return isNaN(dt)
-    ? String(d)
-    : dt.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+const DISPUTE_REASON_MAP = {
+  WRONG_TAX_LAW_ADVICE: 'Tư vấn sai quy định thuế',
+  UNPROFESSIONAL_BEHAVIOR: 'Thái độ thiếu chuyên nghiệp',
+  EARLY_DISCONNECT: 'Kết thúc sớm không đủ thời lượng',
+  NETWORK_ISSUE: 'Sự cố đường truyền không thể tiếp tục',
+  OTHER: 'Lý do khác',
 }
 
-function extractItems(data) {
-  if (Array.isArray(data)) return data
-  return data?.items || data?.data || []
+const PLATFORM_TX_TYPE_MAP = {
+  COMMISSION_EARNED: { label: 'Phí dịch vụ nhận được', isPositive: true },
+  PLATFORM_FEE: { label: 'Thu phí nền tảng', isPositive: true },
+  WITHDRAWAL: { label: 'Rút doanh thu về ngân hàng', isPositive: false },
+  WITHDRAWAL_REFUND: { label: 'Hoàn tiền lệnh rút bị từ chối', isPositive: true },
+  DISBURSEMENT: { label: 'Giải ngân chuyên gia', isPositive: false },
+  REFUND: { label: 'Hoàn trả khách hàng', isPositive: false },
+  TOP_UP: { label: 'Nạp tiền vào ví', isPositive: true },
+  BOOKING_PAYMENT: { label: 'Thanh toán đặt lịch', isPositive: false },
 }
 
-function Icon({ name, className = 'text-[18px]' }) {
-  return <span className={`material-symbols-outlined ${className}`}>{name}</span>
-}
-
-function StatusBadge({ status }) {
-  const s = APPLICATION_STATUS_MAP[status] || { label: status || '—', variant: 'outline', icon: 'help' }
+function StatusBadge({ label, dot = 'bg-stone-400' }) {
   return (
-    <Badge variant={s.variant}>
-      <Icon name={s.icon} className="text-[14px]" />
-      {s.label}
+    <Badge variant="secondary">
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
+      <span>{label}</span>
     </Badge>
   )
 }
 
-function ActiveBadge({ active }) {
-  return <Badge variant={active ? 'success' : 'muted'}>{active ? 'Hoạt động' : 'Vô hiệu'}</Badge>
+function formatDate(dateStr) {
+  if (!dateStr) return '—'
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return String(dateStr)
+    return d.toLocaleDateString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+  } catch {
+    return String(dateStr)
+  }
 }
 
-function ErrorAlert({ message, onClose }) {
-  if (!message) return null
-  return (
-    <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
-      <Icon name="error" className="text-[20px] mt-0.5" />
-      <span className="flex-1 text-sm font-medium">{message}</span>
-      {onClose && (
-        <button onClick={onClose} className="text-red-500 hover:text-red-700 cursor-pointer" aria-label="Đóng">
-          <Icon name="close" />
-        </button>
-      )}
-    </div>
-  )
+function formatDateTime(dateStr) {
+  if (!dateStr) return '—'
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) return String(dateStr)
+    return d.toLocaleString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return String(dateStr)
+  }
 }
 
-function LoadingState({ text }) {
-  return (
-    <div className="py-16 flex flex-col items-center justify-center gap-3 text-on-surface-variant">
-      <div className="w-8 h-8 border-[3px] border-primary border-t-transparent rounded-full animate-spin" />
-      <span className="text-sm">{text}</span>
-    </div>
-  )
+function formatCurrency(val) {
+  if (val === null || val === undefined) return '—'
+  const num = Number(val)
+  if (isNaN(num)) return String(val)
+  return num.toLocaleString('vi-VN') + ' đ'
 }
 
-function EmptyState({ icon, text }) {
-  return (
-    <Card className="shadow-sm">
-      <CardContent className="py-16 pt-16 flex flex-col items-center justify-center gap-3 text-on-surface-variant">
-        <Icon name={icon} className="text-[48px] text-outline" />
-        <p className="text-sm">{text}</p>
-      </CardContent>
-    </Card>
-  )
+function cleanVerificationNote(note) {
+  if (!note) return ''
+  return String(note)
+    .replace(/\[AI OCR[^\]]*\]\s*/gi, '')
+    .replace(/AI OCR/gi, 'Hệ thống')
+    .replace(/OCR/gi, 'quét văn bản')
+    .trim()
 }
 
-function SectionCard({ icon, title, children, className = '' }) {
-  return (
-    <Card className={`shadow-sm ${className}`}>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2 text-on-surface">
-          <Icon name={icon} className="text-[20px] text-primary" />
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">{children}</CardContent>
-    </Card>
-  )
-}
-
-function InfoRow({ label, value }) {
-  return (
-    <div className="flex items-baseline gap-3 py-1">
-      <span className="min-w-[140px] text-xs text-on-surface-variant">{label}:</span>
-      <span className="text-sm font-medium text-on-surface">{value || '—'}</span>
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════
-// MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT: ADMIN EXPERT MANAGEMENT PAGE
+// ═════════════════════════════════════════════════════════════════════════════
 
 export function AdminExpertManagementPage() {
   const [activeTab, setActiveTab] = useState('applications')
+  const [pendingBadges, setPendingBadges] = useState({
+    applications: 0,
+    withdrawals: 0,
+    disputes: 0,
+  })
+
+  const refreshBadges = useCallback(async () => {
+    try {
+      const [appsRes, wdRes, dispRes] = await Promise.allSettled([
+        expertService.getApplications({ status: 'PendingReview', page: 1, size: 1 }),
+        expertService.getAdminWithdrawals({ status: 'PENDING', page: 1, size: 1 }),
+        expertService.getAdminDisputes({ page: 1, size: 50 }),
+      ])
+
+      const appsCount =
+        appsRes.status === 'fulfilled'
+          ? appsRes.value?.pagination?.totalItems ?? (appsRes.value?.items?.length || 0)
+          : 0
+
+      const wdCount =
+        wdRes.status === 'fulfilled'
+          ? wdRes.value?.pagination?.totalItems ?? (wdRes.value?.items?.length || 0)
+          : 0
+
+      let dispCount = 0
+      if (dispRes.status === 'fulfilled') {
+        const list = dispRes.value?.items || []
+        dispCount = list.filter(
+          (d) =>
+            d.status === 'AWAITING_ADMIN_RESOLUTION' ||
+            d.status === 'PENDING_EXPERT_RESPONSE'
+        ).length
+      }
+
+      setPendingBadges({
+        applications: appsCount,
+        withdrawals: wdCount,
+        disputes: dispCount,
+      })
+    } catch {
+      // Bỏ qua lỗi phụ khi tải số đếm
+    }
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshBadges()
+  }, [refreshBadges, activeTab])
 
   return (
-    <div className="p-space-xl flex flex-col gap-space-lg">
-      <div className="rounded-2xl bg-gradient-to-r from-primary to-primary-container p-space-xl text-on-primary flex flex-col gap-space-xs shadow-md">
-        <span className="font-label-sm uppercase tracking-widest text-secondary-fixed font-bold">
-          QUẢN LÝ DỊCH VỤ TƯ VẤN
-        </span>
-        <h1 className="font-headline-lg text-headline-lg font-bold">Quản lý Chuyên gia Tư vấn Thuế</h1>
-        <p className="font-body-md text-on-primary/80 max-w-xl">
-          Duyệt hồ sơ hành nghề, xét duyệt rút tiền, giải quyết khiếu nại, quản lý lĩnh vực tư vấn và biểu phí.
-        </p>
+    <div className="flex flex-col gap-5 pb-10">
+      {/* Tiêu đề trang */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="font-headline-sm text-headline-sm font-bold text-on-surface tracking-tight">
+            Quản trị Chuyên gia & Dịch vụ Tư vấn
+          </h1>
+          <p className="text-xs text-on-surface-variant mt-1">
+            Thẩm định hồ sơ hành nghề, phê duyệt rút tiền, xử lý khiếu nại và cấu hình quy chuẩn vận hành sàn.
+          </p>
+        </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex flex-wrap h-auto gap-1">
-          <TabsTrigger value="applications" id="tab-expert-applications">
-            <Icon name="badge" className="text-[20px]" />
-            <span className="hidden sm:inline">Hồ sơ chuyên gia</span>
+      {/* Hệ thống điều hướng phân hệ */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="w-full justify-start h-auto p-1 bg-surface-container-low border border-outline-variant/40 rounded-xl flex-wrap gap-1">
+          <TabsTrigger value="applications" className="text-xs px-3 py-2 rounded-lg">
+            <span>Hồ sơ chuyên gia</span>
+            {pendingBadges.applications > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.2 rounded bg-surface-container-high text-on-surface text-[10px] font-bold tabular-nums">
+                {pendingBadges.applications}
+              </span>
+            )}
           </TabsTrigger>
-          <TabsTrigger value="withdrawals" id="tab-expert-withdrawals">
-            <Icon name="payments" className="text-[20px]" />
-            <span className="hidden sm:inline">Duyệt rút tiền</span>
+
+          <TabsTrigger value="withdrawals" className="text-xs px-3 py-2 rounded-lg">
+            <span>Lệnh rút tiền</span>
+            {pendingBadges.withdrawals > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.2 rounded bg-surface-container-high text-on-surface text-[10px] font-bold tabular-nums">
+                {pendingBadges.withdrawals}
+              </span>
+            )}
           </TabsTrigger>
-          <TabsTrigger value="disputes" id="tab-expert-disputes">
-            <Icon name="gavel" className="text-[20px]" />
-            <span className="hidden sm:inline">Giải quyết khiếu nại</span>
+
+          <TabsTrigger value="disputes" className="text-xs px-3 py-2 rounded-lg">
+            <span>Khiếu nại</span>
+            {pendingBadges.disputes > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.2 rounded bg-surface-container-high text-on-surface text-[10px] font-bold tabular-nums">
+                {pendingBadges.disputes}
+              </span>
+            )}
           </TabsTrigger>
-          <TabsTrigger value="specializations" id="tab-expert-specializations">
-            <Icon name="category" className="text-[20px]" />
-            <span className="hidden sm:inline">Lĩnh vực chuyên môn</span>
+
+          <TabsTrigger value="platform-wallet" className="text-xs px-3 py-2 rounded-lg">
+            <span>Quỹ & Doanh thu sàn</span>
           </TabsTrigger>
-          <TabsTrigger value="fee-configs" id="tab-expert-fee-configs">
-            <Icon name="price_change" className="text-[20px]" />
-            <span className="hidden sm:inline">Khung mức phí</span>
+
+          <TabsTrigger value="specializations" className="text-xs px-3 py-2 rounded-lg">
+            <span>Lĩnh vực tư vấn</span>
           </TabsTrigger>
-          <TabsTrigger value="escrow-wallet" id="tab-expert-escrow-wallet">
-            <Icon name="account_balance_wallet" className="text-[20px]" />
-            <span className="hidden sm:inline">Ví sàn & Tiền cọc</span>
+
+          <TabsTrigger value="fee-configs" className="text-xs px-3 py-2 rounded-lg">
+            <span>Khung phí dịch vụ</span>
           </TabsTrigger>
-          <TabsTrigger value="platform-policy" id="tab-expert-platform-policy">
-            <Icon name="tune" className="text-[20px]" />
-            <span className="hidden sm:inline">Chính sách & Biểu phí</span>
+
+          <TabsTrigger value="expert-certificates" className="text-xs px-3 py-2 rounded-lg">
+            <span>Loại chứng chỉ</span>
+          </TabsTrigger>
+
+          <TabsTrigger value="expert-search" className="text-xs px-3 py-2 rounded-lg">
+            <span>Đề xuất & Tìm kiếm</span>
+          </TabsTrigger>
+
+          <TabsTrigger value="platform-policy" className="text-xs px-3 py-2 rounded-lg">
+            <span>Chính sách vận hành</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="applications"><ApplicationsTab /></TabsContent>
-        <TabsContent value="withdrawals"><WithdrawalsTab /></TabsContent>
-        <TabsContent value="disputes"><DisputesTab /></TabsContent>
-        <TabsContent value="specializations"><SpecializationsTab /></TabsContent>
-        <TabsContent value="fee-configs"><FeeConfigsTab /></TabsContent>
-        <TabsContent value="escrow-wallet"><PlatformWalletTab /></TabsContent>
-        <TabsContent value="platform-policy"><PlatformPolicyTab /></TabsContent>
+        <TabsContent value="applications" className="mt-4">
+          <ApplicationsTab onBadgeRefresh={refreshBadges} />
+        </TabsContent>
+
+        <TabsContent value="withdrawals" className="mt-4">
+          <WithdrawalsTab onBadgeRefresh={refreshBadges} />
+        </TabsContent>
+
+        <TabsContent value="disputes" className="mt-4">
+          <DisputesTab onBadgeRefresh={refreshBadges} />
+        </TabsContent>
+
+        <TabsContent value="platform-wallet" className="mt-4">
+          <PlatformWalletTab />
+        </TabsContent>
+
+        <TabsContent value="specializations" className="mt-4">
+          <SpecializationsTab />
+        </TabsContent>
+
+        <TabsContent value="fee-configs" className="mt-4">
+          <FeeConfigsTab />
+        </TabsContent>
+
+        <TabsContent value="expert-certificates" className="mt-4">
+          <ExpertCertificateConfigTab />
+        </TabsContent>
+
+        <TabsContent value="expert-search" className="mt-4">
+          <ExpertSearchConfigTab />
+        </TabsContent>
+
+        <TabsContent value="platform-policy" className="mt-4">
+          <PlatformPolicyTab />
+        </TabsContent>
       </Tabs>
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════════
-// TAB 1: APPLICATIONS
-// ═══════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+// TAB 1: THẨM ĐỊNH HỒ SƠ CHUYÊN GIA
+// ═════════════════════════════════════════════════════════════════════════════
 
-function ApplicationsTab() {
-  const [applications, setApplications] = useState([])
+function ApplicationsTab({ onBadgeRefresh }) {
+  const [items, setItems] = useState([])
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    totalItems: 0,
+    totalPages: 1,
+  })
+  const [statusFilter, setStatusFilter] = useState('__ALL__')
+  const [searchInput, setSearchInput] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [statusFilter, setStatusFilter] = useState(ALL)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalItems, setTotalItems] = useState(0)
-  const [selectedApp, setSelectedApp] = useState(null)
-  const [detailLoadingId, setDetailLoadingId] = useState(null)
-  const searchTimeoutRef = useRef(null)
+  const [certTypeMap, setCertTypeMap] = useState(CERT_TYPE_FALLBACK)
 
-  const fetchApplications = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await expertService.getApplications({
-        status: statusFilter === ALL ? undefined : statusFilter,
-        search: searchTerm || undefined,
-        page,
-        size: 10,
-      })
-      const items = extractItems(data)
-      setApplications(items)
-      setTotalPages(data?.totalPages || 1)
-      setTotalItems(data?.totalItems ?? data?.totalCount ?? items.length)
-    } catch (err) {
-      setError(err.message || 'Lỗi khi tải danh sách hồ sơ.')
-      setApplications([])
-    } finally {
-      setLoading(false)
-    }
-  }, [statusFilter, searchTerm, page])
+  const [selectedId, setSelectedId] = useState(null)
+  const [detailData, setDetailData] = useState(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+
+  const showNotice = (type, title, description) => {
+    setNotice({ open: true, type, title, description })
+  }
 
   useEffect(() => {
-    fetchApplications()
+    expertCertificateConfigService
+      .getAll()
+      .then((list) => {
+        if (Array.isArray(list) && list.length > 0) {
+          const map = { ...CERT_TYPE_FALLBACK }
+          list.forEach((c) => {
+            if (c.code && c.name) map[c.code] = c.name
+          })
+          setCertTypeMap(map)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const fetchApplications = useCallback(
+    async (page = 1) => {
+      setLoading(true)
+      try {
+        const res = await expertService.getApplications({
+          status: statusFilter,
+          search: searchQuery,
+          page,
+          size: 10,
+        })
+        setItems(res?.items || [])
+        if (res?.pagination) {
+          setPagination(res.pagination)
+        }
+      } catch (err) {
+        showNotice('error', 'Không thể tải danh sách', err.message)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [statusFilter, searchQuery]
+  )
+
+  useEffect(() => {
+    fetchApplications(1)
   }, [fetchApplications])
 
-  useEffect(() => () => clearTimeout(searchTimeoutRef.current), [])
-
-  const handleSearch = (value) => {
-    clearTimeout(searchTimeoutRef.current)
-    searchTimeoutRef.current = setTimeout(() => {
-      setSearchTerm(value.trim())
-      setPage(1)
-    }, 400)
-  }
-
-  const handleViewDetail = async (id) => {
-    setDetailLoadingId(id)
-    setError(null)
+  const openDetailModal = async (id) => {
+    setSelectedId(id)
+    setDetailLoading(true)
+    setDetailData(null)
     try {
       const data = await expertService.getApplicationById(id)
-      setSelectedApp(data)
+      setDetailData(data)
     } catch (err) {
-      setError(err.message || 'Không thể tải chi tiết hồ sơ.')
+      showNotice('error', 'Không thể tải hồ sơ', err.message)
+      setSelectedId(null)
     } finally {
-      setDetailLoadingId(null)
+      setDetailLoading(false)
     }
   }
 
-  if (selectedApp) {
-    return (
-      <ApplicationDetail
-        app={selectedApp}
-        onBack={() => setSelectedApp(null)}
-        onRefresh={async () => {
-          const updated = await expertService.getApplicationById(selectedApp.id)
-          setSelectedApp(updated)
-          fetchApplications()
-        }}
-      />
-    )
+  const refreshDetailAndList = async () => {
+    if (selectedId) {
+      try {
+        const updated = await expertService.getApplicationById(selectedId)
+        setDetailData(updated)
+      } catch {
+        // ignore
+      }
+    }
+    fetchApplications(pagination.page)
+    onBadgeRefresh?.()
   }
 
+  const pendingCount = items.filter((i) => i.status === 'PendingReview').length
+  const supplementCount = items.filter((i) => i.status === 'NeedSupplement').length
+  const approvedCount = items.filter((i) => i.status === 'Approved').length
+
   return (
-    <div className="flex flex-col gap-space-md">
-      <Card className="shadow-sm">
-        <CardContent className="p-5 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-          <div className="flex-1">
+    <div className="flex flex-col gap-4">
+      {/* Thống kê nhanh */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 items-stretch">
+        <Card className="h-full">
+          <CardContent className="p-4 h-full flex items-center justify-between gap-2">
+            <div>
+              <p className="text-[11px] font-medium text-on-surface-variant">Tổng số hồ sơ</p>
+              <p className="text-xl font-bold text-on-surface tabular-nums mt-1">
+                {pagination.totalItems || items.length}
+              </p>
+            </div>
+            <Badge variant="outline">Toàn hệ thống</Badge>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full">
+          <CardContent className="p-4 h-full flex items-center justify-between gap-2">
+            <div>
+              <p className="text-[11px] font-medium text-on-surface-variant">Chờ thẩm định</p>
+              <p className="text-xl font-bold text-on-surface tabular-nums mt-1">{pendingCount}</p>
+            </div>
+            <StatusBadge label="Cần xử lý" dot="bg-amber-500" />
+          </CardContent>
+        </Card>
+
+        <Card className="h-full">
+          <CardContent className="p-4 h-full flex items-center justify-between gap-2">
+            <div>
+              <p className="text-[11px] font-medium text-on-surface-variant">Chờ bổ sung</p>
+              <p className="text-xl font-bold text-on-surface tabular-nums mt-1">
+                {supplementCount}
+              </p>
+            </div>
+            <StatusBadge label="Đang chờ" dot="bg-amber-600" />
+          </CardContent>
+        </Card>
+
+        <Card className="h-full">
+          <CardContent className="p-4 h-full flex items-center justify-between gap-2">
+            <div>
+              <p className="text-[11px] font-medium text-on-surface-variant">Đã phê duyệt</p>
+              <p className="text-xl font-bold text-on-surface tabular-nums mt-1">
+                {approvedCount}
+              </p>
+            </div>
+            <StatusBadge label="Hoạt động" dot="bg-emerald-600" />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Bộ lọc & Tìm kiếm */}
+      <Card>
+        <CardContent className="p-3.5 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              setSearchQuery(searchInput)
+            }}
+            className="flex flex-1 items-center gap-2"
+          >
             <Input
-              id="expert-app-search"
-              placeholder="Tìm theo tên, mã hồ sơ..."
-              onChange={(e) => handleSearch(e.target.value)}
-              leftIcon={<Icon name="search" className="text-[20px]" />}
+              placeholder="Tìm theo mã hồ sơ, họ tên hoặc chức danh..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="h-9 max-w-sm text-xs"
             />
-          </div>
-          <div className="sm:w-52">
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1) }}>
-              <SelectTrigger id="expert-app-status-filter" className="h-11 text-sm">
-                <SelectValue placeholder="Trạng thái" />
+            <Button type="submit" variant="secondary" size="sm" className="h-9 px-3.5 shrink-0">
+              Tìm kiếm
+            </Button>
+            {searchQuery && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-9 px-3 shrink-0"
+                onClick={() => {
+                  setSearchInput('')
+                  setSearchQuery('')
+                }}
+              >
+                Xóa lọc
+              </Button>
+            )}
+          </form>
+
+          <div className="flex items-center gap-2 justify-end shrink-0">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-44 h-9 text-xs">
+                <SelectValue placeholder="Trạng thái hồ sơ" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL}>Tất cả trạng thái</SelectItem>
-                {Object.entries(APPLICATION_STATUS_MAP).map(([key, { label }]) => (
-                  <SelectItem key={key} value={key}>{label}</SelectItem>
-                ))}
+                <SelectItem value="__ALL__">Tất cả trạng thái</SelectItem>
+                <SelectItem value="PendingReview">Chờ thẩm định</SelectItem>
+                <SelectItem value="NeedSupplement">Cần bổ sung</SelectItem>
+                <SelectItem value="Approved">Đã phê duyệt</SelectItem>
+                <SelectItem value="Rejected">Từ chối</SelectItem>
+                <SelectItem value="Draft">Bản nháp</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 px-3.5 shrink-0"
+              onClick={() => fetchApplications(pagination.page)}
+            >
+              Làm mới
+            </Button>
           </div>
-          <Button id="expert-app-refresh" onClick={fetchApplications} disabled={loading} className="gap-1">
-            <Icon name="refresh" />
-            Làm mới
-          </Button>
         </CardContent>
       </Card>
 
-      <div className="flex gap-2 flex-wrap">
-        <Badge variant="secondary" className="px-3 py-1 text-xs">Tổng: {totalItems} hồ sơ</Badge>
-        <Badge variant="outline" className="px-3 py-1 text-xs">Trang {page}/{totalPages}</Badge>
-      </div>
-
-      <ErrorAlert message={error} onClose={() => setError(null)} />
-
-      {loading && <LoadingState text="Đang tải danh sách hồ sơ..." />}
-
-      {!loading && applications.length > 0 && (
-        <Card className="shadow-sm">
+      {/* Bảng danh sách hồ sơ */}
+      <Card>
+        {loading ? (
+          <CardContent className="py-16 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
+            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs font-medium">Đang tải danh sách hồ sơ...</span>
+          </CardContent>
+        ) : items.length === 0 ? (
+          <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-1.5">
+            <p className="text-sm font-semibold text-on-surface">Không có hồ sơ phù hợp</p>
+            <p className="text-xs text-on-surface-variant">
+              Chưa có hồ sơ chuyên gia nào khớp với điều kiện lọc hiện tại.
+            </p>
+          </CardContent>
+        ) : (
           <Table>
             <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Mã hồ sơ</TableHead>
-                <TableHead>Họ tên chuyên gia</TableHead>
-                <TableHead>Chức danh nghề nghiệp</TableHead>
-                <TableHead className="text-center">Kinh nghiệm</TableHead>
-                <TableHead className="text-center">Chứng chỉ hợp lệ</TableHead>
-                <TableHead className="text-center">Trạng thái hồ sơ</TableHead>
-                <TableHead className="text-center">Ngày gửi</TableHead>
+              <TableRow>
+                <TableHead className="w-40">Mã hồ sơ</TableHead>
+                <TableHead>Ứng viên & Chức danh</TableHead>
+                <TableHead className="text-center w-28">Kinh nghiệm</TableHead>
+                <TableHead className="text-center w-32">Chứng chỉ</TableHead>
+                <TableHead className="w-36">Ngày gửi</TableHead>
+                <TableHead className="w-36">Trạng thái</TableHead>
+                <TableHead className="text-right w-28">Thao tác</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((app) => {
+                const st = APP_STATUS_MAP[app.status] || {
+                  label: app.status,
+                  dot: 'bg-stone-400',
+                }
+                const verifiedCerts =
+                  app.verifiedCertificateCount ?? app.verifiedCertificatesCount ?? 0
+                const totalCerts = app.certificateCount ?? app.totalCertificatesCount ?? 0
+                return (
+                  <TableRow key={app.id}>
+                    <TableCell className="font-mono text-xs font-semibold text-on-surface">
+                      {app.applicationNumber || '—'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-semibold text-on-surface text-xs">
+                          {app.fullName}
+                        </span>
+                        <span className="text-[11px] text-on-surface-variant">
+                          {app.jobTitle || 'Chưa cập nhật chức danh'}
+                          {app.companyName ? ` • ${app.companyName}` : ''}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center text-xs tabular-nums">
+                      {app.yearsOfExperience ?? 0} năm
+                    </TableCell>
+                    <TableCell className="text-center tabular-nums">
+                      <Badge variant="outline">
+                        {verifiedCerts}/{totalCerts} hợp lệ
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-on-surface-variant tabular-nums">
+                      {formatDateTime(app.submittedAt || app.createdAt)}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge label={st.label} dot={st.dot} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => openDetailModal(app.id)}
+                      >
+                        Thẩm định
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        )}
+
+        {pagination.totalPages > 1 && (
+          <CardFooter className="py-3 px-4 border-t border-outline-variant/30 flex items-center justify-between text-xs text-on-surface-variant">
+            <span>
+              Trang <strong className="text-on-surface">{pagination.page}</strong> /{' '}
+              {pagination.totalPages} ({pagination.totalItems} hồ sơ)
+            </span>
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!pagination.hasPrevious}
+                onClick={() => fetchApplications(pagination.page - 1)}
+              >
+                Trước
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!pagination.hasNext}
+                onClick={() => fetchApplications(pagination.page + 1)}
+              >
+                Tiếp
+              </Button>
+            </div>
+          </CardFooter>
+        )}
+      </Card>
+
+      {/* Dialog thẩm định hồ sơ */}
+      <ApplicationDetailDialog
+        open={Boolean(selectedId)}
+        onOpenChange={(open) => !open && setSelectedId(null)}
+        loading={detailLoading}
+        data={detailData}
+        certTypeMap={certTypeMap}
+        onUpdated={refreshDetailAndList}
+        showNotice={showNotice}
+      />
+
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
+      />
+    </div>
+  )
+}
+
+function ApplicationDetailDialog({
+  open,
+  onOpenChange,
+  loading,
+  data,
+  certTypeMap,
+  onUpdated,
+  showNotice,
+}) {
+  const [certActionLoading, setCertActionLoading] = useState(null)
+  const [certNoteMap, setCertNoteMap] = useState({})
+  const [actionMode, setActionMode] = useState(null) // 'approve' | 'supplement' | 'reject'
+  const [reasonInput, setReasonInput] = useState('')
+  const [reviewNotesInput, setReviewNotesInput] = useState('')
+  const [submittingAction, setSubmittingAction] = useState(false)
+
+  useEffect(() => {
+    if (data) {
+      setActionMode(null)
+      setReasonInput('')
+      setReviewNotesInput('')
+      const notes = {}
+      data.certificates?.forEach((c) => {
+        notes[c.id] = cleanVerificationNote(c.verificationNote || '')
+      })
+      setCertNoteMap(notes)
+    }
+  }, [data])
+
+  const handleVerifyCert = async (certId, status) => {
+    if (!data) return
+    const note = (certNoteMap[certId] || '').trim()
+    if (status === 'Rejected' && !note) {
+      showNotice('warning', 'Thiếu lý do', 'Vui lòng nhập ghi chú lý do khi từ chối chứng chỉ.')
+      return
+    }
+    setCertActionLoading(certId)
+    try {
+      await expertService.verifyCertificate(data.id, certId, {
+        verificationStatus: status,
+        verificationNote: note || null,
+      })
+      showNotice('success', 'Đã cập nhật chứng chỉ', 'Trạng thái thẩm định chứng chỉ đã được lưu.')
+      await onUpdated()
+    } catch (err) {
+      showNotice('error', 'Không thể thẩm định chứng chỉ', err.message)
+    } finally {
+      setCertActionLoading(null)
+    }
+  }
+
+  const handleFinalSubmit = async () => {
+    if (!data || !actionMode) return
+    setSubmittingAction(true)
+    try {
+      if (actionMode === 'approve') {
+        await expertService.approveApplication(data.id, reviewNotesInput.trim() || null)
+        showNotice(
+          'success',
+          'Đã phê duyệt hồ sơ',
+          `Ứng viên ${data.fullName} đã trở thành chuyên gia.`
+        )
+      } else if (actionMode === 'supplement') {
+        if (!reasonInput.trim() || reasonInput.trim().length < 5) {
+          showNotice(
+            'warning',
+            'Nội dung quá ngắn',
+            'Vui lòng nhập nội dung yêu cầu bổ sung tối thiểu 5 ký tự.'
+          )
+          setSubmittingAction(false)
+          return
+        }
+        await expertService.requestSupplement(data.id, reasonInput.trim())
+        showNotice(
+          'info',
+          'Đã gửi yêu cầu bổ sung',
+          'Ứng viên sẽ nhận được thông báo chỉnh sửa hồ sơ.'
+        )
+      } else if (actionMode === 'reject') {
+        if (!reasonInput.trim() || reasonInput.trim().length < 5) {
+          showNotice(
+            'warning',
+            'Nội dung quá ngắn',
+            'Vui lòng nhập lý do từ chối tối thiểu 5 ký tự.'
+          )
+          setSubmittingAction(false)
+          return
+        }
+        await expertService.rejectApplication(data.id, reasonInput.trim())
+        showNotice(
+          'info',
+          'Đã từ chối hồ sơ',
+          'Hồ sơ đăng ký đã chuyển sang trạng thái từ chối.'
+        )
+      }
+      await onUpdated()
+      onOpenChange(false)
+    } catch (err) {
+      showNotice('error', 'Thao tác không thành công', err.message)
+    } finally {
+      setSubmittingAction(false)
+    }
+  }
+
+  const stInfo = data
+    ? APP_STATUS_MAP[data.status] || { label: data.status, dot: 'bg-stone-400' }
+    : null
+
+  const hasBioAndExp = Boolean(data?.bio && data?.experienceDescription)
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+        {/* Header cố định */}
+        <DialogHeader className="px-6 py-4 border-b border-outline-variant/40 bg-surface-container-lowest">
+          <div className="flex items-center justify-between gap-3 pr-8">
+            <div>
+              <DialogTitle className="text-base font-bold text-on-surface">
+                Thẩm định hồ sơ chuyên gia {data?.applicationNumber ? `#${data.applicationNumber}` : ''}
+              </DialogTitle>
+              <DialogDescription className="text-xs mt-0.5 text-on-surface-variant">
+                {data?.submittedAt
+                  ? `Ngày nộp hồ sơ: ${formatDateTime(data.submittedAt)}`
+                  : 'Kiểm tra văn bằng hành nghề, kinh nghiệm chuyên môn và mức phí đề xuất.'}
+              </DialogDescription>
+            </div>
+            {stInfo && <StatusBadge label={stInfo.label} dot={stInfo.dot} />}
+          </div>
+        </DialogHeader>
+
+        {loading || !data ? (
+          <div className="py-24 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
+            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs">Đang tải chi tiết hồ sơ...</span>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs">
+            {/* 1. Thông tin ứng viên (Bố cục lưới đồng đều) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                  1. Thông tin ứng viên
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-stretch">
+                <div className="p-3.5 rounded-lg border border-outline-variant/40 bg-surface-container-low/25 flex flex-col justify-between h-full">
+                  <span className="text-[11px] font-medium text-on-surface-variant">Họ và tên</span>
+                  <p className="font-bold text-on-surface text-sm mt-1 truncate" title={data.fullName}>
+                    {data.fullName || '—'}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-lg border border-outline-variant/40 bg-surface-container-low/25 flex flex-col justify-between h-full">
+                  <span className="text-[11px] font-medium text-on-surface-variant">Chức danh</span>
+                  <p className="font-semibold text-on-surface text-xs mt-1 truncate" title={data.jobTitle}>
+                    {data.jobTitle || 'Chưa cập nhật'}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-lg border border-outline-variant/40 bg-surface-container-low/25 flex flex-col justify-between h-full">
+                  <span className="text-[11px] font-medium text-on-surface-variant">Đơn vị công tác</span>
+                  <p className="font-semibold text-on-surface text-xs mt-1 truncate" title={data.companyName}>
+                    {data.companyName || 'Tự do / Cá nhân'}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-lg border border-outline-variant/40 bg-surface-container-low/25 flex flex-col justify-between h-full">
+                  <span className="text-[11px] font-medium text-on-surface-variant">Thâm niên</span>
+                  <p className="font-bold text-on-surface text-sm mt-1 tabular-nums">
+                    {data.yearsOfExperience ?? 0} năm kinh nghiệm
+                  </p>
+                </div>
+              </div>
+
+              {/* Lĩnh vực đăng ký */}
+              <div className="p-3.5 rounded-lg border border-outline-variant/40 bg-surface-container-lowest flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold text-on-surface-variant shrink-0">
+                  Lĩnh vực chuyên môn đăng ký
+                </span>
+                <div className="flex flex-wrap gap-1.5 sm:justify-end">
+                  {data.specializations?.length > 0 ? (
+                    data.specializations.map((sp) => (
+                      <Badge key={sp.id} variant="outline">
+                        {sp.name}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-on-surface-variant">Chưa chọn lĩnh vực</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Giới thiệu & Kinh nghiệm thực tế */}
+              {(data.bio || data.experienceDescription) && (
+                <div
+                  className={`grid grid-cols-1 ${
+                    hasBioAndExp ? 'md:grid-cols-2' : ''
+                  } gap-3 items-stretch`}
+                >
+                  {data.bio && (
+                    <div className="p-3.5 rounded-lg border border-outline-variant/40 bg-surface-container-lowest flex flex-col gap-1.5 h-full">
+                      <span className="text-[11px] font-semibold text-on-surface-variant">
+                        Giới thiệu bản thân
+                      </span>
+                      <p className="text-on-surface leading-relaxed whitespace-pre-line">
+                        {data.bio}
+                      </p>
+                    </div>
+                  )}
+                  {data.experienceDescription && (
+                    <div className="p-3.5 rounded-lg border border-outline-variant/40 bg-surface-container-lowest flex flex-col gap-1.5 h-full">
+                      <span className="text-[11px] font-semibold text-on-surface-variant">
+                        Kinh nghiệm tư vấn thực tế
+                      </span>
+                      <p className="text-on-surface leading-relaxed whitespace-pre-line">
+                        {data.experienceDescription}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 2. Danh sách văn bằng & chứng chỉ */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                  2. Văn bằng & Chứng chỉ hành nghề ({data.certificates?.length || 0})
+                </h4>
+              </div>
+
+              {!data.certificates || data.certificates.length === 0 ? (
+                <div className="p-6 rounded-xl border border-outline-variant/40 bg-surface-container-low/20 text-center text-on-surface-variant">
+                  Ứng viên chưa đính kèm chứng chỉ hành nghề nào.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {data.certificates.map((cert) => {
+                    const cst = CERT_STATUS_MAP[cert.verificationStatus] || {
+                      label: cert.verificationStatus,
+                      dot: 'bg-stone-400',
+                    }
+                    const isBusy = certActionLoading === cert.id
+                    return (
+                      <div
+                        key={cert.id}
+                        className="rounded-xl border border-outline-variant/50 bg-surface-container-lowest overflow-hidden"
+                      >
+                        {/* Thanh tiêu đề chứng chỉ */}
+                        <div className="px-4 py-2.5 bg-surface-container-low/35 border-b border-outline-variant/30 flex items-center justify-between gap-3 flex-wrap">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-bold text-on-surface text-xs truncate">
+                              {cert.certificateName}
+                            </span>
+                            <StatusBadge label={cst.label} dot={cst.dot} />
+                          </div>
+
+                          {cert.fileUrl && (
+                            <a
+                              href={cert.fileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center justify-center h-7 px-3 rounded-md border border-outline-variant/60 bg-white text-[11px] font-semibold text-on-surface hover:bg-surface-container-low transition shrink-0"
+                            >
+                              Xem bản chụp văn bằng
+                            </a>
+                          )}
+                        </div>
+
+                        {/* Lưới 4 cột thông tin chứng chỉ đồng nhất */}
+                        <div className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 border-b border-outline-variant/25">
+                          <div>
+                            <span className="text-[11px] text-on-surface-variant block">
+                              Phân loại
+                            </span>
+                            <p className="font-semibold text-on-surface mt-0.5 leading-snug">
+                              {certTypeMap[cert.certificateType] || cert.certificateType}
+                            </p>
+                          </div>
+
+                          <div>
+                            <span className="text-[11px] text-on-surface-variant block">
+                              Số hiệu văn bằng
+                            </span>
+                            <p className="font-mono font-semibold text-on-surface mt-0.5 tabular-nums">
+                              {cert.certificateNumber || '—'}
+                            </p>
+                          </div>
+
+                          <div>
+                            <span className="text-[11px] text-on-surface-variant block">
+                              Cơ quan cấp
+                            </span>
+                            <p className="font-semibold text-on-surface mt-0.5 leading-snug">
+                              {cert.issuingAuthority || '—'}
+                            </p>
+                          </div>
+
+                          <div>
+                            <span className="text-[11px] text-on-surface-variant block">
+                              Thời hạn hiệu lực
+                            </span>
+                            <p className="font-semibold text-on-surface mt-0.5 tabular-nums">
+                              {formatDate(cert.issueDate)}
+                              {cert.expiryDate
+                                ? ` → ${formatDate(cert.expiryDate)}`
+                                : ' (Vô thời hạn)'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Dòng xác minh chứng chỉ thẳng hàng */}
+                        <div className="px-4 py-2.5 bg-surface-container-lowest flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                          <Input
+                            placeholder="Ghi chú đối soát hoặc lý do từ chối chứng chỉ..."
+                            value={certNoteMap[cert.id] ?? ''}
+                            onChange={(e) =>
+                              setCertNoteMap((prev) => ({ ...prev, [cert.id]: e.target.value }))
+                            }
+                            className="h-8 text-xs flex-1"
+                          />
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={cert.verificationStatus === 'Verified' ? 'default' : 'outline'}
+                              disabled={isBusy}
+                              onClick={() => handleVerifyCert(cert.id, 'Verified')}
+                              className="h-8 px-3 text-xs"
+                            >
+                              Xác nhận hợp lệ
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={isBusy}
+                              onClick={() => handleVerifyCert(cert.id, 'Rejected')}
+                              className="h-8 px-3 text-xs text-red-600 hover:text-red-700"
+                            >
+                              Từ chối
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 3. Mức phí đề xuất */}
+            {data.feeProposals?.length > 0 && (
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                  3. Mức phí tư vấn đề xuất ({data.feeProposals.length})
+                </h4>
+                <div className="rounded-xl border border-outline-variant/50 overflow-hidden bg-surface-container-lowest">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Hình thức dịch vụ</TableHead>
+                        <TableHead className="text-center w-44">Thời lượng tiêu chuẩn</TableHead>
+                        <TableHead className="text-right w-48">Mức phí đăng ký</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.feeProposals.map((fp) => (
+                        <TableRow key={fp.id}>
+                          <TableCell className="font-semibold text-xs text-on-surface">
+                            {SESSION_TYPE_MAP[fp.sessionType] || fp.sessionType}
+                          </TableCell>
+                          <TableCell className="text-center text-xs tabular-nums text-on-surface-variant">
+                            {fp.durationMinutes} phút / ca
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs font-bold tabular-nums text-on-surface">
+                            {formatCurrency(fp.proposedFee)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
+            {/* Lý do từ chối / yêu cầu bổ sung trước đó (nếu có) */}
+            {(data.rejectionReason || data.supplementRequestReason) && (
+              <div className="p-3.5 rounded-lg border border-outline-variant/50 bg-surface-container-low/30 space-y-1">
+                <span className="text-[11px] font-bold text-on-surface">
+                  {data.rejectionReason
+                    ? 'Lý do từ chối hồ sơ đã ghi nhận'
+                    : 'Nội dung yêu cầu bổ sung đã gửi'}
+                </span>
+                <p className="text-xs text-on-surface-variant leading-relaxed">
+                  {data.rejectionReason || data.supplementRequestReason}
+                </p>
+              </div>
+            )}
+
+            {/* 4. Khung nhập thông tin khi chọn thao tác quyết định */}
+            {actionMode && (
+              <div className="p-4 rounded-xl border border-outline-variant/60 bg-surface-container-low/35 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-on-surface">
+                    {actionMode === 'approve' && 'Xác nhận phê duyệt hồ sơ chuyên gia'}
+                    {actionMode === 'supplement' && 'Gửi yêu cầu ứng viên bổ sung hồ sơ'}
+                    {actionMode === 'reject' && 'Xác nhận từ chối hồ sơ đăng ký'}
+                  </span>
+                  <Badge variant="outline">
+                    {actionMode === 'approve'
+                      ? 'Phê duyệt'
+                      : actionMode === 'supplement'
+                        ? 'Yêu cầu bổ sung'
+                        : 'Từ chối'}
+                  </Badge>
+                </div>
+
+                {actionMode === 'approve' ? (
+                  <div className="space-y-1.5">
+                    <Label>Ghi chú phê duyệt (tùy chọn)</Label>
+                    <Input
+                      placeholder="Nhập ghi chú lưu lịch sử xét duyệt..."
+                      value={reviewNotesInput}
+                      onChange={(e) => setReviewNotesInput(e.target.value)}
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label>
+                      {actionMode === 'supplement'
+                        ? 'Nội dung yêu cầu ứng viên bổ sung *'
+                        : 'Lý do từ chối hồ sơ *'}
+                    </Label>
+                    <Textarea
+                      rows={2}
+                      placeholder="Nhập nội dung rõ ràng để thông báo cho ứng viên (tối thiểu 5 ký tự)..."
+                      value={reasonInput}
+                      onChange={(e) => setReasonInput(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Thanh hành động hợp nhất ở chân hộp thoại */}
+        <DialogFooter className="px-6 py-3.5 border-t border-outline-variant/40 bg-surface-container-lowest flex flex-row items-center justify-between sm:justify-between gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 px-4"
+            onClick={() => onOpenChange(false)}
+          >
+            Đóng
+          </Button>
+
+          {!loading && data && (
+            <div className="flex items-center gap-2">
+              {actionMode ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 px-3.5"
+                    disabled={submittingAction}
+                    onClick={() => setActionMode(null)}
+                  >
+                    Hủy thao tác
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={actionMode === 'reject' ? 'destructive' : 'default'}
+                    className="h-9 px-4"
+                    disabled={submittingAction}
+                    onClick={handleFinalSubmit}
+                  >
+                    {submittingAction ? 'Đang xử lý...' : 'Xác nhận quyết định'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-9 px-3.5 text-red-600 hover:text-red-700"
+                    onClick={() => setActionMode('reject')}
+                  >
+                    Từ chối hồ sơ
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-9 px-3.5"
+                    onClick={() => setActionMode('supplement')}
+                  >
+                    Yêu cầu bổ sung
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    className="h-9 px-4"
+                    onClick={() => setActionMode('approve')}
+                  >
+                    Phê duyệt hồ sơ
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TAB 2: DUYỆT LỆNH RÚT TIỀN
+// ═════════════════════════════════════════════════════════════════════════════
+
+function WithdrawalsTab({ onBadgeRefresh }) {
+  const [items, setItems] = useState([])
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    totalItems: 0,
+    totalPages: 1,
+  })
+  const [statusFilter, setStatusFilter] = useState('__ALL__')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const [processModal, setProcessModal] = useState({
+    open: false,
+    item: null,
+    action: 'APPROVE',
+    transactionReference: '',
+    rejectionReason: '',
+    adminNotes: '',
+    submitting: false,
+  })
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+
+  const showNotice = (type, title, description) => {
+    setNotice({ open: true, type, title, description })
+  }
+
+  const fetchWithdrawals = useCallback(
+    async (page = 1) => {
+      setLoading(true)
+      try {
+        const res = await expertService.getAdminWithdrawals({
+          status: statusFilter,
+          page,
+          size: 10,
+        })
+        setItems(res?.items || [])
+        if (res?.pagination) setPagination(res.pagination)
+      } catch (err) {
+        showNotice('error', 'Không thể tải lệnh rút tiền', err.message)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [statusFilter]
+  )
+
+  useEffect(() => {
+    fetchWithdrawals(1)
+  }, [fetchWithdrawals])
+
+  const filteredItems = items.filter((w) => {
+    if (!searchQuery.trim()) return true
+    const q = searchQuery.trim().toLowerCase()
+    return (
+      (w.userFullName || '').toLowerCase().includes(q) ||
+      (w.accountName || '').toLowerCase().includes(q) ||
+      (w.accountNumber || '').toLowerCase().includes(q) ||
+      (w.bankName || '').toLowerCase().includes(q) ||
+      (w.transactionReference || '').toLowerCase().includes(q)
+    )
+  })
+
+  const handleProcessSubmit = async (e) => {
+    e.preventDefault()
+    const { item, action, transactionReference, rejectionReason, adminNotes } = processModal
+    if (!item) return
+
+    if (action === 'REJECT' && !rejectionReason.trim()) {
+      showNotice('warning', 'Thiếu lý do từ chối', 'Vui lòng nhập lý do từ chối để hoàn tiền về ví.')
+      return
+    }
+
+    setProcessModal((prev) => ({ ...prev, submitting: true }))
+    try {
+      await expertService.processWithdrawal(item.id, {
+        action,
+        transactionReference: transactionReference.trim() || null,
+        rejectionReason: rejectionReason.trim() || null,
+        adminNotes: adminNotes.trim() || null,
+      })
+      setProcessModal((prev) => ({ ...prev, open: false, submitting: false }))
+      showNotice(
+        'success',
+        action === 'APPROVE' ? 'Đã xác nhận chuyển khoản' : 'Đã từ chối lệnh rút',
+        action === 'APPROVE'
+          ? 'Lệnh rút tiền đã hoàn tất.'
+          : 'Số tiền đã được hoàn trả về số dư khả dụng của người yêu cầu.'
+      )
+      fetchWithdrawals(pagination.page)
+      onBadgeRefresh?.()
+    } catch (err) {
+      setProcessModal((prev) => ({ ...prev, submitting: false }))
+      showNotice('error', 'Xử lý không thành công', err.message)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardContent className="p-3 flex flex-col md:flex-row items-center justify-between gap-2.5">
+          <Input
+            placeholder="Tìm theo tên người rút, ngân hàng, số tài khoản hoặc mã ủy nhiệm chi..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="max-w-md"
+          />
+          <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-44 h-9 text-xs">
+                <SelectValue placeholder="Trạng thái" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__ALL__">Tất cả trạng thái</SelectItem>
+                <SelectItem value="PENDING">Chờ xử lý</SelectItem>
+                <SelectItem value="COMPLETED">Đã chuyển khoản</SelectItem>
+                <SelectItem value="REJECTED">Đã từ chối</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fetchWithdrawals(pagination.page)}
+            >
+              Làm mới
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        {loading ? (
+          <CardContent className="py-16 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
+            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs">Đang tải danh sách lệnh rút tiền...</span>
+          </CardContent>
+        ) : filteredItems.length === 0 ? (
+          <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-1.5">
+            <p className="text-sm font-semibold text-on-surface">Chưa có lệnh rút tiền</p>
+            <p className="text-xs text-on-surface-variant">
+              Không có yêu cầu rút tiền nào khớp với bộ lọc hiện tại.
+            </p>
+          </CardContent>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Người yêu cầu</TableHead>
+                <TableHead>Tài khoản thụ hưởng</TableHead>
+                <TableHead className="text-right">Số tiền rút</TableHead>
+                <TableHead>Thời gian tạo</TableHead>
+                <TableHead>Mã tham chiếu</TableHead>
+                <TableHead>Trạng thái</TableHead>
                 <TableHead className="text-right">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {applications.map((app) => (
-                <TableRow key={app.id}>
-                  <TableCell className="font-mono text-xs text-primary font-bold">
-                    {app.applicationNumber || `#HS-${(app.id || '').substring(0, 6).toUpperCase()}`}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      {app.avatarUrl ? (
-                        <img src={app.avatarUrl} alt={app.fullName} className="w-8 h-8 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center">
-                          <Icon name="person" className="text-[16px] text-on-primary-container" />
+              {filteredItems.map((w) => {
+                const st = WITHDRAWAL_STATUS_MAP[w.status] || {
+                  label: w.status,
+                  dot: 'bg-stone-400',
+                }
+                return (
+                  <TableRow key={w.id}>
+                    <TableCell className="font-semibold text-on-surface">
+                      {w.userFullName || 'Chuyên gia'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-on-surface">
+                          {w.bankName} • {w.accountNumber}
+                        </span>
+                        <span className="text-[11px] text-on-surface-variant uppercase">
+                          {w.accountName}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold text-on-surface tabular-nums">
+                      {formatCurrency(w.amount)}
+                    </TableCell>
+                    <TableCell className="text-on-surface-variant tabular-nums">
+                      {formatDateTime(w.createdAt)}
+                    </TableCell>
+                    <TableCell className="font-mono text-[11px] text-on-surface-variant">
+                      {w.transactionReference || '—'}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge label={st.label} dot={st.dot} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {w.status === 'PENDING' ? (
+                        <div className="inline-flex items-center gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-7 px-2.5 text-[11px]"
+                            onClick={() =>
+                              setProcessModal({
+                                open: true,
+                                item: w,
+                                action: 'APPROVE',
+                                transactionReference: '',
+                                rejectionReason: '',
+                                adminNotes: '',
+                                submitting: false,
+                              })
+                            }
+                          >
+                            Xác nhận chuyển
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2.5 text-[11px] text-red-600 hover:text-red-700"
+                            onClick={() =>
+                              setProcessModal({
+                                open: true,
+                                item: w,
+                                action: 'REJECT',
+                                transactionReference: '',
+                                rejectionReason: '',
+                                adminNotes: '',
+                                submitting: false,
+                              })
+                            }
+                          >
+                            Từ chối
+                          </Button>
                         </div>
+                      ) : (
+                        <span className="text-[11px] text-on-surface-variant">
+                          {w.processedAt ? formatDate(w.processedAt) : 'Đã xử lý'}
+                        </span>
                       )}
-                      <span className="text-sm font-bold text-on-surface">{app.fullName}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-on-surface-variant max-w-[160px] truncate">{app.jobTitle || '—'}</TableCell>
-                  <TableCell className="text-center font-bold text-primary">
-                    {app.yearsOfExperience != null ? `${app.yearsOfExperience} năm` : '—'}
-                  </TableCell>
-                  <TableCell className="text-center font-mono text-xs">
-                    {app.verifiedCertificateCount ?? 0} / {app.certificateCount ?? 0}
-                  </TableCell>
-                  <TableCell className="text-center"><StatusBadge status={app.status} /></TableCell>
-                  <TableCell className="text-center text-xs text-on-surface-variant">{formatDate(app.submittedAt)}</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      id={`expert-app-view-${app.id}`}
-                      onClick={() => handleViewDetail(app.id)}
-                      disabled={detailLoadingId !== null}
-                    >
-                      {detailLoadingId === app.id ? 'Đang tải...' : 'Xem chi tiết'}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
-
-          {totalPages > 1 && (
-            <CardFooter className="p-4 border-t border-outline-variant/20 justify-between">
-              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
-                ← Trước
-              </Button>
-              <span className="text-xs text-on-surface-variant">Trang {page} / {totalPages}</span>
-              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
-                Sau →
-              </Button>
-            </CardFooter>
-          )}
-        </Card>
-      )}
-
-      {!loading && applications.length === 0 && !error && (
-        <EmptyState icon="folder_open" text="Không tìm thấy hồ sơ chuyên gia nào." />
-      )}
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════
-// APPLICATION DETAIL VIEW
-// ═══════════════════════════════════════════════════════════
-
-function ApplicationDetail({ app, onBack, onRefresh }) {
-  const [actionLoading, setActionLoading] = useState(false)
-  const [actionError, setActionError] = useState(null)
-  const [dialog, setDialog] = useState(null) // 'approve' | 'reject' | 'supplement'
-  const [certToVerify, setCertToVerify] = useState(null)
-  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
-
-  const canReview = REVIEWABLE.includes(app.status)
-
-  const runAction = async (fn, onDone, successTitle, successDesc) => {
-    setActionLoading(true)
-    setActionError(null)
-    try {
-      await fn()
-      onDone?.()
-      if (successTitle) {
-        setNotice({
-          open: true,
-          type: 'success',
-          title: successTitle,
-          description: successDesc,
-        })
-      }
-      await onRefresh()
-    } catch (err) {
-      const msg = err.message || 'Thao tác không thành công.'
-      setActionError(msg)
-      setNotice({
-        open: true,
-        type: 'error',
-        title: 'Thao tác thất bại',
-        description: msg,
-      })
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  const dialogConfig = {
-    approve: {
-      title: 'Phê duyệt hồ sơ chuyên gia',
-      description: `Bạn có chắc chắn muốn phê duyệt hồ sơ của ${app.fullName}? Tài khoản người dùng sẽ được nâng cấp thành Chuyên gia tư vấn thuế chính thức trên hệ thống.`,
-      inputLabel: 'Ghi chú xét duyệt (không bắt buộc)',
-      required: false,
-      confirmText: 'Xác nhận phê duyệt',
-      confirmClass: 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold',
-      successTitle: 'Phê duyệt hồ sơ thành công',
-      successDesc: `Đã phê duyệt hồ sơ chuyên gia cho ${app.fullName}. Tài khoản đã được cấp quyền Chuyên gia tư vấn.`,
-      action: (v) => expertService.approveApplication(app.id, v),
-    },
-    reject: {
-      title: 'Từ chối hồ sơ chuyên gia',
-      description: `Bạn có chắc chắn muốn từ chối hồ sơ của ${app.fullName}? Vui lòng nêu rõ lý do để thông báo phản hồi cho ứng viên.`,
-      inputLabel: 'Lý do từ chối hồ sơ (bắt buộc, tối thiểu 5 ký tự)',
-      required: true,
-      confirmText: 'Xác nhận từ chối',
-      confirmClass: 'bg-red-600 hover:bg-red-700 text-white font-bold',
-      successTitle: 'Đã từ chối hồ sơ',
-      successDesc: `Đã gửi thông báo từ chối hồ sơ kèm lý do đến ứng viên ${app.fullName}.`,
-      action: (v) => expertService.rejectApplication(app.id, v),
-    },
-    supplement: {
-      title: 'Yêu cầu bổ sung hồ sơ',
-      description: `Gửi yêu cầu bổ sung thông tin hoặc giấy tờ chứng chỉ hành nghề đến ứng viên ${app.fullName}.`,
-      inputLabel: 'Nội dung yêu cầu bổ sung (bắt buộc, tối thiểu 5 ký tự)',
-      required: true,
-      confirmText: 'Gửi yêu cầu bổ sung',
-      confirmClass: 'bg-orange-500 hover:bg-orange-600 text-white font-bold',
-      successTitle: 'Đã gửi yêu cầu bổ sung',
-      successDesc: `Hồ sơ đã chuyển sang trạng thái Cần bổ sung và gửi thông báo đến ứng viên ${app.fullName}.`,
-      action: (v) => expertService.requestSupplement(app.id, v),
-    },
-  }
-
-  const current = dialog ? dialogConfig[dialog] : null
-
-  return (
-    <div className="flex flex-col gap-space-md">
-      <Button variant="ghost" size="sm" onClick={onBack} className="self-start gap-1 text-primary font-bold" id="expert-detail-back">
-        <Icon name="arrow_back" className="text-[20px]" />
-        Quay lại danh sách hồ sơ
-      </Button>
-
-      <ErrorAlert message={actionError} onClose={() => setActionError(null)} />
-
-      <Card className="shadow-sm">
-        <CardContent className="p-6 flex flex-col md:flex-row gap-6">
-          <div className="flex items-start gap-4 flex-1">
-            {app.avatarUrl ? (
-              <img src={app.avatarUrl} alt={app.fullName} className="w-20 h-20 rounded-xl object-cover shadow-md" />
-            ) : (
-              <div className="w-20 h-20 rounded-xl bg-primary-container flex items-center justify-center shadow-md">
-                <Icon name="person" className="text-[36px] text-on-primary-container" />
-              </div>
-            )}
-            <div className="flex flex-col gap-1">
-              <h2 className="text-xl font-bold text-on-surface">{app.fullName}</h2>
-              <p className="text-sm text-on-surface-variant">{app.jobTitle}</p>
-              {app.companyName && (
-                <p className="text-sm text-on-surface-variant flex items-center gap-1">
-                  <Icon name="business" className="text-[16px]" />
-                  {app.companyName}
-                </p>
-              )}
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <StatusBadge status={app.status} />
-                {app.applicationNumber && (
-                  <span className="text-[11px] text-on-surface-variant font-mono">#{app.applicationNumber}</span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {canReview && (
-            <div className="flex flex-col gap-2 sm:flex-row md:flex-col">
-              <Button id="expert-approve" size="sm" disabled={actionLoading} onClick={() => setDialog('approve')}
-                className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
-                <Icon name="check_circle" /> Phê duyệt hồ sơ
-              </Button>
-              <Button id="expert-reject" size="sm" variant="destructive" disabled={actionLoading} onClick={() => setDialog('reject')} className="gap-1 font-bold">
-                <Icon name="cancel" /> Từ chối hồ sơ
-              </Button>
-              <Button id="expert-supplement" size="sm" disabled={actionLoading} onClick={() => setDialog('supplement')}
-                className="gap-1 bg-orange-500 hover:bg-orange-600 text-white font-bold">
-                <Icon name="note_add" /> Yêu cầu bổ sung
-              </Button>
-            </div>
-          )}
-        </CardContent>
+        )}
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-space-md">
-        <div className="flex flex-col gap-space-md">
-          <SectionCard icon="info" title="Thông tin cá nhân">
-            <InfoRow label="Chức vụ hiện tại" value={app.currentPosition} />
-            <InfoRow label="Số năm kinh nghiệm" value={app.yearsOfExperience != null ? `${app.yearsOfExperience} năm` : null} />
-            <InfoRow label="Ngày tạo hồ sơ" value={formatDateTime(app.createdAt)} />
-            <InfoRow label="Ngày gửi" value={formatDateTime(app.submittedAt)} />
-            {app.reviewedAt && <InfoRow label="Ngày xét duyệt" value={formatDateTime(app.reviewedAt)} />}
-            {app.rejectionReason && (
-              <div className="mt-2 p-3 bg-red-50 rounded-lg border border-red-200">
-                <span className="text-xs text-red-700 font-bold">Lý do từ chối:</span>
-                <p className="text-sm text-red-600 mt-1">{app.rejectionReason}</p>
-              </div>
-            )}
-            {app.supplementRequestReason && (
-              <div className="mt-2 p-3 bg-orange-50 rounded-lg border border-orange-200">
-                <span className="text-xs text-orange-700 font-bold">Yêu cầu bổ sung:</span>
-                <p className="text-sm text-orange-600 mt-1">{app.supplementRequestReason}</p>
-              </div>
-            )}
-          </SectionCard>
-
-          <SectionCard icon="work_history" title="Mô tả kinh nghiệm">
-            <p className="text-sm text-on-surface-variant whitespace-pre-wrap leading-relaxed">
-              {app.experienceDescription || 'Chưa cung cấp mô tả kinh nghiệm.'}
-            </p>
-          </SectionCard>
-
-          {app.bio && (
-            <SectionCard icon="description" title="Giới thiệu bản thân">
-              <p className="text-sm text-on-surface-variant whitespace-pre-wrap leading-relaxed">{app.bio}</p>
-            </SectionCard>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-space-md">
-          <SectionCard icon="category" title={`Lĩnh vực chuyên môn (${app.specializations?.length || 0})`}>
-            {app.specializations?.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {app.specializations.map((spec, i) => (
-                  <Badge key={spec.id || i} variant="secondary" className="px-3 py-1 text-xs text-primary">
-                    {spec.name || spec.specializationName}
-                  </Badge>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-on-surface-variant">Chưa chọn lĩnh vực chuyên môn.</p>
-            )}
-          </SectionCard>
-
-          <SectionCard icon="payments" title={`Mức phí đề xuất (${app.feeProposals?.length || 0})`}>
-            {app.feeProposals?.length > 0 ? (
-              app.feeProposals.map((fee, i) => {
-                const s = SESSION_TYPE_MAP[fee.sessionType] || { label: fee.sessionType, icon: 'help' }
-                return (
-                  <div key={fee.id || i} className="flex items-center justify-between p-3 bg-surface-container-low rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Icon name={s.icon} className="text-[18px] text-primary" />
-                      <span className="text-sm font-bold">{s.label}</span>
-                      <span className="text-[11px] text-on-surface-variant">• {fee.durationMinutes} phút</span>
-                    </div>
-                    <span className="text-sm text-primary font-bold">{formatCurrency(fee.proposedFee)}</span>
-                  </div>
-                )
-              })
-            ) : (
-              <p className="text-sm text-on-surface-variant">Chưa đề xuất mức phí.</p>
-            )}
-          </SectionCard>
-
-          <SectionCard icon="verified" title={`Chứng chỉ (${app.certificates?.length || 0})`}>
-            {app.certificates?.length > 0 ? (
-              app.certificates.map((cert) => {
-                const cs = CERT_STATUS_MAP[cert.verificationStatus] || CERT_STATUS_MAP.PendingVerification
-                return (
-                  <div key={cert.id} className="p-4 bg-surface-container-low rounded-xl border border-outline-variant/20 flex flex-col gap-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-sm font-bold text-on-surface">{cert.certificateName}</span>
-                        <span className="text-[11px] text-on-surface-variant">{CERT_TYPE_MAP[cert.certificateType] || cert.certificateType}</span>
-                      </div>
-                      <Badge variant={cs.variant}>{cs.label}</Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div><span className="text-on-surface-variant">Số chứng chỉ:</span> <b>{cert.certificateNumber || '—'}</b></div>
-                      <div><span className="text-on-surface-variant">Cơ quan cấp:</span> <b>{cert.issuingAuthority || '—'}</b></div>
-                      <div><span className="text-on-surface-variant">Ngày cấp:</span> <b>{formatDate(cert.issueDate)}</b></div>
-                      {cert.hasExpiry && (
-                        <div><span className="text-on-surface-variant">Hạn:</span> <b>{formatDate(cert.expiryDate)}</b></div>
-                      )}
-                    </div>
-                    {cert.fileUrl && (
-                      <a href={cert.fileUrl} target="_blank" rel="noopener noreferrer"
-                        className="text-primary text-xs font-bold flex items-center gap-1 hover:underline">
-                        <Icon name="open_in_new" className="text-[14px]" />
-                        Xem tệp chứng chỉ
-                      </a>
-                    )}
-                    {cert.verificationNote && (
-                      <p className="text-[11px] text-on-surface-variant italic">Ghi chú: {cert.verificationNote}</p>
-                    )}
-                    {cert.verificationStatus === 'PendingVerification' && canReview && (
-                      <Button size="sm" variant="secondary" className="self-start gap-1 mt-1 font-bold" disabled={actionLoading}
-                        onClick={() => setCertToVerify(cert)} id={`expert-cert-verify-${cert.id}`}>
-                        <Icon name="fact_check" className="text-[16px]" /> Thẩm định chứng chỉ
-                      </Button>
-                    )}
-                  </div>
-                )
-              })
-            ) : (
-              <p className="text-sm text-on-surface-variant">Chưa tải lên chứng chỉ.</p>
-            )}
-          </SectionCard>
-
-          {app.audits?.length > 0 && (
-            <SectionCard icon="history" title="Lịch sử xét duyệt">
-              {app.audits.map((audit, i) => (
-                <div key={audit.id || i} className="flex items-start gap-3 p-3 bg-surface-container-low rounded-lg">
-                  <Icon name="radio_button_checked" className="text-[18px] text-outline mt-0.5" />
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-bold text-on-surface">{AUDIT_ACTION_MAP[audit.action] || audit.action || audit.description || 'Thao tác xét duyệt'}</span>
-                    <span className="text-[11px] text-on-surface-variant">{formatDateTime(audit.createdAt || audit.timestamp)}</span>
-                    {audit.note && <span className="text-[11px] text-on-surface-variant italic">{audit.note}</span>}
-                  </div>
-                </div>
-              ))}
-            </SectionCard>
-          )}
-        </div>
-      </div>
-
-      {current && (
-        <ReasonDialog
-          key={dialog}
-          open
-          config={current}
-          loading={actionLoading}
-          onOpenChange={(o) => !o && setDialog(null)}
-          onConfirm={(val) =>
-            runAction(
-              () => current.action(val),
-              () => setDialog(null),
-              current.successTitle,
-              current.successDesc
-            )
-          }
-        />
-      )}
-
-      {certToVerify && (
-        <CertVerifyDialog
-          cert={certToVerify}
-          loading={actionLoading}
-          onOpenChange={(o) => !o && setCertToVerify(null)}
-          onVerify={(payload) =>
-            runAction(
-              () => expertService.verifyCertificate(app.id, certToVerify.id, payload),
-              () => setCertToVerify(null),
-              'Thẩm định chứng chỉ thành công',
-              'Đã cập nhật kết quả thẩm định cho chứng chỉ hành nghề.'
-            )
-          }
-        />
-      )}
-
-      {/* Thông báo kết quả thao tác */}
-      <NotificationDialog
-        open={notice.open}
-        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
-        type={notice.type}
-        title={notice.title}
-        description={notice.description}
-      />
-    </div>
-  )
-}
-
-function ReasonDialog({ open, config, loading, onConfirm, onOpenChange }) {
-  const [value, setValue] = useState('')
-  const MIN = 5
-  const trimmed = value.trim()
-  const isValid = !config.required || trimmed.length >= MIN
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{config.title}</DialogTitle>
-          <DialogDescription>{config.description}</DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="expert-reason-input">{config.inputLabel}</Label>
-          <Textarea id="expert-reason-input" rows={3} value={value} onChange={(e) => setValue(e.target.value)} placeholder="Nhập nội dung..." />
-          {config.required && trimmed.length > 0 && trimmed.length < MIN && (
-            <span className="text-[11px] text-red-500">Tối thiểu {MIN} ký tự</span>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Hủy</Button>
-          <Button size="sm" className={config.confirmClass} disabled={loading || !isValid} onClick={() => onConfirm(trimmed)}>
-            {loading ? 'Đang xử lý...' : config.confirmText}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function CertVerifyDialog({ cert, loading, onVerify, onOpenChange }) {
-  const [status, setStatus] = useState('Verified')
-  const [source, setSource] = useState('')
-  const [note, setNote] = useState('')
-
-  return (
-    <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Thẩm định chứng chỉ hành nghề</DialogTitle>
-          <DialogDescription>
-            Chứng chỉ: <strong>{cert.certificateName}</strong> (Số: {cert.certificateNumber || '—'})
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex flex-col gap-2">
-          <Label>Kết quả thẩm định</Label>
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger id="cert-verify-status" className="h-11 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent className="z-[110]">
-              <SelectItem value="Verified">Hợp lệ</SelectItem>
-              <SelectItem value="Rejected">Không hợp lệ</SelectItem>
-              <SelectItem value="Expired">Đã hết hạn</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="cert-verify-source">Nguồn đối soát xác minh</Label>
-          <Input id="cert-verify-source" value={source} onChange={(e) => setSource(e.target.value)}
-            placeholder="Ví dụ: Tra cứu tại Cổng thông tin Tổng cục Thuế..." />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="cert-verify-note">Ghi chú thẩm định</Label>
-          <Textarea id="cert-verify-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ghi chú chi tiết kết quả thẩm định..." />
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Hủy</Button>
-          <Button size="sm" disabled={loading} onClick={() => onVerify({
-            verificationStatus: status,
-            verificationSource: source.trim() || null,
-            verificationNote: note.trim() || null,
-          })} className="bg-primary text-on-primary font-bold">
-            {loading ? 'Đang xử lý...' : 'Xác nhận kết quả thẩm định'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════
-// TAB: XÉT DUYỆT RÚT TIỀN (WITHDRAWALS)
-// ═══════════════════════════════════════════════════════════
-
-const WITHDRAWAL_STATUS_MAP = {
-  PENDING: { label: 'Chờ duyệt', variant: 'warning', icon: 'hourglass_top' },
-  APPROVE: { label: 'Đã chuyển tiền', variant: 'success', icon: 'check_circle' },
-  APPROVED: { label: 'Đã chuyển tiền', variant: 'success', icon: 'check_circle' },
-  REJECT: { label: 'Đã từ chối', variant: 'destructive', icon: 'cancel' },
-  REJECTED: { label: 'Đã từ chối', variant: 'destructive', icon: 'cancel' },
-}
-
-function WithdrawalStatusBadge({ status }) {
-  const s = WITHDRAWAL_STATUS_MAP[status] || { label: status || '—', variant: 'outline', icon: 'help' }
-  return (
-    <Badge variant={s.variant} className="gap-1 inline-flex items-center">
-      <Icon name={s.icon} className="text-[13px]" />
-      <span>{s.label}</span>
-    </Badge>
-  )
-}
-
-function WithdrawalsTab() {
-  const [withdrawals, setWithdrawals] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [statusFilter, setStatusFilter] = useState('PENDING')
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalItems, setTotalItems] = useState(0)
-
-  // Dialog duyệt / từ chối
-  const [actionModal, setActionModal] = useState(null) // { type: 'APPROVE' | 'REJECT', item }
-  const [transactionReference, setTransactionReference] = useState('')
-  const [rejectionReason, setRejectionReason] = useState('')
-  const [adminNotes, setAdminNotes] = useState('')
-  const [actionLoading, setActionLoading] = useState(false)
-  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
-
-  const fetchWithdrawals = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await expertService.getAdminWithdrawals({
-        status: statusFilter === ALL ? undefined : statusFilter,
-        page,
-        size: 10,
-      })
-      const items = extractItems(res)
-      setWithdrawals(items)
-      const pagination = res?.pagination || res?.data?.pagination
-      setTotalPages(pagination?.totalPages || res?.totalPages || 1)
-      setTotalItems(pagination?.totalItems ?? res?.totalItems ?? items.length)
-    } catch (err) {
-      setError(err?.message || 'Không thể tải danh sách yêu cầu rút tiền.')
-    } finally {
-      setLoading(false)
-    }
-  }, [statusFilter, page])
-
-  useEffect(() => {
-    fetchWithdrawals()
-  }, [fetchWithdrawals])
-
-  const openApproveModal = (item) => {
-    setActionModal({ type: 'APPROVE', item })
-    setTransactionReference('')
-    setAdminNotes('')
-  }
-
-  const openRejectModal = (item) => {
-    setActionModal({ type: 'REJECT', item })
-    setRejectionReason('')
-    setAdminNotes('')
-  }
-
-  const handleProcessSubmit = async (e) => {
-    e.preventDefault()
-    if (!actionModal?.item) return
-
-    const isApprove = actionModal.type === 'APPROVE'
-    if (isApprove && !transactionReference.trim()) {
-      setNotice({
-        open: true,
-        type: 'error',
-        title: 'Thiếu thông tin',
-        description: 'Vui lòng nhập mã giao dịch ngân hàng hoặc số ủy nhiệm chi đã chuyển khoản.',
-      })
-      return
-    }
-
-    if (!isApprove && !rejectionReason.trim()) {
-      setNotice({
-        open: true,
-        type: 'error',
-        title: 'Thiếu thông tin',
-        description: 'Vui lòng nhập lý do từ chối để thông báo cho người yêu cầu.',
-      })
-      return
-    }
-
-    setActionLoading(true)
-    try {
-      await expertService.processWithdrawal(actionModal.item.id, {
-        action: actionModal.type,
-        transactionReference: isApprove ? transactionReference.trim() : undefined,
-        rejectionReason: !isApprove ? rejectionReason.trim() : undefined,
-        adminNotes: adminNotes.trim() || undefined,
-      })
-
-      setActionModal(null)
-      setNotice({
-        open: true,
-        type: 'success',
-        title: isApprove ? 'Duyệt thành công' : 'Đã từ chối',
-        description: isApprove
-          ? 'Đã ghi nhận chuyển tiền thành công.'
-          : 'Đã từ chối lệnh rút tiền và hoàn trả số tiền về ví người nhận.',
-      })
-      fetchWithdrawals()
-    } catch (err) {
-      setNotice({
-        open: true,
-        type: 'error',
-        title: 'Xử lý thất bại',
-        description: err?.message || 'Đã có lỗi xảy ra khi xử lý yêu cầu.',
-      })
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-6">
-      <ErrorAlert message={error} onClose={() => setError(null)} />
-
-      {/* Thẻ thống kê trạng thái nhanh */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card
-          className={`cursor-pointer transition-all border-l-4 ${statusFilter === 'PENDING' ? 'border-l-amber-500 bg-amber-50/40 shadow-md ring-1 ring-amber-400' : 'border-l-amber-500 hover:shadow-sm'}`}
-          onClick={() => { setStatusFilter('PENDING'); setPage(1) }}
-        >
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
-              <Icon name="hourglass_top" className="text-amber-600 text-[18px]" />
-              Yêu cầu chờ duyệt
-            </CardDescription>
-            <CardTitle className="text-2xl font-bold text-amber-700">
-              {statusFilter === 'PENDING' ? totalItems : 'Xem danh sách'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-on-surface-variant pt-0">
-            Các yêu cầu đang chờ quản trị viên chuyển khoản và xác nhận.
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`cursor-pointer transition-all border-l-4 ${statusFilter === 'APPROVED' ? 'border-l-emerald-600 bg-emerald-50/40 shadow-md ring-1 ring-emerald-400' : 'border-l-emerald-600 hover:shadow-sm'}`}
-          onClick={() => { setStatusFilter('APPROVED'); setPage(1) }}
-        >
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
-              <Icon name="check_circle" className="text-emerald-600 text-[18px]" />
-              Đã chuyển tiền
-            </CardDescription>
-            <CardTitle className="text-2xl font-bold text-emerald-700">
-              {statusFilter === 'APPROVED' ? totalItems : 'Xem lịch sử'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-on-surface-variant pt-0">
-            Các lệnh rút tiền đã được chuyển khoản thành công qua ngân hàng.
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`cursor-pointer transition-all border-l-4 ${statusFilter === 'REJECTED' ? 'border-l-red-500 bg-red-50/40 shadow-md ring-1 ring-red-400' : 'border-l-red-500 hover:shadow-sm'}`}
-          onClick={() => { setStatusFilter('REJECTED'); setPage(1) }}
-        >
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold text-red-800">
-              <Icon name="cancel" className="text-red-500 text-[18px]" />
-              Đã từ chối
-            </CardDescription>
-            <CardTitle className="text-2xl font-bold text-red-600">
-              {statusFilter === 'REJECTED' ? totalItems : 'Xem danh sách'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-on-surface-variant pt-0">
-            Các lệnh không hợp lệ đã được hoàn trả số dư về ví.
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Bảng danh sách yêu cầu rút tiền */}
-      <Card className="shadow-sm">
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4">
-          <div>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Icon name="account_balance" className="text-primary text-[22px]" />
-              Danh sách yêu cầu rút tiền
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Kiểm tra thông tin tài khoản ngân hàng của người dùng/chuyên gia để thực hiện chuyển khoản và xác nhận.
-            </CardDescription>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setPage(1) }}>
-              <SelectTrigger className="w-52 h-9 text-xs">
-                <SelectValue placeholder="Lọc trạng thái" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Tất cả trạng thái</SelectItem>
-                <SelectItem value="PENDING">Chờ duyệt</SelectItem>
-                <SelectItem value="APPROVED">Đã chuyển tiền</SelectItem>
-                <SelectItem value="REJECTED">Đã từ chối</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Button variant="outline" size="sm" onClick={fetchWithdrawals} title="Làm mới">
-              <Icon name="refresh" className="text-[18px]" />
-            </Button>
-          </div>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          {loading ? (
-            <LoadingState text="Đang tải danh sách yêu cầu rút tiền..." />
-          ) : withdrawals.length === 0 ? (
-            <EmptyState icon="savings" text="Không có yêu cầu rút tiền nào." />
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Ngày gửi</TableHead>
-                    <TableHead>Người nhận</TableHead>
-                    <TableHead className="text-right">Số tiền rút</TableHead>
-                    <TableHead>Tài khoản nhận tiền</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                    <TableHead>Chi tiết xử lý</TableHead>
-                    <TableHead className="text-center">Thao tác</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {withdrawals.map((item) => (
-                    <TableRow key={item.id} className="hover:bg-surface-container-lowest">
-                      <TableCell className="text-xs text-on-surface-variant font-mono whitespace-nowrap">
-                        {formatDateTime(item.createdAt)}
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-semibold text-sm text-on-surface block">
-                          {item.userFullName || '—'}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap font-bold text-sm text-primary">
-                        {formatCurrency(item.amount)}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        <div className="font-medium text-on-surface">{item.bankName || '—'}</div>
-                        <div className="font-mono text-primary font-semibold">{item.accountNumber || '—'}</div>
-                        <div className="text-on-surface-variant uppercase text-[11px]">{item.accountName || '—'}</div>
-                      </TableCell>
-                      <TableCell>
-                        <WithdrawalStatusBadge status={item.status} />
-                      </TableCell>
-                      <TableCell className="text-xs max-w-xs">
-                        {item.status === 'APPROVED' || item.status === 'APPROVE' ? (
-                          <div className="space-y-0.5">
-                            <div className="text-emerald-700 font-medium">
-                              Mã GD: <span className="font-mono font-bold">{item.transactionReference || '—'}</span>
-                            </div>
-                            {item.processedAt && (
-                              <div className="text-[11px] text-on-surface-variant">
-                                Lúc: {formatDateTime(item.processedAt)}
-                              </div>
-                            )}
-                            {item.adminNotes && (
-                              <div className="text-[11px] text-on-surface-variant italic">
-                                Ghi chú: {item.adminNotes}
-                              </div>
-                            )}
-                          </div>
-                        ) : item.status === 'REJECTED' || item.status === 'REJECT' ? (
-                          <div className="space-y-0.5">
-                            <div className="text-red-700 font-medium">
-                              Lý do: {item.rejectionReason || '—'}
-                            </div>
-                            {item.adminNotes && (
-                              <div className="text-[11px] text-on-surface-variant italic">
-                                Ghi chú: {item.adminNotes}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-on-surface-variant italic text-[11px]">
-                            Đang chờ chuyển tiền
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center whitespace-nowrap">
-                        {item.status === 'PENDING' ? (
-                          <div className="flex items-center justify-center gap-2">
-                            <Button
-                              size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-8 gap-1"
-                              onClick={() => openApproveModal(item)}
-                            >
-                              <Icon name="check" className="text-[16px]" />
-                              Duyệt chuyển tiền
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 text-xs h-8 gap-1"
-                              onClick={() => openRejectModal(item)}
-                            >
-                              <Icon name="close" className="text-[16px]" />
-                              Từ chối
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-on-surface-variant font-medium">Đã hoàn tất</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-
-          {/* Phân trang */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-6 py-4 border-t text-xs text-on-surface-variant">
-              <span>Trang {page} / {totalPages} (Tổng số {totalItems} yêu cầu)</span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  Trước
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  Sau
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Hộp thoại Duyệt chuyển tiền */}
+      {/* Dialog xử lý lệnh rút */}
       <Dialog
-        open={actionModal?.type === 'APPROVE'}
-        onOpenChange={(open) => !open && setActionModal(null)}
+        open={processModal.open}
+        onOpenChange={(open) => setProcessModal((prev) => ({ ...prev, open }))}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-emerald-700">
-              <Icon name="payments" className="text-[22px]" />
-              Xác nhận Đã Chuyển Tiền
+            <DialogTitle>
+              {processModal.action === 'APPROVE'
+                ? 'Xác nhận đã chuyển khoản'
+                : 'Từ chối lệnh rút tiền'}
             </DialogTitle>
-            <DialogDescription className="text-xs">
-              Vui lòng chuyển khoản ngân hàng theo thông tin bên dưới, sau đó nhập mã giao dịch để hoàn tất duyệt lệnh rút tiền.
+            <DialogDescription>
+              {processModal.item &&
+                `${processModal.item.userFullName} • ${formatCurrency(processModal.item.amount)} (${processModal.item.bankName} - ${processModal.item.accountNumber})`}
             </DialogDescription>
           </DialogHeader>
 
-          {actionModal?.item && (
-            <div className="flex flex-col gap-3 py-2">
-              <div className="rounded-xl bg-surface-container-low p-3.5 border border-outline-variant space-y-1.5 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-on-surface-variant">Người nhận:</span>
-                  <strong className="text-on-surface text-sm">{actionModal.item.userFullName}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-on-surface-variant">Số tiền cần chuyển:</span>
-                  <strong className="text-emerald-700 text-base">{formatCurrency(actionModal.item.amount)}</strong>
-                </div>
-                <div className="border-t border-outline-variant/30 my-1 pt-1 space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-on-surface-variant">Ngân hàng:</span>
-                    <span className="font-semibold text-on-surface">{actionModal.item.bankName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-on-surface-variant">Số tài khoản:</span>
-                    <span className="font-mono font-bold text-primary text-sm">{actionModal.item.accountNumber}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-on-surface-variant">Tên chủ tài khoản:</span>
-                    <span className="font-bold text-on-surface uppercase">{actionModal.item.accountName}</span>
-                  </div>
-                </div>
-              </div>
-
+          <form onSubmit={handleProcessSubmit} className="flex flex-col gap-3.5">
+            {processModal.action === 'APPROVE' ? (
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Mã giao dịch ngân hàng / Ủy nhiệm chi <span className="text-red-500">*</span>
-                </Label>
+                <Label>Mã giao dịch ngân hàng / Ủy nhiệm chi</Label>
                 <Input
-                  placeholder="Ví dụ: FT24102209876543 hoặc mã UNC..."
-                  value={transactionReference}
-                  onChange={(e) => setTransactionReference(e.target.value)}
-                  className="h-9 text-xs font-mono"
-                  autoFocus
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Nhập mã tham chiếu từ ứng dụng ngân hàng khi bạn chuyển tiền thành công.
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">Ghi chú nội bộ</Label>
-                <Textarea
-                  placeholder="Ghi chú thêm nếu cần..."
-                  value={adminNotes}
-                  onChange={(e) => setAdminNotes(e.target.value)}
-                  className="text-xs min-h-[60px]"
+                  placeholder="VD: FT263019283..."
+                  value={processModal.transactionReference}
+                  onChange={(e) =>
+                    setProcessModal((prev) => ({
+                      ...prev,
+                      transactionReference: e.target.value,
+                    }))
+                  }
                 />
               </div>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setActionModal(null)}
-              disabled={actionLoading}
-            >
-              Hủy
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              className="bg-emerald-600 hover:bg-emerald-700 font-semibold"
-              onClick={handleProcessSubmit}
-              disabled={actionLoading}
-            >
-              {actionLoading ? 'Đang xác nhận...' : 'Xác nhận Đã Chuyển Tiền'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Hộp thoại Từ chối */}
-      <Dialog
-        open={actionModal?.type === 'REJECT'}
-        onOpenChange={(open) => !open && setActionModal(null)}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
-              <Icon name="cancel" className="text-[22px]" />
-              Từ chối Yêu cầu Rút tiền
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Số tiền yêu cầu sẽ được tự động hoàn trả đầy đủ về ví của người nhận.
-            </DialogDescription>
-          </DialogHeader>
-
-          {actionModal?.item && (
-            <div className="flex flex-col gap-3 py-2">
-              <div className="rounded-xl bg-red-50 p-3 border border-red-200 text-xs text-red-900 space-y-1">
-                <div className="flex justify-between">
-                  <span>Người yêu cầu:</span>
-                  <strong>{actionModal.item.userFullName}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span>Số tiền hoàn trả về ví:</span>
-                  <strong className="text-red-700 text-sm">{formatCurrency(actionModal.item.amount)}</strong>
-                </div>
-              </div>
-
+            ) : (
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Lý do từ chối <span className="text-red-500">*</span>
+                <Label>
+                  Lý do từ chối <span className="text-red-600">*</span>
                 </Label>
                 <Textarea
-                  placeholder="Ví dụ: Tên tài khoản ngân hàng không khớp với họ tên đăng ký, số tài khoản không tồn tại..."
-                  value={rejectionReason}
-                  onChange={(e) => setRejectionReason(e.target.value)}
-                  className="text-xs min-h-[80px]"
-                  autoFocus
+                  rows={2}
+                  placeholder="Nhập lý do từ chối (ví dụ: Sai thông tin chủ tài khoản)..."
+                  value={processModal.rejectionReason}
+                  onChange={(e) =>
+                    setProcessModal((prev) => ({ ...prev, rejectionReason: e.target.value }))
+                  }
                 />
-                <span className="text-[11px] text-on-surface-variant">
-                  Lý do này sẽ được hiển thị cho người nhận biết.
-                </span>
               </div>
+            )}
 
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">Ghi chú nội bộ</Label>
-                <Textarea
-                  placeholder="Ghi chú thêm nếu cần..."
-                  value={adminNotes}
-                  onChange={(e) => setAdminNotes(e.target.value)}
-                  className="text-xs min-h-[50px]"
-                />
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Ghi chú đối soát</Label>
+              <Input
+                placeholder="Ghi chú nội bộ (tùy chọn)..."
+                value={processModal.adminNotes}
+                onChange={(e) =>
+                  setProcessModal((prev) => ({ ...prev, adminNotes: e.target.value }))
+                }
+              />
             </div>
-          )}
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setActionModal(null)}
-              disabled={actionLoading}
-            >
-              Hủy
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              className="font-semibold"
-              onClick={handleProcessSubmit}
-              disabled={actionLoading}
-            >
-              {actionLoading ? 'Đang xử lý...' : 'Xác nhận Từ Chối'}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setProcessModal((prev) => ({ ...prev, open: false }))}
+              >
+                Hủy
+              </Button>
+              <Button
+                type="submit"
+                variant={processModal.action === 'REJECT' ? 'destructive' : 'default'}
+                disabled={processModal.submitting}
+              >
+                {processModal.submitting
+                  ? 'Đang lưu...'
+                  : processModal.action === 'APPROVE'
+                  ? 'Xác nhận hoàn tất'
+                  : 'Từ chối & Hoàn tiền'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -1377,101 +1665,65 @@ function WithdrawalsTab() {
   )
 }
 
-// ═══════════════════════════════════════════════════════════
-// TAB: GIẢI QUYẾT KHIẾU NẠI (DISPUTES)
-// ═══════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+// TAB 3: XỬ LÝ KHIẾU NẠI DỊCH VỤ
+// ═════════════════════════════════════════════════════════════════════════════
 
-const DISPUTE_REASON_MAP = {
-  WRONG_TAX_LAW_ADVICE: 'Tư vấn sai quy định thuế',
-  UNPROFESSIONAL_BEHAVIOR: 'Thái độ thiếu chuẩn mực',
-  EARLY_DISCONNECT: 'Chuyên gia rời phòng sớm',
-  NETWORK_ISSUE: 'Sự cố kết nối từ chuyên gia',
-  OTHER: 'Lý do khác',
-}
-
-const DISPUTE_STATUS_MAP = {
-  PENDING_EXPERT_RESPONSE: { label: 'Chờ chuyên gia giải trình', variant: 'warning', icon: 'hourglass_top' },
-  PENDING_ADMIN_REVIEW: { label: 'Chờ quản trị viên xử lý', variant: 'orange', icon: 'gavel' },
-  RESOLVED: { label: 'Đã giải quyết', variant: 'success', icon: 'check_circle' },
-  CANCELLED: { label: 'Đã hủy', variant: 'muted', icon: 'cancel' },
-}
-
-function DisputeStatusBadge({ status }) {
-  const s = DISPUTE_STATUS_MAP[status] || { label: status || '—', variant: 'outline', icon: 'help' }
-  return (
-    <Badge variant={s.variant} className="gap-1 inline-flex items-center">
-      <Icon name={s.icon} className="text-[13px]" />
-      <span>{s.label}</span>
-    </Badge>
-  )
-}
-
-function DisputesTab() {
-  const [disputes, setDisputes] = useState([])
+function DisputesTab({ onBadgeRefresh }) {
+  const [items, setItems] = useState([])
+  const [statusFilter, setStatusFilter] = useState('__ALL__')
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [statusFilter, setStatusFilter] = useState('PENDING_ADMIN_REVIEW')
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalItems, setTotalItems] = useState(0)
-
-  // Chi tiết & phán quyết
-  const [selectedDisputeId, setSelectedDisputeId] = useState(null)
+  const [selectedDispute, setSelectedDispute] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
-  const [detail, setDetail] = useState(null)
 
-  // Form phán quyết
-  const [decisionType, setDecisionType] = useState('FULL_REFUND') // FULL_REFUND | SETTLE_EXPERT | PARTIAL
-  const [refundRatePercent, setRefundRatePercent] = useState('50')
-  const [resolution, setResolution] = useState('')
-  const [adminNotes, setAdminNotes] = useState('')
-  const [resolveLoading, setResolveLoading] = useState(false)
+  const [resolveForm, setResolveForm] = useState({
+    resolutionType: 'FULL_REFUND',
+    refundPercent: 50,
+    adminNotes: '',
+    penalizeExpert: false,
+    submitting: false,
+  })
   const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+
+  const showNotice = (type, title, description) => {
+    setNotice({ open: true, type, title, description })
+  }
 
   const fetchDisputes = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
       const res = await expertService.getAdminDisputes({
-        status: statusFilter === ALL ? undefined : statusFilter,
-        page,
-        size: 10,
+        status: statusFilter,
+        page: 1,
+        size: 50,
       })
-      const items = extractItems(res)
-      setDisputes(items)
-      const pagination = res?.pagination || res?.data?.pagination
-      setTotalPages(pagination?.totalPages || res?.totalPages || 1)
-      setTotalItems(pagination?.totalItems ?? res?.totalItems ?? items.length)
+      setItems(res?.items || [])
     } catch (err) {
-      setError(err?.message || 'Không thể tải danh sách khiếu nại.')
+      showNotice('error', 'Không thể tải danh sách khiếu nại', err.message)
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, page])
+  }, [statusFilter])
 
   useEffect(() => {
     fetchDisputes()
   }, [fetchDisputes])
 
-  const openDetailModal = async (id) => {
-    setSelectedDisputeId(id)
-    setDetail(null)
+  const openDisputeDetail = async (id) => {
     setDetailLoading(true)
-    setDecisionType('FULL_REFUND')
-    setRefundRatePercent('50')
-    setResolution('')
-    setAdminNotes('')
+    setSelectedDispute(null)
     try {
-      const data = await expertService.getDisputeDetail(id)
-      setDetail(data)
-    } catch (err) {
-      setNotice({
-        open: true,
-        type: 'error',
-        title: 'Lỗi tải hồ sơ',
-        description: err?.message || 'Không thể tải chi tiết vụ việc khiếu nại.',
+      const detail = await expertService.getDisputeDetail(id)
+      setSelectedDispute(detail)
+      setResolveForm({
+        resolutionType: 'FULL_REFUND',
+        refundPercent: 50,
+        adminNotes: detail.adminResolution || detail.adminResolutionNotes || '',
+        penalizeExpert: false,
+        submitting: false,
       })
-      setSelectedDisputeId(null)
+    } catch (err) {
+      showNotice('error', 'Không thể tải chi tiết khiếu nại', err.message)
     } finally {
       setDetailLoading(false)
     }
@@ -1479,533 +1731,304 @@ function DisputesTab() {
 
   const handleResolveSubmit = async (e) => {
     e.preventDefault()
-    if (!detail) return
-
-    if (!resolution.trim()) {
-      setNotice({
-        open: true,
-        type: 'error',
-        title: 'Thiếu lý do phán quyết',
-        description: 'Vui lòng nhập nội dung giải thích căn cứ phán quyết để thông báo cho hai bên.',
-      })
+    if (!selectedDispute) return
+    if (!resolveForm.adminNotes.trim() || resolveForm.adminNotes.trim().length < 10) {
+      showNotice('warning', 'Thiếu kết luận', 'Vui lòng nhập kết luận đối soát tối thiểu 10 ký tự.')
       return
     }
 
-    if (decisionType === 'PARTIAL') {
-      const rate = Number(refundRatePercent)
-      if (isNaN(rate) || rate <= 0 || rate >= 100) {
-        setNotice({
-          open: true,
-          type: 'error',
-          title: 'Tỷ lệ không hợp lệ',
-          description: 'Tỷ lệ hoàn tiền cho khách phải nằm trong khoảng từ 1% đến 99%.',
-        })
-        return
-      }
-    }
-
-    setResolveLoading(true)
+    setResolveForm((prev) => ({ ...prev, submitting: true }))
     try {
-      await expertService.resolveDispute(detail.id, {
-        decisionType,
-        refundRatePercent: decisionType === 'PARTIAL' ? Number(refundRatePercent) : undefined,
-        resolution: resolution.trim(),
-        adminNotes: adminNotes.trim() || undefined,
+      await expertService.resolveDispute(selectedDispute.id, {
+        decisionType: resolveForm.resolutionType,
+        refundRatePercent:
+          resolveForm.resolutionType === 'PARTIAL' ? Number(resolveForm.refundPercent) : null,
+        resolution: resolveForm.adminNotes.trim(),
+        adminNotes: resolveForm.adminNotes.trim(),
       })
-
-      setNotice({
-        open: true,
-        type: 'success',
-        title: 'Phán quyết thành công',
-        description: 'Đã hoàn tất xử lý tranh chấp và tự động điều chuyển số dư ví cho hai bên.',
-      })
-      setSelectedDisputeId(null)
+      setSelectedDispute(null)
+      showNotice('success', 'Đã ban hành phán quyết', 'Giao dịch tài chính đã được quyết toán theo phán quyết.')
       fetchDisputes()
+      onBadgeRefresh?.()
     } catch (err) {
-      setNotice({
-        open: true,
-        type: 'error',
-        title: 'Xử lý thất bại',
-        description: err?.message || 'Đã có lỗi xảy ra khi thực thi phán quyết.',
-      })
-    } finally {
-      setResolveLoading(false)
+      setResolveForm((prev) => ({ ...prev, submitting: false }))
+      showNotice('error', 'Không thể lưu phán quyết', err.message)
     }
   }
 
-  const totalFee = Number(detail?.totalFee || 0)
-  const calcRefundAmount = decisionType === 'FULL_REFUND'
-    ? totalFee
-    : decisionType === 'SETTLE_EXPERT'
-      ? 0
-      : Math.round((totalFee * (Number(refundRatePercent) || 0)) / 100)
-  const calcExpertAmount = Math.max(0, totalFee - calcRefundAmount)
-
   return (
-    <div className="flex flex-col gap-6">
-      <ErrorAlert message={error} onClose={() => setError(null)} />
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card
-          className={`cursor-pointer transition-all border-l-4 ${statusFilter === 'PENDING_ADMIN_REVIEW' ? 'border-l-orange-500 bg-orange-50/40 shadow-md ring-1 ring-orange-400' : 'border-l-orange-500 hover:shadow-sm'}`}
-          onClick={() => { setStatusFilter('PENDING_ADMIN_REVIEW'); setPage(1) }}
-        >
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold text-orange-800">
-              <Icon name="gavel" className="text-orange-600 text-[18px]" />
-              Chờ quản trị viên xử lý
-            </CardDescription>
-            <CardTitle className="text-2xl font-bold text-orange-700">
-              {statusFilter === 'PENDING_ADMIN_REVIEW' ? totalItems : 'Xem danh sách'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-on-surface-variant pt-0">
-            Các ca đã có giải trình hoặc quá hạn, cần đưa ra phán quyết cuối cùng.
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`cursor-pointer transition-all border-l-4 ${statusFilter === 'PENDING_EXPERT_RESPONSE' ? 'border-l-amber-500 bg-amber-50/40 shadow-md ring-1 ring-amber-400' : 'border-l-amber-500 hover:shadow-sm'}`}
-          onClick={() => { setStatusFilter('PENDING_EXPERT_RESPONSE'); setPage(1) }}
-        >
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
-              <Icon name="hourglass_top" className="text-amber-600 text-[18px]" />
-              Chờ chuyên gia giải trình
-            </CardDescription>
-            <CardTitle className="text-2xl font-bold text-amber-700">
-              {statusFilter === 'PENDING_EXPERT_RESPONSE' ? totalItems : 'Xem danh sách'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-on-surface-variant pt-0">
-            Chuyên gia đang trong thời hạn gửi ý kiến phản biện (24h).
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`cursor-pointer transition-all border-l-4 ${statusFilter === 'RESOLVED' ? 'border-l-emerald-600 bg-emerald-50/40 shadow-md ring-1 ring-emerald-400' : 'border-l-emerald-600 hover:shadow-sm'}`}
-          onClick={() => { setStatusFilter('RESOLVED'); setPage(1) }}
-        >
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
-              <Icon name="check_circle" className="text-emerald-600 text-[18px]" />
-              Đã giải quyết xong
-            </CardDescription>
-            <CardTitle className="text-2xl font-bold text-emerald-700">
-              {statusFilter === 'RESOLVED' ? totalItems : 'Xem lịch sử'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-on-surface-variant pt-0">
-            Các vụ việc đã có phán quyết và hoàn tất điều phối tiền cọc.
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Table Card */}
-      <Card className="shadow-sm">
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4">
-          <div>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Icon name="balance" className="text-primary text-[22px]" />
-              Danh sách khiếu nại buổi tư vấn
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Tiếp nhận ý kiến từ khách hàng và chuyên gia để đưa ra phán quyết xử lý công bằng, minh bạch.
-            </CardDescription>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setPage(1) }}>
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardContent className="p-3.5 flex items-center justify-between gap-2">
+          <span className="text-xs font-medium text-on-surface-variant">
+            Danh sách các ca tư vấn phát sinh khiếu nại chất lượng dịch vụ
+          </span>
+          <div className="flex items-center gap-2">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-56 h-9 text-xs">
-                <SelectValue placeholder="Lọc trạng thái" />
+                <SelectValue placeholder="Trạng thái khiếu nại" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL}>Tất cả trạng thái</SelectItem>
-                <SelectItem value="PENDING_ADMIN_REVIEW">Chờ quản trị viên xử lý</SelectItem>
+                <SelectItem value="__ALL__">Tất cả trạng thái</SelectItem>
                 <SelectItem value="PENDING_EXPERT_RESPONSE">Chờ chuyên gia giải trình</SelectItem>
-                <SelectItem value="RESOLVED">Đã giải quyết</SelectItem>
+                <SelectItem value="AWAITING_ADMIN_RESOLUTION">Chờ phán quyết</SelectItem>
+                <SelectItem value="RESOLVED_FULL_REFUND">Đã hoàn 100% cho khách</SelectItem>
+                <SelectItem value="RESOLVED_SETTLE_EXPERT">Đã giải ngân chuyên gia</SelectItem>
+                <SelectItem value="RESOLVED_PARTIAL">Hoàn tiền một phần</SelectItem>
               </SelectContent>
             </Select>
-
-            <Button variant="outline" size="sm" onClick={fetchDisputes} title="Làm mới">
-              <Icon name="refresh" className="text-[18px]" />
+            <Button type="button" variant="outline" size="sm" onClick={fetchDisputes}>
+              Làm mới
             </Button>
           </div>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          {loading ? (
-            <LoadingState text="Đang tải danh sách khiếu nại..." />
-          ) : disputes.length === 0 ? (
-            <EmptyState icon="gavel" text="Hiện không có vụ việc khiếu nại nào." />
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Ngày gửi</TableHead>
-                    <TableHead>Mã ca hẹn</TableHead>
-                    <TableHead>Khách hàng</TableHead>
-                    <TableHead>Chuyên gia</TableHead>
-                    <TableHead className="text-right">Tiền cọc</TableHead>
-                    <TableHead>Lý do khiếu nại</TableHead>
-                    <TableHead>Trạng thái</TableHead>
-                    <TableHead className="text-center">Thao tác</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {disputes.map((item) => (
-                    <TableRow key={item.id} className="hover:bg-surface-container-lowest">
-                      <TableCell className="text-xs text-on-surface-variant font-mono whitespace-nowrap">
-                        {formatDateTime(item.createdAt)}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs font-semibold text-primary">
-                        {item.bookingCode || '—'}
-                      </TableCell>
-                      <TableCell className="text-xs font-semibold text-on-surface">
-                        {item.taxpayerFullName || '—'}
-                      </TableCell>
-                      <TableCell className="text-xs font-semibold text-on-surface">
-                        {item.expertFullName || '—'}
-                      </TableCell>
-                      <TableCell className="text-right whitespace-nowrap font-bold text-xs text-primary">
-                        {formatCurrency(item.totalFee)}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        <span className="font-medium text-on-surface">
-                          {DISPUTE_REASON_MAP[item.reason] || item.reason || '—'}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <DisputeStatusBadge status={item.status} />
-                      </TableCell>
-                      <TableCell className="text-center whitespace-nowrap">
-                        <Button
-                          size="sm"
-                          variant={item.status === 'PENDING_ADMIN_REVIEW' ? 'default' : 'outline'}
-                          className={`text-xs h-8 gap-1 font-semibold ${item.status === 'PENDING_ADMIN_REVIEW' ? 'bg-orange-600 hover:bg-orange-700 text-white' : ''}`}
-                          onClick={() => openDetailModal(item.id)}
-                        >
-                          <Icon name="visibility" className="text-[16px]" />
-                          {item.status === 'RESOLVED' ? 'Xem biên bản' : 'Xem & Phán quyết'}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-
-          {/* Phân trang */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-6 py-4 border-t text-xs text-on-surface-variant">
-              <span>Trang {page} / {totalPages} (Tổng số {totalItems} vụ việc)</span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  Trước
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  Sau
-                </Button>
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
 
-      {/* Detail & Resolution Dialog */}
+      <Card>
+        {loading ? (
+          <CardContent className="py-16 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
+            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs">Đang tải danh sách khiếu nại...</span>
+          </CardContent>
+        ) : items.length === 0 ? (
+          <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-1.5">
+            <p className="text-sm font-semibold text-on-surface">Không có vụ việc khiếu nại</p>
+            <p className="text-xs text-on-surface-variant">
+              Hiện không có ca tư vấn nào đang phát sinh khiếu nại.
+            </p>
+          </CardContent>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Mã lịch hẹn</TableHead>
+                <TableHead>Khách hàng & Chuyên gia</TableHead>
+                <TableHead>Lý do khiếu nại</TableHead>
+                <TableHead className="text-right">Số tiền tạm giữ</TableHead>
+                <TableHead>Ngày gửi</TableHead>
+                <TableHead>Trạng thái</TableHead>
+                <TableHead className="text-right">Thao tác</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((d) => {
+                const st = DISPUTE_STATUS_MAP[d.status] || {
+                  label: d.status,
+                  dot: 'bg-stone-400',
+                }
+                return (
+                  <TableRow key={d.id}>
+                    <TableCell className="font-mono font-semibold text-on-surface">
+                      #{d.bookingCode}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-on-surface">
+                          {d.taxpayerFullName || d.userFullName}
+                        </span>
+                        <span className="text-[11px] text-on-surface-variant">
+                          Chuyên gia: {d.expertFullName}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate">
+                      {DISPUTE_REASON_MAP[d.reason] || d.reason}
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-semibold tabular-nums">
+                      {formatCurrency(d.totalFee ?? d.disputedAmount ?? d.escrowAmount)}
+                    </TableCell>
+                    <TableCell className="text-on-surface-variant tabular-nums">
+                      {formatDateTime(d.createdAt)}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge label={st.label} dot={st.dot} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => openDisputeDetail(d.id)}
+                      >
+                        Xem & Phán quyết
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+
+      {/* Dialog chi tiết & phán quyết khiếu nại */}
       <Dialog
-        open={Boolean(selectedDisputeId)}
-        onOpenChange={(open) => !open && setSelectedDisputeId(null)}
+        open={Boolean(selectedDispute) || detailLoading}
+        onOpenChange={(open) => !open && setSelectedDispute(null)}
       >
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-primary">
-              <Icon name="gavel" className="text-[22px]" />
-              Hồ Sơ Khiếu Nại Buổi Tư Vấn
+            <DialogTitle>
+              Hồ sơ khiếu nại {selectedDispute?.bookingCode ? `#${selectedDispute.bookingCode}` : ''}
             </DialogTitle>
-            <DialogDescription className="text-xs">
-              Mã ca hẹn: <strong className="font-mono text-on-surface">{detail?.bookingCode}</strong> • Tiền cọc: <strong className="text-primary">{formatCurrency(detail?.totalFee)}</strong>
+            <DialogDescription>
+              Đối chiếu nội dung phản ánh của khách hàng và giải trình của chuyên gia để quyết toán.
             </DialogDescription>
           </DialogHeader>
 
-          {detailLoading ? (
-            <LoadingState text="Đang tải hồ sơ khiếu nại..." />
-          ) : detail ? (
-            <div className="flex flex-col gap-4 py-2 text-xs">
-              {/* Thông tin 2 bên */}
-              <div className="grid grid-cols-2 gap-3 p-3 bg-surface-container-low rounded-xl border border-outline-variant">
+          {detailLoading || !selectedDispute ? (
+            <div className="py-12 flex justify-center">
+              <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4 text-xs">
+              <div className="grid grid-cols-2 gap-3 p-3.5 rounded-xl border border-outline-variant/40 bg-surface-container-low/40">
                 <div>
-                  <span className="text-on-surface-variant block text-[11px]">Người khiếu nại (Khách hàng):</span>
-                  <strong className="text-sm text-on-surface">{detail.taxpayerFullName}</strong>
-                  {detail.taxpayerPhone && (
-                    <div className="text-on-surface-variant text-[11px] font-mono mt-0.5">SĐT: {detail.taxpayerPhone}</div>
-                  )}
+                  <span className="text-[11px] text-on-surface-variant">Người khiếu nại</span>
+                  <p className="font-bold text-on-surface mt-0.5">
+                    {selectedDispute.taxpayerFullName || selectedDispute.userFullName}
+                  </p>
                 </div>
                 <div>
-                  <span className="text-on-surface-variant block text-[11px]">Bên bị khiếu nại (Chuyên gia):</span>
-                  <strong className="text-sm text-on-surface">{detail.expertFullName}</strong>
-                  <div className="mt-1">
-                    <DisputeStatusBadge status={detail.status} />
-                  </div>
+                  <span className="text-[11px] text-on-surface-variant">Chuyên gia phụ trách</span>
+                  <p className="font-bold text-on-surface mt-0.5">
+                    {selectedDispute.expertFullName}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[11px] text-on-surface-variant">Lý do khiếu nại</span>
+                  <p className="font-semibold text-on-surface mt-0.5">
+                    {DISPUTE_REASON_MAP[selectedDispute.reason] || selectedDispute.reason}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[11px] text-on-surface-variant">Số tiền đang tạm giữ</span>
+                  <p className="font-mono font-bold text-on-surface tabular-nums mt-0.5">
+                    {formatCurrency(
+                      selectedDispute.totalFee ??
+                        selectedDispute.disputedAmount ??
+                        selectedDispute.escrowAmount
+                    )}
+                  </p>
                 </div>
               </div>
 
-              {/* Khối ý kiến khách hàng */}
-              <Card className="border border-red-200 bg-red-50/20">
-                <CardHeader className="pb-2 pt-3 px-3.5">
-                  <CardTitle className="text-xs font-bold text-red-900 flex items-center gap-1.5">
-                    <Icon name="report_problem" className="text-red-600 text-[18px]" />
-                    Nội dung khiếu nại từ khách hàng
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="px-3.5 pb-3 text-xs space-y-2">
-                  <div>
-                    <span className="text-on-surface-variant">Lý do chính: </span>
-                    <strong className="text-on-surface">{DISPUTE_REASON_MAP[detail.reason] || detail.reason}</strong>
-                  </div>
-                  <div>
-                    <span className="text-on-surface-variant block">Mô tả cụ thể:</span>
-                    <p className="p-2.5 bg-white rounded-lg border text-on-surface leading-relaxed mt-1 whitespace-pre-wrap">
-                      {detail.description || 'Không có mô tả chi tiết.'}
-                    </p>
-                  </div>
-                  {detail.evidenceUrls && detail.evidenceUrls.length > 0 && (
-                    <div>
-                      <span className="text-on-surface-variant block mb-1">Tài liệu / Hình ảnh chứng cứ:</span>
-                      <div className="flex flex-wrap gap-2">
-                        {detail.evidenceUrls.map((url, i) => (
-                          <a
-                            key={i}
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white border text-primary hover:underline text-[11px]"
-                          >
-                            <Icon name="attachment" className="text-[14px]" />
-                            Bằng chứng #{i + 1}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="p-3.5 rounded-xl border border-outline-variant/50">
+                  <span className="text-[11px] font-bold text-on-surface">
+                    Phản ánh từ khách hàng
+                  </span>
+                  <p className="text-on-surface mt-1.5 leading-relaxed">
+                    {selectedDispute.description || 'Không có mô tả.'}
+                  </p>
+                </div>
 
-              {/* Khối giải trình của chuyên gia */}
-              <Card className="border border-blue-200 bg-blue-50/20">
-                <CardHeader className="pb-2 pt-3 px-3.5">
-                  <CardTitle className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                    <Icon name="forum" className="text-blue-600 text-[18px]" />
-                    Ý kiến phản biện / Giải trình của chuyên gia
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="px-3.5 pb-3 text-xs space-y-2">
-                  {detail.expertResponse ? (
-                    <>
-                      <div className="flex justify-between items-center text-[11px] text-on-surface-variant">
-                        <span>Đã gửi lúc: {formatDateTime(detail.expertRespondedAt)}</span>
-                      </div>
-                      <p className="p-2.5 bg-white rounded-lg border text-on-surface leading-relaxed whitespace-pre-wrap">
-                        {detail.expertResponse}
-                      </p>
-                      {detail.expertEvidenceUrls && detail.expertEvidenceUrls.length > 0 && (
-                        <div>
-                          <span className="text-on-surface-variant block mb-1">Bằng chứng phản biện:</span>
-                          <div className="flex flex-wrap gap-2">
-                            {detail.expertEvidenceUrls.map((url, i) => (
-                              <a
-                                key={i}
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white border text-primary hover:underline text-[11px]"
-                              >
-                                <Icon name="attachment" className="text-[14px]" />
-                                Bằng chứng #{i + 1}
-                              </a>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="p-3 bg-white rounded-lg border border-dashed text-on-surface-variant text-center">
-                      <span>Chuyên gia chưa gửi giải trình. Hạn phản hồi: </span>
-                      <strong className="text-amber-800">{formatDateTime(detail.expertResponseDeadline)}</strong>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                <div className="p-3.5 rounded-xl border border-outline-variant/50">
+                  <span className="text-[11px] font-bold text-on-surface">
+                    Giải trình từ chuyên gia
+                  </span>
+                  <p className="text-on-surface mt-1.5 leading-relaxed">
+                    {selectedDispute.expertResponse ||
+                      'Chuyên gia chưa gửi nội dung giải trình.'}
+                  </p>
+                </div>
+              </div>
 
-              {/* Nếu đã phán quyết xong */}
-              {detail.status === 'RESOLVED' ? (
-                <Card className="border border-emerald-300 bg-emerald-50/30">
-                  <CardHeader className="pb-2 pt-3 px-3.5">
-                    <CardTitle className="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
-                      <Icon name="verified" className="text-emerald-600 text-[18px]" />
-                      Biên bản phán quyết của Quản trị viên
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-3.5 pb-3 text-xs space-y-2">
-                    <div className="grid grid-cols-2 gap-2 p-2.5 bg-white rounded-lg border">
-                      <div>
-                        <span className="text-on-surface-variant block text-[11px]">Khách hàng nhận lại:</span>
-                        <strong className="text-sm text-emerald-700">{formatCurrency(detail.userRefundAmount)}</strong>
-                      </div>
-                      <div>
-                        <span className="text-on-surface-variant block text-[11px]">Chuyên gia nhận thù lao:</span>
-                        <strong className="text-sm text-primary">{formatCurrency(detail.expertSettlementAmount)}</strong>
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-on-surface-variant block">Căn cứ & Lý do phán quyết:</span>
-                      <p className="p-2.5 bg-white rounded-lg border text-on-surface leading-relaxed mt-1 whitespace-pre-wrap">
-                        {detail.adminResolution || '—'}
-                      </p>
-                    </div>
-                    {detail.adminNotes && (
-                      <div className="text-[11px] text-on-surface-variant italic">
-                        Ghi chú nội bộ: {detail.adminNotes}
-                      </div>
-                    )}
-                    <div className="text-[11px] text-on-surface-variant">
-                      Thời gian phán quyết: {formatDateTime(detail.resolvedAt)}
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                /* Form phán quyết nếu chưa xong */
-                <form onSubmit={handleResolveSubmit} className="flex flex-col gap-3 pt-2 border-t">
-                  <div className="flex items-center gap-2">
-                    <Icon name="gavel" className="text-primary text-[20px]" />
-                    <h3 className="text-sm font-bold text-on-surface">Đưa ra phán quyết xử lý tranh chấp</h3>
-                  </div>
+              {selectedDispute.status === 'PENDING_EXPERT_RESPONSE' ||
+              selectedDispute.status === 'AWAITING_ADMIN_RESOLUTION' ? (
+                <form
+                  onSubmit={handleResolveSubmit}
+                  className="p-4 rounded-xl border border-outline-variant/50 bg-surface-container-low/40 flex flex-col gap-3.5"
+                >
+                  <h4 className="text-xs font-bold text-on-surface">Ban hành phán quyết cuối cùng</h4>
 
-                  <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs font-semibold text-on-surface">
-                      Phương án phán quyết <span className="text-red-500">*</span>
-                    </Label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setDecisionType('FULL_REFUND')}
-                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${decisionType === 'FULL_REFUND' ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-outline-variant bg-white hover:bg-surface-container-low'}`}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <Label>Phương án xử lý</Label>
+                      <Select
+                        value={resolveForm.resolutionType}
+                        onValueChange={(val) =>
+                          setResolveForm((prev) => ({ ...prev, resolutionType: val }))
+                        }
                       >
-                        <div className="font-bold text-xs text-on-surface">Hoàn tiền 100% cho khách</div>
-                        <div className="text-[10px] text-on-surface-variant mt-0.5">Khách nhận đủ tiền cọc, chuyên gia 0 ₫.</div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setDecisionType('SETTLE_EXPERT')}
-                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${decisionType === 'SETTLE_EXPERT' ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-outline-variant bg-white hover:bg-surface-container-low'}`}
-                      >
-                        <div className="font-bold text-xs text-on-surface">Bác bỏ khiếu nại</div>
-                        <div className="text-[10px] text-on-surface-variant mt-0.5">Trả đủ tiền cho chuyên gia, khách 0 ₫.</div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setDecisionType('PARTIAL')}
-                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${decisionType === 'PARTIAL' ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-outline-variant bg-white hover:bg-surface-container-low'}`}
-                      >
-                        <div className="font-bold text-xs text-on-surface">Phân chia theo tỷ lệ (%)</div>
-                        <div className="text-[10px] text-on-surface-variant mt-0.5">Chia tiền theo tỷ lệ hai bên thỏa thuận.</div>
-                      </button>
+                        <SelectTrigger className="h-9 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="FULL_REFUND">
+                            Hoàn 100% phí cho khách hàng
+                          </SelectItem>
+                          <SelectItem value="SETTLE_EXPERT">
+                            Bác khiếu nại • Giải ngân cho chuyên gia
+                          </SelectItem>
+                          <SelectItem value="PARTIAL">
+                            Hoàn tiền một phần theo tỷ lệ
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                  </div>
 
-                  {decisionType === 'PARTIAL' && (
-                    <div className="flex flex-col gap-1.5 p-3 bg-surface-container-low rounded-xl border">
-                      <Label className="text-xs font-semibold text-on-surface">
-                        Tỷ lệ hoàn tiền cho khách hàng (%):
-                      </Label>
-                      <div className="flex items-center gap-3">
+                    {resolveForm.resolutionType === 'PARTIAL' && (
+                      <div className="flex flex-col gap-1.5">
+                        <Label>Tỷ lệ hoàn cho khách (%)</Label>
                         <Input
                           type="number"
-                          min="1"
-                          max="99"
-                          value={refundRatePercent}
-                          onChange={(e) => setRefundRatePercent(e.target.value)}
-                          className="w-28 h-9 text-xs font-bold text-primary"
+                          min={1}
+                          max={99}
+                          value={resolveForm.refundPercent}
+                          onChange={(e) =>
+                            setResolveForm((prev) => ({
+                              ...prev,
+                              refundPercent: Number(e.target.value) || 50,
+                            }))
+                          }
                         />
-                        <span className="text-xs text-on-surface-variant">
-                          (Chuyên gia nhận phần còn lại: <strong>{Math.max(0, 100 - (Number(refundRatePercent) || 0))}%</strong>)
-                        </span>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Bảng tóm tắt số tiền phân bổ */}
-                  <div className="grid grid-cols-2 gap-2 p-2.5 bg-amber-50/60 rounded-xl border border-amber-200">
-                    <div>
-                      <span className="text-[11px] text-amber-900 block">Khách hàng sẽ nhận lại:</span>
-                      <strong className="text-sm text-emerald-700">{formatCurrency(calcRefundAmount)}</strong>
-                    </div>
-                    <div>
-                      <span className="text-[11px] text-amber-900 block">Chuyên gia sẽ nhận thù lao:</span>
-                      <strong className="text-sm text-primary">{formatCurrency(calcExpertAmount)}</strong>
-                    </div>
+                    )}
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs font-semibold text-on-surface">
-                      Căn cứ & Nội dung phán quyết <span className="text-red-500">*</span>
+                    <Label>
+                      Kết luận đối soát <span className="text-red-600">*</span>
                     </Label>
                     <Textarea
-                      placeholder="Giải thích rõ lý do chấp thuận hoặc bác bỏ khiếu nại (sẽ hiển thị cho cả khách hàng và chuyên gia)..."
-                      value={resolution}
-                      onChange={(e) => setResolution(e.target.value)}
-                      className="text-xs min-h-[70px]"
+                      rows={2}
+                      placeholder="Nhập căn cứ và kết luận giải quyết tranh chấp (tối thiểu 10 ký tự)..."
+                      value={resolveForm.adminNotes}
+                      onChange={(e) =>
+                        setResolveForm((prev) => ({ ...prev, adminNotes: e.target.value }))
+                      }
                     />
                   </div>
 
-                  <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs font-semibold text-on-surface">Ghi chú nội bộ</Label>
-                    <Textarea
-                      placeholder="Ghi chú nội bộ cho ban quản trị..."
-                      value={adminNotes}
-                      onChange={(e) => setAdminNotes(e.target.value)}
-                      className="text-xs min-h-[50px]"
-                    />
-                  </div>
-
-                  <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                  <DialogFooter className="pt-2">
                     <Button
                       type="button"
                       variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedDisputeId(null)}
-                      disabled={resolveLoading}
+                      onClick={() => setSelectedDispute(null)}
                     >
                       Đóng
                     </Button>
-                    <Button
-                      type="submit"
-                      size="sm"
-                      className="bg-primary text-on-primary font-bold"
-                      disabled={resolveLoading}
-                    >
-                      {resolveLoading ? 'Đang thực thi phán quyết...' : 'Xác nhận phán quyết'}
+                    <Button type="submit" disabled={resolveForm.submitting}>
+                      {resolveForm.submitting ? 'Đang thực thi...' : 'Xác nhận phán quyết'}
                     </Button>
                   </DialogFooter>
                 </form>
+              ) : (
+                <div className="p-3.5 rounded-xl border border-outline-variant/40 bg-surface-container-low/40">
+                  <span className="text-[11px] font-semibold text-on-surface-variant">
+                    Kết luận đã ban hành
+                  </span>
+                  <p className="text-on-surface font-medium mt-1">
+                    {selectedDispute.adminResolution ||
+                      selectedDispute.adminResolutionNotes ||
+                      'Đã hoàn tất xử lý.'}
+                  </p>
+                </div>
               )}
             </div>
-          ) : null}
+          )}
         </DialogContent>
       </Dialog>
 
@@ -2020,924 +2043,1437 @@ function DisputesTab() {
   )
 }
 
-// ═══════════════════════════════════════════════════════════
-// TAB 2: SPECIALIZATIONS
-// ═══════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+// TAB 4: QUỸ & DOANH THU SÀN (ĐỒNG BỘ 100% VỚI BACKEND WALLET & ESCROW)
+// ═════════════════════════════════════════════════════════════════════════════
 
-function SpecializationsTab() {
-  const [specializations, setSpecializations] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [formState, setFormState] = useState(null) // { item: null | object }
-  const [formLoading, setFormLoading] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState(null)
-  const [deleteLoading, setDeleteLoading] = useState(false)
+function PlatformWalletTab() {
+  const [wallet, setWallet] = useState(null)
+  const [loadingWallet, setLoadingWallet] = useState(true)
+  const [subTab, setSubTab] = useState('platform-tx')
+
+  // Tab 2: Lịch sử rút tiền doanh thu sàn
+  const [platformWithdrawals, setPlatformWithdrawals] = useState([])
+  const [wdPagination, setWdPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    totalItems: 0,
+    totalPages: 1,
+  })
+  const [loadingWd, setLoadingWd] = useState(false)
+
+  // Tab 3: Sổ cái giao dịch tạm giữ
+  const [escrowItems, setEscrowItems] = useState([])
+  const [escrowPagination, setEscrowPagination] = useState({
+    page: 1,
+    pageSize: 10,
+    totalItems: 0,
+    totalPages: 1,
+  })
+  const [statusFilter, setStatusFilter] = useState('__ALL__')
   const [searchInput, setSearchInput] = useState('')
-  const [search, setSearch] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortBy, setSortBy] = useState('-createdAt')
+  const [loadingEscrow, setLoadingEscrow] = useState(true)
+  const [selectedTx, setSelectedTx] = useState(null)
+
+  // Modal Admin rút doanh thu sàn
+  const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
+  const [withdrawForm, setWithdrawForm] = useState({
+    amount: '',
+    bankName: 'Techcombank',
+    accountNumber: '',
+    accountName: '',
+    submitting: false,
+  })
+
   const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
-
-  useEffect(() => {
-    const t = setTimeout(() => setSearch(searchInput.trim()), 400)
-    return () => clearTimeout(t)
-  }, [searchInput])
-
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await expertService.getSpecializations({ search: search || undefined })
-      setSpecializations(extractItems(data))
-    } catch (err) {
-      setError(err.message || 'Không thể tải danh sách lĩnh vực chuyên môn.')
-      setSpecializations([])
-    } finally {
-      setLoading(false)
-    }
-  }, [search])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
-
-  const handleSave = async (payload) => {
-    setFormLoading(true)
-    try {
-      if (formState?.item) {
-        await expertService.updateSpecialization(formState.item.id, payload)
-        setNotice({
-          open: true,
-          type: 'success',
-          title: 'Cập nhật thành công',
-          description: `Đã cập nhật thông tin lĩnh vực tư vấn "${payload.name}".`,
-        })
-      } else {
-        await expertService.createSpecialization(payload)
-        setNotice({
-          open: true,
-          type: 'success',
-          title: 'Thêm mới thành công',
-          description: `Đã thêm lĩnh vực tư vấn "${payload.name}".`,
-        })
-      }
-      setFormState(null)
-      await fetchData()
-    } catch (err) {
-      return err.message || 'Lưu thông tin thất bại.'
-    } finally {
-      setFormLoading(false)
-    }
+  const showNotice = (type, title, description) => {
+    setNotice({ open: true, type, title, description })
   }
 
-  const handleDelete = async () => {
-    setDeleteLoading(true)
+  const fetchWalletSummary = useCallback(async () => {
+    setLoadingWallet(true)
     try {
-      await expertService.deleteSpecialization(deleteTarget.id)
-      const name = deleteTarget.name
-      setDeleteTarget(null)
-      setNotice({
-        open: true,
-        type: 'success',
-        title: 'Xóa thành công',
-        description: `Đã xóa lĩnh vực tư vấn "${name}".`,
-      })
-      await fetchData()
+      const data = await expertService.getAdminPlatformWallet()
+      setWallet(data)
     } catch (err) {
-      const msg = err.message || 'Xóa lĩnh vực tư vấn thất bại.'
-      setDeleteTarget(null)
-      setNotice({
-        open: true,
-        type: 'error',
-        title: 'Xóa thất bại',
-        description: msg,
-      })
+      showNotice('error', 'Không thể tải báo cáo quỹ sàn', err.message)
     } finally {
-      setDeleteLoading(false)
+      setLoadingWallet(false)
+    }
+  }, [])
+
+  const fetchPlatformWithdrawals = useCallback(async (page = 1) => {
+    setLoadingWd(true)
+    try {
+      const res = await expertService.getPlatformWithdrawals({ page, size: 10 })
+      setPlatformWithdrawals(res?.items || [])
+      if (res?.pagination) setWdPagination(res.pagination)
+    } catch (err) {
+      showNotice('error', 'Không thể tải lịch sử rút doanh thu', err.message)
+    } finally {
+      setLoadingWd(false)
+    }
+  }, [])
+
+  const fetchEscrowList = useCallback(
+    async (page = 1) => {
+      setLoadingEscrow(true)
+      try {
+        const res = await expertService.getEscrowTransactions({
+          page,
+          size: 10,
+          status: statusFilter,
+          search: searchQuery,
+          sort: sortBy,
+        })
+        setEscrowItems(res?.items || [])
+        if (res?.pagination) setEscrowPagination(res.pagination)
+      } catch (err) {
+        showNotice('error', 'Không thể tải sổ cái giao dịch', err.message)
+      } finally {
+        setLoadingEscrow(false)
+      }
+    },
+    [statusFilter, searchQuery, sortBy]
+  )
+
+  useEffect(() => {
+    fetchWalletSummary()
+    fetchPlatformWithdrawals(1)
+  }, [fetchWalletSummary, fetchPlatformWithdrawals])
+
+  useEffect(() => {
+    fetchEscrowList(1)
+  }, [fetchEscrowList])
+
+  const handleOpenWithdrawModal = () => {
+    const avail = Number(wallet?.platformAvailableBalance || 0)
+    setWithdrawForm({
+      amount: avail >= 50000 ? String(Math.floor(avail)) : '50000',
+      bankName: 'Techcombank',
+      accountNumber: '',
+      accountName: '',
+      submitting: false,
+    })
+    setWithdrawModalOpen(true)
+  }
+
+  const handleAdminWithdrawSubmit = async (e) => {
+    e.preventDefault()
+    const amountNum = Number(String(withdrawForm.amount).replace(/\D/g, ''))
+    const avail = Number(wallet?.platformAvailableBalance || 0)
+
+    if (!amountNum || amountNum < 50000) {
+      showNotice('warning', 'Số tiền chưa hợp lệ', 'Số tiền rút tối thiểu là 50.000 VNĐ.')
+      return
+    }
+    if (amountNum > avail) {
+      showNotice(
+        'warning',
+        'Vượt quá số dư khả dụng',
+        `Số tiền rút không được vượt quá số dư doanh thu khả dụng (${formatCurrency(avail)}).`
+      )
+      return
+    }
+    if (!withdrawForm.bankName.trim() || !withdrawForm.accountNumber.trim() || !withdrawForm.accountName.trim()) {
+      showNotice('warning', 'Thiếu thông tin ngân hàng', 'Vui lòng nhập đầy đủ ngân hàng, số tài khoản và tên chủ tài khoản.')
+      return
+    }
+
+    setWithdrawForm((prev) => ({ ...prev, submitting: true }))
+    try {
+      await expertService.withdrawPlatformRevenue({
+        amount: amountNum,
+        bankName: withdrawForm.bankName.trim(),
+        accountNumber: withdrawForm.accountNumber.trim(),
+        accountName: withdrawForm.accountName.trim().toUpperCase(),
+      })
+      setWithdrawModalOpen(false)
+      showNotice('success', 'Rút doanh thu thành công', `Đã ghi nhận lệnh rút ${formatCurrency(amountNum)} về tài khoản ngân hàng.`)
+      fetchWalletSummary()
+      fetchPlatformWithdrawals(1)
+    } catch (err) {
+      setWithdrawForm((prev) => ({ ...prev, submitting: false }))
+      showNotice('error', 'Không thể rút doanh thu', err.message)
     }
   }
 
   return (
-    <div className="flex flex-col gap-space-md">
-      <Card className="shadow-sm">
-        <CardContent className="p-5 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-          <div className="flex-1">
-            <Input id="spec-search" value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Tìm kiếm lĩnh vực tư vấn..." leftIcon={<Icon name="search" className="text-[20px]" />} />
+    <div className="flex flex-col gap-4">
+      {/* 1. 6 Chỉ số tài chính vĩ mô */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <Card>
+          <CardContent className="p-4 flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-on-surface-variant">
+                Tổng dòng tiền qua sàn
+              </span>
+              <Badge variant="outline">Toàn thời gian</Badge>
+            </div>
+            <p className="text-xl font-bold text-on-surface font-mono tabular-nums mt-1">
+              {loadingWallet ? '...' : formatCurrency(wallet?.totalGrossVolume ?? 0)}
+            </p>
+            <span className="text-[11px] text-on-surface-variant">
+              Tổng phí khách hàng đã thanh toán thực tế
+            </span>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4 flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-on-surface-variant">
+                Tổng tiền đang tạm giữ
+              </span>
+              <StatusBadge label="Đang bảo đảm" dot="bg-amber-500" />
+            </div>
+            <p className="text-xl font-bold text-on-surface font-mono tabular-nums mt-1">
+              {loadingWallet ? '...' : formatCurrency(wallet?.escrowHoldingBalance ?? 0)}
+            </p>
+            <span className="text-[11px] text-on-surface-variant tabular-nums">
+              Giữ hộ chuyên gia: {formatCurrency(wallet?.pendingExpertReceivable ?? 0)} • Phí sàn chờ:{' '}
+              {formatCurrency(wallet?.pendingPlatformCommission ?? 0)}
+            </span>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4 flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-on-surface-variant">
+                Doanh thu phí dịch vụ thực nhận
+              </span>
+              <Badge variant="secondary">
+                Phí sàn: {wallet?.currentCommissionRatePercent ?? 20}%
+              </Badge>
+            </div>
+            <p className="text-xl font-bold text-on-surface font-mono tabular-nums mt-1">
+              {loadingWallet ? '...' : formatCurrency(wallet?.realizedPlatformRevenue ?? 0)}
+            </p>
+            <span className="text-[11px] text-on-surface-variant">
+              Tiền phí dịch vụ từ các ca đã hoàn thành
+            </span>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4 flex flex-col gap-1">
+            <span className="text-xs font-medium text-on-surface-variant">
+              Đã giải ngân cho chuyên gia
+            </span>
+            <p className="text-lg font-bold text-on-surface font-mono tabular-nums mt-0.5">
+              {loadingWallet ? '...' : formatCurrency(wallet?.totalSettledToExperts ?? 0)}
+            </p>
+            <span className="text-[11px] text-on-surface-variant tabular-nums">
+              {wallet?.stats?.settledCount ?? 0} ca tư vấn đã tất toán
+            </span>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4 flex flex-col gap-1">
+            <span className="text-xs font-medium text-on-surface-variant">
+              Đã hoàn trả người nộp thuế
+            </span>
+            <p className="text-lg font-bold text-on-surface font-mono tabular-nums mt-0.5">
+              {loadingWallet ? '...' : formatCurrency(wallet?.totalRefundedToTaxpayers ?? 0)}
+            </p>
+            <span className="text-[11px] text-on-surface-variant tabular-nums">
+              {(wallet?.stats?.refundedCount ?? 0) + (wallet?.stats?.partiallyRefundedCount ?? 0)} ca hoàn tiền
+            </span>
+          </CardContent>
+        </Card>
+
+        {/* 2. Khối Ví Quỹ Doanh Thu Hệ Thống */}
+        <Card className="border-primary/30 bg-surface-container-low/50">
+          <CardContent className="p-4 flex flex-col justify-between gap-2 h-full">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <span className="text-xs font-bold text-on-surface">
+                  Quỹ doanh thu sàn khả dụng
+                </span>
+                <p className="text-xl font-bold text-primary font-mono tabular-nums mt-0.5">
+                  {loadingWallet ? '...' : formatCurrency(wallet?.platformAvailableBalance ?? 0)}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleOpenWithdrawModal}
+                disabled={loadingWallet || Number(wallet?.platformAvailableBalance || 0) < 50000}
+              >
+                Rút doanh thu
+              </Button>
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-on-surface-variant pt-1 border-t border-outline-variant/30 tabular-nums">
+              <span>Đã rút: {formatCurrency(wallet?.platformTotalWithdrawn ?? 0)}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  fetchWalletSummary()
+                  fetchPlatformWithdrawals(wdPagination.page)
+                  fetchEscrowList(escrowPagination.page)
+                }}
+                className="font-semibold text-primary hover:underline cursor-pointer"
+              >
+                Làm mới số liệu
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 3. Các bảng lịch sử đối soát (3 Tabs) */}
+      <Tabs value={subTab} onValueChange={setSubTab} className="w-full">
+        <TabsList className="bg-surface-container-low border border-outline-variant/40 p-1 rounded-xl h-auto flex-wrap">
+          <TabsTrigger value="platform-tx" className="text-xs px-3 py-1.5 rounded-lg">
+            Biến động doanh thu sàn ({wallet?.recentPlatformTransactions?.length ?? 0})
+          </TabsTrigger>
+          <TabsTrigger value="platform-withdrawals" className="text-xs px-3 py-1.5 rounded-lg">
+            Lịch sử rút doanh thu ({wdPagination.totalItems || platformWithdrawals.length})
+          </TabsTrigger>
+          <TabsTrigger value="escrow-ledger" className="text-xs px-3 py-1.5 rounded-lg">
+            Sổ cái giao dịch tạm giữ ({escrowPagination.totalItems || escrowItems.length})
+          </TabsTrigger>
+        </TabsList>
+
+        {/* TAB 1: BIẾN ĐỘNG DOANH THU SÀN */}
+        <TabsContent value="platform-tx" className="mt-3">
+          <Card>
+            {loadingWallet ? (
+              <CardContent className="py-14 flex justify-center">
+                <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </CardContent>
+            ) : !wallet?.recentPlatformTransactions?.length ? (
+              <CardContent className="py-12 text-center text-xs text-on-surface-variant">
+                Chưa phát sinh biến động doanh thu sàn.
+              </CardContent>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Thời gian</TableHead>
+                    <TableHead>Phân loại</TableHead>
+                    <TableHead>Nội dung</TableHead>
+                    <TableHead className="text-right">Số tiền</TableHead>
+                    <TableHead className="text-right">Số dư sau giao dịch</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {wallet.recentPlatformTransactions.map((tx) => {
+                    const meta = PLATFORM_TX_TYPE_MAP[tx.transactionType] || {
+                      label: tx.transactionType,
+                      isPositive: Number(tx.amount) >= 0,
+                    }
+                    const isPos = Number(tx.amount) >= 0
+                    return (
+                      <TableRow key={tx.id}>
+                        <TableCell className="text-on-surface-variant tabular-nums">
+                          {formatDateTime(tx.createdAt)}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge
+                            label={meta.label}
+                            dot={isPos ? 'bg-emerald-600' : 'bg-stone-500'}
+                          />
+                        </TableCell>
+                        <TableCell className="max-w-md truncate">{tx.description}</TableCell>
+                        <TableCell
+                          className={`text-right font-mono font-bold tabular-nums ${
+                            isPos ? 'text-emerald-700' : 'text-on-surface'
+                          }`}
+                        >
+                          {isPos ? '+' : ''}
+                          {formatCurrency(tx.amount)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-on-surface-variant tabular-nums">
+                          {formatCurrency(tx.balanceAfter)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
+        </TabsContent>
+
+        {/* TAB 2: LỊCH SỬ RÚT DOANH THU SÀN */}
+        <TabsContent value="platform-withdrawals" className="mt-3">
+          <Card>
+            {loadingWd ? (
+              <CardContent className="py-14 flex justify-center">
+                <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </CardContent>
+            ) : platformWithdrawals.length === 0 ? (
+              <CardContent className="py-12 text-center text-xs text-on-surface-variant">
+                Chưa có lịch sử rút doanh thu sàn về ngân hàng.
+              </CardContent>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Thời gian</TableHead>
+                    <TableHead>Người thực hiện</TableHead>
+                    <TableHead>Tài khoản nhận</TableHead>
+                    <TableHead>Mã tham chiếu</TableHead>
+                    <TableHead className="text-right">Số tiền rút</TableHead>
+                    <TableHead>Trạng thái</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {platformWithdrawals.map((w) => {
+                    const st = WITHDRAWAL_STATUS_MAP[w.status] || {
+                      label: w.status,
+                      dot: 'bg-emerald-600',
+                    }
+                    return (
+                      <TableRow key={w.id}>
+                        <TableCell className="text-on-surface-variant tabular-nums">
+                          {formatDateTime(w.createdAt)}
+                        </TableCell>
+                        <TableCell className="font-semibold">{w.userFullName || 'Quản trị viên'}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-semibold">
+                              {w.bankName} • {w.accountNumber}
+                            </span>
+                            <span className="text-[11px] text-on-surface-variant uppercase">
+                              {w.accountName}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-[11px] text-on-surface-variant">
+                          {w.transactionReference || '—'}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-bold tabular-nums">
+                          {formatCurrency(w.amount)}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge label={st.label} dot={st.dot} />
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
+        </TabsContent>
+
+        {/* TAB 3: SỔ CÁI GIAO DỊCH TẠM GIỮ TOÀN HỆ THỐNG */}
+        <TabsContent value="escrow-ledger" className="mt-3 flex flex-col gap-3">
+          <Card>
+            <CardContent className="p-3 flex flex-col md:flex-row items-center justify-between gap-2.5">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  setSearchQuery(searchInput)
+                }}
+                className="flex flex-1 items-center gap-2 w-full"
+              >
+                <Input
+                  placeholder="Tìm theo mã đặt lịch (VD: BK-2026...)..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="max-w-xs"
+                />
+                <Button type="submit" variant="secondary" size="sm">
+                  Tìm kiếm
+                </Button>
+              </form>
+
+              <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-44 h-9 text-xs">
+                    <SelectValue placeholder="Trạng thái" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__ALL__">Tất cả trạng thái</SelectItem>
+                    <SelectItem value="HeldInEscrow">Đang tạm giữ</SelectItem>
+                    <SelectItem value="CoolingDown">Chờ đối soát</SelectItem>
+                    <SelectItem value="Settled">Đã giải ngân</SelectItem>
+                    <SelectItem value="Refunded">Đã hoàn tiền</SelectItem>
+                    <SelectItem value="PartiallyRefunded">Hoàn một phần</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-40 h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="-createdAt">Mới nhất trước</SelectItem>
+                    <SelectItem value="createdAt">Cũ nhất trước</SelectItem>
+                    <SelectItem value="-amount">Số tiền giảm dần</SelectItem>
+                    <SelectItem value="amount">Số tiền tăng dần</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            {loadingEscrow ? (
+              <CardContent className="py-14 flex justify-center">
+                <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </CardContent>
+            ) : escrowItems.length === 0 ? (
+              <CardContent className="py-12 text-center text-xs text-on-surface-variant">
+                Không có giao dịch nào khớp với điều kiện lọc.
+              </CardContent>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Mã lịch hẹn</TableHead>
+                    <TableHead className="text-right">Tổng thu</TableHead>
+                    <TableHead className="text-right">Phí dịch vụ sàn</TableHead>
+                    <TableHead className="text-right">Thù lao chuyên gia</TableHead>
+                    <TableHead>Trạng thái ca</TableHead>
+                    <TableHead>Trạng thái tiền</TableHead>
+                    <TableHead>Ngày thanh toán</TableHead>
+                    <TableHead className="text-right">Chi tiết</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {escrowItems.map((tx) => {
+                    const est = ESCROW_STATUS_MAP[tx.escrowStatus] || {
+                      label: tx.escrowStatus,
+                      dot: 'bg-stone-400',
+                    }
+                    const bst = BOOKING_STATUS_MAP[tx.bookingStatus] || {
+                      label: tx.bookingStatus,
+                      dot: 'bg-stone-400',
+                    }
+                    return (
+                      <TableRow key={tx.id}>
+                        <TableCell className="font-mono font-semibold text-on-surface">
+                          {tx.bookingCode || '—'}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-semibold tabular-nums">
+                          {formatCurrency(tx.amount)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-on-surface-variant tabular-nums">
+                          {formatCurrency(tx.commissionAmount)} ({tx.commissionRate}%)
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-semibold tabular-nums">
+                          {formatCurrency(tx.expertReceivable)}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge label={bst.label} dot={bst.dot} />
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge label={est.label} dot={est.dot} />
+                        </TableCell>
+                        <TableCell className="text-on-surface-variant tabular-nums">
+                          {formatDateTime(tx.paidAt || tx.createdAt)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => setSelectedTx(tx)}
+                          >
+                            Xem
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Dialog rút doanh thu sàn */}
+      <Dialog open={withdrawModalOpen} onOpenChange={setWithdrawModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rút doanh thu sàn về tài khoản ngân hàng</DialogTitle>
+            <DialogDescription>
+              Số dư doanh thu khả dụng:{' '}
+              <strong className="text-on-surface font-mono">
+                {formatCurrency(wallet?.platformAvailableBalance ?? 0)}
+              </strong>
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAdminWithdrawSubmit} className="flex flex-col gap-3.5">
+            <div className="flex flex-col gap-1.5">
+              <Label>
+                Số tiền rút (VNĐ) <span className="text-red-600">*</span>
+              </Label>
+              <Input
+                type="number"
+                min={50000}
+                step={50000}
+                value={withdrawForm.amount}
+                onChange={(e) =>
+                  setWithdrawForm((prev) => ({ ...prev, amount: e.target.value }))
+                }
+                className="font-mono font-semibold"
+              />
+              <span className="text-[11px] text-on-surface-variant">
+                Tối thiểu 50.000 VNĐ, không vượt quá số dư khả dụng.
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Ngân hàng thụ hưởng *</Label>
+              <Select
+                value={withdrawForm.bankName}
+                onValueChange={(val) =>
+                  setWithdrawForm((prev) => ({ ...prev, bankName: val }))
+                }
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {POPULAR_BANKS.map((b) => (
+                    <SelectItem key={b} value={b}>
+                      {b}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Số tài khoản *</Label>
+              <Input
+                placeholder="Nhập số tài khoản nhận tiền..."
+                value={withdrawForm.accountNumber}
+                onChange={(e) =>
+                  setWithdrawForm((prev) => ({ ...prev, accountNumber: e.target.value }))
+                }
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Tên chủ tài khoản *</Label>
+              <Input
+                placeholder="VD: CONG TY CP TAXKEEP VN"
+                value={withdrawForm.accountName}
+                onChange={(e) =>
+                  setWithdrawForm((prev) => ({
+                    ...prev,
+                    accountName: e.target.value.toUpperCase(),
+                  }))
+                }
+                className="uppercase"
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setWithdrawModalOpen(false)}
+              >
+                Hủy
+              </Button>
+              <Button type="submit" disabled={withdrawForm.submitting}>
+                {withdrawForm.submitting ? 'Đang xử lý...' : 'Xác nhận rút tiền'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog xem chi tiết giao dịch tạm giữ */}
+      <Dialog open={Boolean(selectedTx)} onOpenChange={(open) => !open && setSelectedTx(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Chi tiết giao dịch #{selectedTx?.bookingCode}</DialogTitle>
+          </DialogHeader>
+          {selectedTx && (
+            <div className="flex flex-col gap-3 text-xs">
+              <div className="grid grid-cols-2 gap-2.5 p-3 rounded-lg border border-outline-variant/40 bg-surface-container-low/30">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] text-on-surface-variant">Trạng thái ca tư vấn</span>
+                  <div>
+                    <StatusBadge
+                      label={
+                        (BOOKING_STATUS_MAP[selectedTx.bookingStatus] || {
+                          label: selectedTx.bookingStatus,
+                        }).label
+                      }
+                      dot={
+                        (BOOKING_STATUS_MAP[selectedTx.bookingStatus] || {
+                          dot: 'bg-stone-400',
+                        }).dot
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] text-on-surface-variant">Trạng thái tiền</span>
+                  <div>
+                    <StatusBadge
+                      label={
+                        (ESCROW_STATUS_MAP[selectedTx.escrowStatus] || {
+                          label: selectedTx.escrowStatus,
+                        }).label
+                      }
+                      dot={
+                        (ESCROW_STATUS_MAP[selectedTx.escrowStatus] || {
+                          dot: 'bg-stone-400',
+                        }).dot
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="p-3 rounded-lg border border-outline-variant/40 bg-surface-container-low/40 flex flex-col gap-1.5">
+                <div className="flex justify-between">
+                  <span className="text-on-surface-variant">Tổng thanh toán:</span>
+                  <strong className="font-mono">{formatCurrency(selectedTx.amount)}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-on-surface-variant">
+                    Phí dịch vụ sàn ({selectedTx.commissionRate}%):
+                  </span>
+                  <strong className="font-mono">
+                    {formatCurrency(selectedTx.commissionAmount)}
+                  </strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-on-surface-variant">Thù lao chuyên gia:</span>
+                  <strong className="font-mono">
+                    {formatCurrency(selectedTx.expertReceivable)}
+                  </strong>
+                </div>
+                {selectedTx.refundAmount > 0 && (
+                  <div className="flex justify-between pt-1 border-t border-outline-variant/30">
+                    <span className="text-on-surface-variant">Số tiền đã hoàn trả:</span>
+                    <strong className="font-mono">
+                      {formatCurrency(selectedTx.refundAmount)}
+                    </strong>
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-on-surface-variant">
+                <div>Thanh toán: {formatDateTime(selectedTx.paidAt)}</div>
+                <div>Giải ngân: {formatDateTime(selectedTx.settledAt)}</div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setSelectedTx(null)}>
+              Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
+      />
+    </div>
+  )
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TAB 5: LĨNH VỰC TƯ VẤN
+// ═════════════════════════════════════════════════════════════════════════════
+
+function SpecializationsTab() {
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState(null)
+  const [formData, setFormData] = useState({ name: '', description: '', isActive: true })
+  const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState({ open: false, item: null, loading: false })
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+
+  const showNotice = (type, title, description) => {
+    setNotice({ open: true, type, title, description })
+  }
+
+  const fetchList = async () => {
+    setLoading(true)
+    try {
+      const data = await expertService.getSpecializations(false)
+      setItems(Array.isArray(data) ? data : [])
+    } catch (err) {
+      showNotice('error', 'Không thể tải danh sách lĩnh vực', err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchList()
+  }, [])
+
+  const openCreate = () => {
+    setEditingItem(null)
+    setFormData({ name: '', description: '', isActive: true })
+    setDialogOpen(true)
+  }
+
+  const openEdit = (item) => {
+    setEditingItem(item)
+    setFormData({
+      name: item.name || '',
+      description: item.description || '',
+      isActive: item.isActive ?? true,
+    })
+    setDialogOpen(true)
+  }
+
+  const handleSave = async (e) => {
+    e.preventDefault()
+    if (!formData.name.trim()) {
+      showNotice('warning', 'Thiếu tên lĩnh vực', 'Vui lòng nhập tên lĩnh vực tư vấn.')
+      return
+    }
+    setSaving(true)
+    try {
+      if (editingItem) {
+        await expertService.updateSpecialization(editingItem.id, {
+          name: formData.name.trim(),
+          description: formData.description.trim() || null,
+          isActive: Boolean(formData.isActive),
+        })
+        showNotice('success', 'Đã cập nhật', 'Thông tin lĩnh vực tư vấn đã được lưu.')
+      } else {
+        await expertService.createSpecialization({
+          name: formData.name.trim(),
+          description: formData.description.trim() || null,
+        })
+        showNotice('success', 'Đã thêm mới', 'Lĩnh vực tư vấn mới đã được tạo.')
+      }
+      setDialogOpen(false)
+      fetchList()
+    } catch (err) {
+      showNotice('error', 'Không thể lưu lĩnh vực', err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete.item) return
+    setConfirmDelete((prev) => ({ ...prev, loading: true }))
+    try {
+      await expertService.deleteSpecialization(confirmDelete.item.id)
+      setConfirmDelete({ open: false, item: null, loading: false })
+      showNotice('info', 'Đã ngừng áp dụng', 'Lĩnh vực đã chuyển sang trạng thái tạm ngưng.')
+      fetchList()
+    } catch (err) {
+      setConfirmDelete((prev) => ({ ...prev, loading: false }))
+      showNotice('error', 'Không thể thực hiện', err.message)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardContent className="p-3 flex items-center justify-between gap-2">
+          <span className="text-xs text-on-surface-variant">
+            Danh mục các chuyên ngành thuế áp dụng khi chuyên gia đăng ký và khách hàng đặt lịch
+          </span>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={fetchList}>
+              Làm mới
+            </Button>
+            <Button type="button" size="sm" onClick={openCreate}>
+              Thêm lĩnh vực
+            </Button>
           </div>
-          <Button id="spec-add" onClick={() => setFormState({ item: null })} className="gap-1 font-bold">
-            <Icon name="add" /> Thêm lĩnh vực mới
-          </Button>
         </CardContent>
       </Card>
 
-      <ErrorAlert message={error} onClose={() => setError(null)} />
-
-      {loading && <LoadingState text="Đang tải danh sách lĩnh vực tư vấn..." />}
-
-      {!loading && specializations.length > 0 && (
-        <Card className="shadow-sm">
+      <Card>
+        {loading ? (
+          <CardContent className="py-14 flex justify-center">
+            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </CardContent>
+        ) : items.length === 0 ? (
+          <CardContent className="py-12 text-center text-xs text-on-surface-variant">
+            Chưa có lĩnh vực tư vấn nào.
+          </CardContent>
+        ) : (
           <Table>
             <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Ký hiệu phân loại</TableHead>
-                <TableHead>Tên lĩnh vực chuyên môn</TableHead>
-                <TableHead>Mô tả phạm vi tư vấn</TableHead>
-                <TableHead className="text-center">Trạng thái</TableHead>
-                <TableHead className="text-right">Thao tác</TableHead>
+              <TableRow>
+                <TableHead className="w-20">Mã</TableHead>
+                <TableHead>Tên lĩnh vực</TableHead>
+                <TableHead>Mô tả phạm vi</TableHead>
+                <TableHead className="w-36">Trạng thái</TableHead>
+                <TableHead className="text-right w-40">Thao tác</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {specializations.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-mono text-xs text-primary font-bold">{item.code}</TableCell>
-                  <TableCell className="text-sm font-bold text-on-surface">{item.name}</TableCell>
-                  <TableCell className="text-sm text-on-surface-variant max-w-[280px] truncate">{item.description || '—'}</TableCell>
-                  <TableCell className="text-center"><ActiveBadge active={item.isActive} /></TableCell>
+              {items.map((sp) => (
+                <TableRow key={sp.id}>
+                  <TableCell className="font-mono text-on-surface-variant tabular-nums">
+                    #{sp.id}
+                  </TableCell>
+                  <TableCell className="font-semibold text-on-surface">{sp.name}</TableCell>
+                  <TableCell className="text-on-surface-variant max-w-md truncate">
+                    {sp.description || '—'}
+                  </TableCell>
                   <TableCell>
-                    <div className="flex gap-2 justify-end">
-                      <Button size="sm" variant="outline" onClick={() => setFormState({ item })} id={`spec-edit-${item.id}`}>Chỉnh sửa</Button>
-                      <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                        onClick={() => setDeleteTarget(item)} id={`spec-delete-${item.id}`}>Xóa</Button>
+                    <StatusBadge
+                      label={sp.isActive ? 'Đang áp dụng' : 'Tạm ngưng'}
+                      dot={sp.isActive ? 'bg-emerald-600' : 'bg-stone-400'}
+                    />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="inline-flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2.5 text-[11px]"
+                        onClick={() => openEdit(sp)}
+                      >
+                        Sửa
+                      </Button>
+                      {sp.isActive && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-[11px] text-red-600 hover:text-red-700"
+                          onClick={() =>
+                            setConfirmDelete({ open: true, item: sp, loading: false })
+                          }
+                        >
+                          Ngừng
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        </Card>
-      )}
-
-      {!loading && specializations.length === 0 && !error && (
-        <EmptyState icon="category" text="Chưa có lĩnh vực chuyên môn nào." />
-      )}
-
-      {formState && (
-        <SpecializationFormDialog
-          editItem={formState.item}
-          loading={formLoading}
-          onSave={handleSave}
-          onOpenChange={(o) => !o && setFormState(null)}
-        />
-      )}
-
-      <ConfirmDialog
-        open={!!deleteTarget}
-        title="Xóa lĩnh vực tư vấn"
-        description={deleteTarget ? `Bạn có chắc chắn muốn xóa "${deleteTarget.name}" khỏi hệ thống? Thao tác này không thể hoàn tác.` : ''}
-        confirmText="Xác nhận xóa"
-        cancelText="Hủy bỏ"
-        type="destructive"
-        loading={deleteLoading}
-        onConfirm={handleDelete}
-        onOpenChange={(o) => !o && setDeleteTarget(null)}
-      />
-
-      <NotificationDialog
-        open={notice.open}
-        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
-        type={notice.type}
-        title={notice.title}
-        description={notice.description}
-      />
-    </div>
-  )
-}
-
-function SpecializationFormDialog({ editItem, loading, onSave, onOpenChange }) {
-  const [code, setCode] = useState(editItem?.code || '')
-  const [name, setName] = useState(editItem?.name || '')
-  const [description, setDescription] = useState(editItem?.description || '')
-  const [isActive, setIsActive] = useState(editItem?.isActive ?? true)
-  const [formError, setFormError] = useState(null)
-
-  const isValid = code.trim().length >= 2 && name.trim().length >= 2
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!isValid) return
-    setFormError(null)
-    const payload = { name: name.trim(), description: description.trim() || null, isActive }
-    if (!editItem) payload.code = code.trim().toUpperCase()
-    const err = await onSave(payload)
-    if (err) setFormError(err)
-  }
-
-  return (
-    <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent as="form" onSubmit={handleSubmit}>
-        <DialogHeader>
-          <DialogTitle>{editItem ? 'Chỉnh sửa lĩnh vực tư vấn' : 'Thêm lĩnh vực tư vấn mới'}</DialogTitle>
-          <DialogDescription>Lĩnh vực chuyên môn hiển thị cho người nộp hồ sơ đăng ký làm chuyên gia.</DialogDescription>
-        </DialogHeader>
-
-        <ErrorAlert message={formError} />
-
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="spec-code">Ký hiệu phân loại</Label>
-          <Input id="spec-code" value={code} onChange={(e) => setCode(e.target.value)} disabled={!!editItem} placeholder="VD: DAI_LY_THUE, KT_DOANH_NGHIEP" />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="spec-name">Tên lĩnh vực chuyên môn</Label>
-          <Input id="spec-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="VD: Tư vấn đại lý thuế" />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="spec-desc">Mô tả phạm vi tư vấn</Label>
-          <Textarea id="spec-desc" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Mô tả phạm vi và nghiệp vụ tư vấn..." />
-        </div>
-        <label className="flex items-center gap-2 cursor-pointer text-sm text-on-surface">
-          <Checkbox id="spec-active" checked={isActive} onCheckedChange={setIsActive} />
-          Áp dụng ngay trên hệ thống (hiển thị khi nộp hồ sơ)
-        </label>
-
-        <DialogFooter>
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>Hủy bỏ</Button>
-          <Button type="submit" size="sm" disabled={loading || !isValid} id="spec-submit" className="font-bold">
-            {loading ? 'Đang lưu...' : editItem ? 'Lưu thay đổi' : 'Thêm mới'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════
-// TAB 3: FEE CONFIGS (KHUNG MỨC PHÍ TƯ VẤN)
-// ═══════════════════════════════════════════════════════════
-
-function FeeConfigsTab() {
-  const [feeConfigs, setFeeConfigs] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [formState, setFormState] = useState(null)
-  const [formLoading, setFormLoading] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState(null)
-  const [deleteLoading, setDeleteLoading] = useState(false)
-  const [sessionFilter, setSessionFilter] = useState(ALL)
-  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
-
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await expertService.getFeeConfigs({
-        sessionType: sessionFilter === ALL ? undefined : sessionFilter,
-      })
-      setFeeConfigs(extractItems(data))
-    } catch (err) {
-      setError(err.message || 'Không thể tải danh sách khung mức phí.')
-      setFeeConfigs([])
-    } finally {
-      setLoading(false)
-    }
-  }, [sessionFilter])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
-
-  const handleSave = async (payload) => {
-    setFormLoading(true)
-    try {
-      if (formState?.item) {
-        await expertService.updateFeeConfig(formState.item.id, payload)
-        setNotice({
-          open: true,
-          type: 'success',
-          title: 'Cập nhật thành công',
-          description: 'Đã cập nhật khung mức phí tư vấn.',
-        })
-      } else {
-        await expertService.createFeeConfig(payload)
-        setNotice({
-          open: true,
-          type: 'success',
-          title: 'Thêm mới thành công',
-          description: 'Đã thêm khung mức phí tư vấn mới.',
-        })
-      }
-      setFormState(null)
-      await fetchData()
-    } catch (err) {
-      return err.message || 'Lưu khung mức phí thất bại.'
-    } finally {
-      setFormLoading(false)
-    }
-  }
-
-  const handleDelete = async () => {
-    setDeleteLoading(true)
-    try {
-      await expertService.deleteFeeConfig(deleteTarget.id)
-      setDeleteTarget(null)
-      setNotice({
-        open: true,
-        type: 'success',
-        title: 'Xóa thành công',
-        description: 'Đã xóa khung mức phí khỏi hệ thống.',
-      })
-      await fetchData()
-    } catch (err) {
-      const msg = err.message || 'Xóa khung mức phí thất bại.'
-      setDeleteTarget(null)
-      setNotice({
-        open: true,
-        type: 'error',
-        title: 'Xóa thất bại',
-        description: msg,
-      })
-    } finally {
-      setDeleteLoading(false)
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-space-md">
-      <Card className="shadow-sm">
-        <CardContent className="p-5 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-          <div className="sm:w-60">
-            <Select value={sessionFilter} onValueChange={setSessionFilter}>
-              <SelectTrigger id="fee-session-filter" className="h-11 text-sm"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Tất cả hình thức tư vấn</SelectItem>
-                {Object.entries(SESSION_TYPE_MAP).map(([key, { label }]) => (
-                  <SelectItem key={key} value={key}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button id="fee-add" onClick={() => setFormState({ item: null })} className="gap-1 font-bold">
-            <Icon name="add" /> Thêm khung mức phí
-          </Button>
-        </CardContent>
-      </Card>
-
-      <ErrorAlert message={error} onClose={() => setError(null)} />
-
-      {loading && <LoadingState text="Đang tải danh sách khung mức phí tư vấn..." />}
-
-      {!loading && feeConfigs.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-md">
-          {feeConfigs.map((item) => {
-            const s = SESSION_TYPE_MAP[item.sessionType] || { label: item.sessionType, icon: 'help' }
-            return (
-              <Card key={item.id} className="shadow-sm hover:shadow-md transition-shadow flex flex-col">
-                <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary-container/40 flex items-center justify-center">
-                      <Icon name={s.icon} className="text-[22px] text-primary" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-base text-on-surface">{s.label}</CardTitle>
-                      <CardDescription className="text-xs">{item.durationMinutes} phút</CardDescription>
-                    </div>
-                  </div>
-                  <ActiveBadge active={item.isActive} />
-                </CardHeader>
-                <CardContent className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-on-surface-variant uppercase tracking-wider font-bold">Mức phí sàn tối thiểu</span>
-                    <span className="text-sm text-primary font-bold">{formatCurrency(item.minFee)}</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-on-surface-variant uppercase tracking-wider font-bold">Mức phí trần tối đa</span>
-                    <span className="text-sm text-primary font-bold">{formatCurrency(item.maxFee)}</span>
-                  </div>
-                </CardContent>
-                <CardFooter className="gap-2 mt-auto">
-                  <Button size="sm" variant="outline" className="flex-1 font-bold" onClick={() => setFormState({ item })} id={`fee-edit-${item.id}`}>
-                    Chỉnh sửa
-                  </Button>
-                  <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                    onClick={() => setDeleteTarget(item)} id={`fee-delete-${item.id}`}>
-                    Xóa
-                  </Button>
-                </CardFooter>
-              </Card>
-            )
-          })}
-        </div>
-      )}
-
-      {!loading && feeConfigs.length === 0 && !error && (
-        <EmptyState icon="payments" text="Chưa có khung mức phí tư vấn nào." />
-      )}
-
-      {formState && (
-        <FeeConfigFormDialog
-          editItem={formState.item}
-          loading={formLoading}
-          onSave={handleSave}
-          onOpenChange={(o) => !o && setFormState(null)}
-        />
-      )}
-
-      <ConfirmDialog
-        open={!!deleteTarget}
-        title="Xóa khung mức phí tư vấn"
-        description={deleteTarget
-          ? `Bạn có chắc chắn muốn xóa khung mức phí cho hình thức ${SESSION_TYPE_MAP[deleteTarget.sessionType]?.label || deleteTarget.sessionType} (${deleteTarget.durationMinutes} phút)? Thao tác này không thể hoàn tác.`
-          : ''}
-        confirmText="Xác nhận xóa"
-        cancelText="Hủy bỏ"
-        type="destructive"
-        loading={deleteLoading}
-        onConfirm={handleDelete}
-        onOpenChange={(o) => !o && setDeleteTarget(null)}
-      />
-
-      <NotificationDialog
-        open={notice.open}
-        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
-        type={notice.type}
-        title={notice.title}
-        description={notice.description}
-      />
-    </div>
-  )
-}
-
-function FeeConfigFormDialog({ editItem, loading, onSave, onOpenChange }) {
-  const [sessionType, setSessionType] = useState(editItem?.sessionType || 'ONLINE_MEETING')
-  const [durationMinutes, setDurationMinutes] = useState(editItem?.durationMinutes ?? 60)
-  const [minFee, setMinFee] = useState(editItem?.minFee ?? 0)
-  const [maxFee, setMaxFee] = useState(editItem?.maxFee ?? 0)
-  const [isActive, setIsActive] = useState(editItem?.isActive ?? true)
-  const [formError, setFormError] = useState(null)
-
-  const d = Number(durationMinutes)
-  const min = Number(minFee)
-  const max = Number(maxFee)
-  const rangeError = min > max ? 'Mức phí sàn không được lớn hơn mức phí trần.' : null
-  const isValid = d >= 15 && d <= 240 && min >= 0 && max >= 0 && !rangeError
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!isValid) return
-    setFormError(null)
-    const err = await onSave({ sessionType, durationMinutes: d, minFee: min, maxFee: max, isActive })
-    if (err) setFormError(err)
-  }
-
-  return (
-    <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent as="form" onSubmit={handleSubmit}>
-        <DialogHeader>
-          <DialogTitle>{editItem ? 'Chỉnh sửa khung mức phí' : 'Thêm khung mức phí mới'}</DialogTitle>
-          <DialogDescription>Khung mức phí sàn và trần áp dụng cho đề xuất biểu phí của chuyên gia tư vấn.</DialogDescription>
-        </DialogHeader>
-
-        <ErrorAlert message={formError} />
-
-        <div className="flex flex-col gap-2">
-          <Label>Hình thức tư vấn</Label>
-          <Select value={sessionType} onValueChange={setSessionType}>
-            <SelectTrigger id="fee-session-type" className="h-11 text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent className="z-[110]">
-              {Object.entries(SESSION_TYPE_MAP).map(([key, { label }]) => (
-                <SelectItem key={key} value={key}>{label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="fee-duration">Thời lượng buổi tư vấn (phút)</Label>
-          <Input id="fee-duration" type="number" min={15} max={240} value={durationMinutes}
-            onChange={(e) => setDurationMinutes(e.target.value)} />
-          {(d < 15 || d > 240) && <span className="text-[11px] text-red-500">Thời lượng hợp lệ từ 15 đến 240 phút</span>}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="fee-min">Mức phí sàn tối thiểu (VNĐ)</Label>
-            <Input id="fee-min" type="number" min={0} max={100000000} value={minFee} onChange={(e) => setMinFee(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="fee-max">Mức phí trần tối đa (VNĐ)</Label>
-            <Input id="fee-max" type="number" min={0} max={100000000} value={maxFee} onChange={(e) => setMaxFee(e.target.value)} />
-          </div>
-        </div>
-        {rangeError && <span className="text-[11px] text-red-500 -mt-2">{rangeError}</span>}
-
-        <label className="flex items-center gap-2 cursor-pointer text-sm text-on-surface">
-          <Checkbox id="fee-active" checked={isActive} onCheckedChange={setIsActive} />
-          Áp dụng ngay trên hệ thống
-        </label>
-
-        <DialogFooter>
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>Hủy bỏ</Button>
-          <Button type="submit" size="sm" disabled={loading || !isValid} id="fee-submit" className="font-bold">
-            {loading ? 'Đang lưu...' : editItem ? 'Lưu thay đổi' : 'Thêm mới'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════
-// TAB 4: PLATFORM WALLET & ESCROW LEDGER
-// ═══════════════════════════════════════════════════════════
-
-function EscrowStatusBadge({ status }) {
-  const s = ESCROW_STATUS_MAP[status] || { label: status || '—', variant: 'outline' }
-  return <Badge variant={s.variant}>{s.label}</Badge>
-}
-
-function PlatformWalletTab() {
-  const [wallet, setWallet] = useState(null)
-  const [transactions, setTransactions] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [tableLoading, setTableLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [statusFilter, setStatusFilter] = useState(ALL)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalItems, setTotalItems] = useState(0)
-  const [selectedTx, setSelectedTx] = useState(null)
-  const searchTimeoutRef = useRef(null)
-
-  const fetchWallet = useCallback(async () => {
-    try {
-      const data = await expertService.getAdminPlatformWallet()
-      setWallet(data)
-    } catch (err) {
-      setError(err?.message || 'Không thể tải tổng quan Ví Nền tảng.')
-    }
-  }, [])
-
-  const fetchTransactions = useCallback(async () => {
-    setTableLoading(true)
-    try {
-      const res = await expertService.getEscrowTransactions({
-        page,
-        size: 10,
-        status: statusFilter === ALL ? undefined : statusFilter,
-        search: searchTerm || undefined,
-      })
-      const items = extractItems(res)
-      setTransactions(items)
-      setTotalPages(res?.totalPages || 1)
-      setTotalItems(res?.totalItems ?? res?.totalCount ?? items.length)
-    } catch (err) {
-      setError(err?.message || 'Không thể tải danh sách giao dịch ký quỹ.')
-    } finally {
-      setTableLoading(false)
-    }
-  }, [page, statusFilter, searchTerm])
-
-  const loadAll = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    await Promise.all([fetchWallet(), fetchTransactions()])
-    setLoading(false)
-  }, [fetchWallet, fetchTransactions])
-
-  useEffect(() => {
-    loadAll()
-  }, [])
-
-  useEffect(() => {
-    fetchTransactions()
-  }, [fetchTransactions])
-
-  const handleSearchChange = (val) => {
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
-    searchTimeoutRef.current = setTimeout(() => {
-      setSearchTerm(val)
-      setPage(1)
-    }, 400)
-  }
-
-  if (loading) return <LoadingState text="Đang tải dữ liệu ví sàn..." />
-
-  const stats = wallet?.stats || {}
-
-  return (
-    <div className="flex flex-col gap-6">
-      <ErrorAlert message={error} onClose={() => setError(null)} />
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* GMV */}
-        <Card className="shadow-sm border-l-4 border-l-primary">
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold">
-              <Icon name="payments" className="text-primary text-[18px]" />
-              Tổng doanh thu dịch vụ
-            </CardDescription>
-            <CardTitle className="text-2xl font-bold text-on-surface">
-              {formatCurrency(wallet?.totalGrossVolume ?? 0)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-on-surface-variant pt-0">
-            Tổng giá trị tất cả các ca tư vấn đã thanh toán thành công.
-          </CardContent>
-        </Card>
-
-        {/* Escrow Holding */}
-        <Card className="shadow-sm border-l-4 border-l-amber-500">
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold">
-              <Icon name="lock" className="text-amber-500 text-[18px]" />
-              Tiền cọc đang tạm giữ
-            </CardDescription>
-            <CardTitle className="text-2xl font-bold text-amber-600">
-              {formatCurrency(wallet?.escrowHoldingBalance ?? 0)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-on-surface-variant pt-0 space-y-0.5">
-            <div>Chờ trả Chuyên gia: <strong className="text-on-surface">{formatCurrency(wallet?.pendingExpertReceivable ?? 0)}</strong></div>
-            <div>Hoa hồng sàn tạm giữ: <strong className="text-on-surface">{formatCurrency(wallet?.pendingPlatformCommission ?? 0)}</strong></div>
-          </CardContent>
-        </Card>
-
-        {/* Realized Revenue */}
-        <Card className="shadow-sm border-l-4 border-l-emerald-600">
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold">
-              <Icon name="trending_up" className="text-emerald-600 text-[18px]" />
-              Hoa hồng sàn thực nhận
-            </CardDescription>
-            <CardTitle className="text-2xl font-bold text-emerald-600">
-              {formatCurrency(wallet?.realizedPlatformRevenue ?? 0)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-on-surface-variant pt-0">
-            Tổng tích lũy: <strong className="text-on-surface">{formatCurrency(wallet?.totalAccumulatedRevenue ?? 0)}</strong> (từ ca đã xong)
-          </CardContent>
-        </Card>
-
-        {/* Settled & Refunded */}
-        <Card className="shadow-sm border-l-4 border-l-blue-600">
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1.5 text-xs font-semibold">
-              <Icon name="swap_horiz" className="text-blue-600 text-[18px]" />
-              Đã chi trả & Hoàn tiền
-            </CardDescription>
-            <CardTitle className="text-xl font-bold text-on-surface">
-              {formatCurrency(wallet?.totalSettledToExperts ?? 0)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs text-on-surface-variant pt-0 space-y-0.5">
-            <div>Đã trả chuyên gia: <strong className="text-on-surface">{formatCurrency(wallet?.totalSettledToExperts ?? 0)}</strong></div>
-            <div>Đã hoàn trả khách: <strong className="text-on-surface">{formatCurrency(wallet?.totalRefundedToTaxpayers ?? 0)}</strong></div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Status Breakdown */}
-      <div className="flex flex-wrap items-center gap-2 text-xs bg-surface-container-low p-3 rounded-xl border border-outline-variant">
-        <span className="font-semibold text-on-surface flex items-center gap-1 mr-2">
-          <Icon name="query_stats" className="text-[18px] text-primary" />
-          Tổng quan trạng thái:
-        </span>
-        <span className="px-2.5 py-1 rounded-md bg-white border text-on-surface">Tổng đơn: <strong>{stats.totalTransactions ?? 0}</strong></span>
-        <span className="px-2.5 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-800">Chờ thanh toán: <strong>{stats.pendingPaymentCount ?? 0}</strong></span>
-        <span className="px-2.5 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-800">Đang giữ cọc: <strong>{stats.heldInEscrowCount ?? 0}</strong></span>
-        <span className="px-2.5 py-1 rounded-md bg-orange-50 border border-orange-200 text-orange-800">Chờ hoàn tất 24h: <strong>{stats.coolingDownCount ?? 0}</strong></span>
-        <span className="px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800">Đã trả chuyên gia: <strong>{stats.settledCount ?? 0}</strong></span>
-        <span className="px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-800">Đã hoàn tiền: <strong>{(stats.refundedCount ?? 0) + (stats.partiallyRefundedCount ?? 0)}</strong></span>
-        <span className="px-2.5 py-1 rounded-md bg-gray-50 border border-gray-200 text-gray-700">Đã hủy: <strong>{stats.cancelledCount ?? 0}</strong></span>
-      </div>
-
-      {/* Ledger Table Section */}
-      <Card className="shadow-sm">
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4">
-          <div>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Icon name="receipt_long" className="text-primary text-[22px]" />
-              Lịch sử đặt cọc & thanh toán
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Chi tiết các khoản khách thanh toán, tiền cọc đang giữ và tiền chi trả cho chuyên gia.
-            </CardDescription>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative w-56 sm:w-64">
-              <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-on-surface-variant" />
-              <Input
-                placeholder="Tìm mã lịch / mã đơn..."
-                className="pl-9 h-9 text-xs"
-                defaultValue={searchTerm}
-                onChange={(e) => handleSearchChange(e.target.value)}
-              />
-            </div>
-
-            <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setPage(1) }}>
-              <SelectTrigger className="w-48 h-9 text-xs">
-                <SelectValue placeholder="Tất cả trạng thái" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Tất cả trạng thái</SelectItem>
-                {Object.entries(ESCROW_STATUS_MAP).map(([key, { label }]) => (
-                  <SelectItem key={key} value={key}>{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Button variant="outline" size="sm" onClick={loadAll} title="Tải lại dữ liệu">
-              <Icon name="refresh" className="text-[18px]" />
-            </Button>
-          </div>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          {tableLoading ? (
-            <LoadingState text="Đang làm mới sổ cái giao dịch..." />
-          ) : transactions.length === 0 ? (
-            <EmptyState icon="receipt_long" text="Không có giao dịch ký quỹ nào phù hợp với bộ lọc." />
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Mã đặt lịch</TableHead>
-                    <TableHead>Mã đơn hàng</TableHead>
-                    <TableHead className="text-right">Số tiền</TableHead>
-                    <TableHead className="text-right">Hoa hồng sàn</TableHead>
-                    <TableHead className="text-right">Chuyên gia nhận</TableHead>
-                    <TableHead>Trạng thái ký quỹ</TableHead>
-                    <TableHead>Cổng thanh toán</TableHead>
-                    <TableHead>Thời gian nạp</TableHead>
-                    <TableHead className="text-center">Thao tác</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transactions.map((tx) => (
-                    <TableRow key={tx.id}>
-                      <TableCell className="font-semibold text-primary font-mono text-xs">
-                        {tx.bookingCode || tx.bookingId?.slice(0, 8) || '—'}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-on-surface-variant">
-                        #{tx.orderCode || '—'}
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-on-surface text-sm">
-                        {formatCurrency(tx.amount)}
-                      </TableCell>
-                      <TableCell className="text-right text-xs text-emerald-600 font-medium">
-                        {formatCurrency(tx.commissionAmount)}
-                        <span className="text-[10px] text-on-surface-variant ml-1">({tx.commissionRate * 100}%)</span>
-                      </TableCell>
-                      <TableCell className="text-right text-xs text-blue-600 font-medium">
-                        {formatCurrency(tx.expertReceivable)}
-                      </TableCell>
-                      <TableCell>
-                        <EscrowStatusBadge status={tx.escrowStatus} />
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        <Badge variant="outline" className="font-mono text-[11px]">
-                          {tx.paymentGateway || 'PAYOS'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-on-surface-variant whitespace-nowrap">
-                        {formatDateTime(tx.paidAt || tx.createdAt)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-xs font-medium"
-                          onClick={() => setSelectedTx(tx)}
-                        >
-                          <Icon name="visibility" className="text-[16px] mr-1" />
-                          Chi tiết
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-
-        {totalPages > 1 && (
-          <CardFooter className="flex items-center justify-between border-t p-4 text-xs text-on-surface-variant">
-            <span>Tổng số {totalItems} giao dịch (Trang {page}/{totalPages})</span>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Trước
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              >
-                Sau
-              </Button>
-            </div>
-          </CardFooter>
         )}
       </Card>
 
-      {/* Transaction Detail Dialog */}
-      {selectedTx && (
-        <Dialog open onOpenChange={() => setSelectedTx(null)}>
-          <DialogContent className="max-w-xl">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Icon name="receipt" className="text-primary text-[22px]" />
-                Chi tiết Giao dịch Ký quỹ #{selectedTx.orderCode}
-              </DialogTitle>
-              <DialogDescription>
-                Bản ghi sổ cái bảo chứng thanh toán ca tư vấn thuế trực tuyến
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="flex flex-col gap-4 text-sm py-2">
-              <div className="p-3 rounded-lg bg-surface-container-low border flex items-center justify-between">
-                <div>
-                  <span className="text-xs text-on-surface-variant block">Mã đặt lịch tư vấn:</span>
-                  <span className="font-bold text-primary font-mono text-base">{selectedTx.bookingCode || selectedTx.bookingId}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs text-on-surface-variant block">Trạng thái ký quỹ:</span>
-                  <EscrowStatusBadge status={selectedTx.escrowStatus} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-lg border bg-white">
-                  <span className="text-xs text-on-surface-variant block">Tổng tiền khách thanh toán</span>
-                  <span className="text-lg font-bold text-on-surface">{formatCurrency(selectedTx.amount)}</span>
-                </div>
-                <div className="p-3 rounded-lg border bg-white">
-                  <span className="text-xs text-on-surface-variant block">Hoa hồng Nền tảng ({selectedTx.commissionRate * 100}%)</span>
-                  <span className="text-lg font-bold text-emerald-600">{formatCurrency(selectedTx.commissionAmount)}</span>
-                </div>
-                <div className="p-3 rounded-lg border bg-white">
-                  <span className="text-xs text-on-surface-variant block">Số tiền giải ngân cho Chuyên gia</span>
-                  <span className="text-lg font-bold text-blue-600">{formatCurrency(selectedTx.expertReceivable)}</span>
-                </div>
-                <div className="p-3 rounded-lg border bg-white">
-                  <span className="text-xs text-on-surface-variant block">Cổng thanh toán</span>
-                  <span className="text-base font-semibold text-on-surface">{selectedTx.paymentGateway || 'PAYOS'}</span>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-surface-container-low border text-xs">
-                <InfoRow label="Thời điểm nạp tiền vào quỹ" value={formatDateTime(selectedTx.paidAt)} />
-                <InfoRow label="Thời điểm giải ngân ví chuyên gia" value={formatDateTime(selectedTx.settledAt)} />
-                {selectedTx.refundAmount > 0 && (
-                  <>
-                    <InfoRow label="Số tiền đã hoàn trả" value={formatCurrency(selectedTx.refundAmount)} />
-                    <InfoRow label="Lý do hoàn trả" value={selectedTx.refundReason} />
-                    <InfoRow label="Thời điểm hoàn trả" value={formatDateTime(selectedTx.refundedAt)} />
-                  </>
-                )}
-                <InfoRow label="Mã tham chiếu cổng thanh toán" value={selectedTx.paymentReference} />
-              </div>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editingItem ? 'Cập nhật lĩnh vực tư vấn' : 'Thêm lĩnh vực tư vấn'}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSave} className="flex flex-col gap-3.5">
+            <div className="flex flex-col gap-1.5">
+              <Label>
+                Tên lĩnh vực <span className="text-red-600">*</span>
+              </Label>
+              <Input
+                placeholder="VD: Quyết toán thuế TNCN"
+                value={formData.name}
+                onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+              />
             </div>
 
+            <div className="flex flex-col gap-1.5">
+              <Label>Mô tả</Label>
+              <Textarea
+                rows={3}
+                placeholder="Mô tả phạm vi tư vấn của lĩnh vực này..."
+                value={formData.description}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, description: e.target.value }))
+                }
+              />
+            </div>
+
+            {editingItem && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={formData.isActive}
+                  onCheckedChange={(checked) =>
+                    setFormData((prev) => ({ ...prev, isActive: Boolean(checked) }))
+                  }
+                />
+                <span className="text-xs font-medium text-on-surface">
+                  Đang áp dụng trên hệ thống
+                </span>
+              </label>
+            )}
+
             <DialogFooter>
-              {selectedTx.checkoutUrl && selectedTx.escrowStatus === 'PendingPayment' && (
-                <Button
-                  size="sm"
-                  className="font-medium mr-auto"
-                  onClick={() => window.open(selectedTx.checkoutUrl, '_blank')}
-                >
-                  <Icon name="open_in_new" className="text-[16px] mr-1" />
-                  Mở liên kết thanh toán
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={() => setSelectedTx(null)}>
-                Đóng
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                Hủy
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Đang lưu...' : 'Lưu thông tin'}
               </Button>
             </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete((prev) => ({ ...prev, open }))}
+        title="Tạm ngưng lĩnh vực tư vấn"
+        description={`Tạm ngưng lĩnh vực "${confirmDelete.item?.name}"?`}
+        confirmLabel="Xác nhận"
+        destructive
+        loading={confirmDelete.loading}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
+      />
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════════
-// TAB 5: PLATFORM POLICY (CHÍNH SÁCH SÀN & ESCROW)
-// ═══════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+// TAB 6: KHUNG PHÍ DỊCH VỤ
+// ═════════════════════════════════════════════════════════════════════════════
+
+function FeeConfigsTab() {
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState(null)
+  const [formData, setFormData] = useState({
+    sessionType: 'ONLINE_MEETING',
+    durationMinutes: 60,
+    minFee: 100000,
+    maxFee: 2000000,
+    platformFeePercentage: 20,
+    description: '',
+    isActive: true,
+  })
+  const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState({ open: false, item: null, loading: false })
+  const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+
+  const showNotice = (type, title, description) => {
+    setNotice({ open: true, type, title, description })
+  }
+
+  const fetchList = async () => {
+    setLoading(true)
+    try {
+      const data = await expertService.getFeeConfigs()
+      setItems(Array.isArray(data) ? data : [])
+    } catch (err) {
+      showNotice('error', 'Không thể tải khung phí', err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchList()
+  }, [])
+
+  const openCreate = () => {
+    setEditingItem(null)
+    setFormData({
+      sessionType: 'ONLINE_MEETING',
+      durationMinutes: 60,
+      minFee: 100000,
+      maxFee: 2000000,
+      platformFeePercentage: 20,
+      description: '',
+      isActive: true,
+    })
+    setDialogOpen(true)
+  }
+
+  const openEdit = (item) => {
+    setEditingItem(item)
+    setFormData({
+      sessionType: item.sessionType || 'ONLINE_MEETING',
+      durationMinutes: item.durationMinutes ?? 60,
+      minFee: item.minFee ?? 100000,
+      maxFee: item.maxFee ?? 2000000,
+      platformFeePercentage: item.platformFeePercentage ?? 20,
+      description: item.description || '',
+      isActive: item.isActive ?? true,
+    })
+    setDialogOpen(true)
+  }
+
+  const handleSave = async (e) => {
+    e.preventDefault()
+    if (Number(formData.minFee) >= Number(formData.maxFee)) {
+      showNotice('warning', 'Khung phí chưa hợp lệ', 'Mức phí sàn phải nhỏ hơn mức phí trần.')
+      return
+    }
+    setSaving(true)
+    try {
+      if (editingItem) {
+        await expertService.updateFeeConfig(editingItem.id, {
+          minFee: Number(formData.minFee),
+          maxFee: Number(formData.maxFee),
+          platformFeePercentage: Number(formData.platformFeePercentage),
+          description: formData.description.trim() || null,
+          isActive: Boolean(formData.isActive),
+        })
+        showNotice('success', 'Đã cập nhật khung phí', 'Thông số khung phí đã được lưu.')
+      } else {
+        await expertService.createFeeConfig({
+          sessionType: formData.sessionType,
+          durationMinutes: Number(formData.durationMinutes),
+          minFee: Number(formData.minFee),
+          maxFee: Number(formData.maxFee),
+          platformFeePercentage: Number(formData.platformFeePercentage),
+          description: formData.description.trim() || null,
+        })
+        showNotice('success', 'Đã thêm khung phí', 'Khung phí dịch vụ mới đã được tạo.')
+      }
+      setDialogOpen(false)
+      fetchList()
+    } catch (err) {
+      showNotice('error', 'Không thể lưu khung phí', err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete.item) return
+    setConfirmDelete((prev) => ({ ...prev, loading: true }))
+    try {
+      await expertService.deleteFeeConfig(confirmDelete.item.id)
+      setConfirmDelete({ open: false, item: null, loading: false })
+      showNotice('info', 'Đã ngừng áp dụng', 'Khung phí đã chuyển sang trạng thái tạm ngưng.')
+      fetchList()
+    } catch (err) {
+      setConfirmDelete((prev) => ({ ...prev, loading: false }))
+      showNotice('error', 'Không thể thực hiện', err.message)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardContent className="p-3 flex items-center justify-between gap-2">
+          <span className="text-xs text-on-surface-variant">
+            Quy định mức phí tối thiểu, tối đa và tỷ lệ phí dịch vụ cho từng hình thức tư vấn
+          </span>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={fetchList}>
+              Làm mới
+            </Button>
+            <Button type="button" size="sm" onClick={openCreate}>
+              Thêm khung phí
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        {loading ? (
+          <CardContent className="py-14 flex justify-center">
+            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </CardContent>
+        ) : items.length === 0 ? (
+          <CardContent className="py-12 text-center text-xs text-on-surface-variant">
+            Chưa có cấu hình khung phí nào.
+          </CardContent>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Hình thức dịch vụ</TableHead>
+                <TableHead className="text-center">Thời lượng</TableHead>
+                <TableHead className="text-right">Phí tối thiểu</TableHead>
+                <TableHead className="text-right">Phí tối đa</TableHead>
+                <TableHead className="text-center">Tỷ lệ phí sàn</TableHead>
+                <TableHead>Trạng thái</TableHead>
+                <TableHead className="text-right">Thao tác</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((cfg) => (
+                <TableRow key={cfg.id}>
+                  <TableCell className="font-semibold text-on-surface">
+                    {SESSION_TYPE_MAP[cfg.sessionType] || cfg.sessionType}
+                  </TableCell>
+                  <TableCell className="text-center tabular-nums">
+                    {cfg.durationMinutes} phút
+                  </TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">
+                    {formatCurrency(cfg.minFee)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">
+                    {formatCurrency(cfg.maxFee)}
+                  </TableCell>
+                  <TableCell className="text-center tabular-nums">
+                    <Badge variant="outline">{cfg.platformFeePercentage}%</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge
+                      label={cfg.isActive ? 'Đang áp dụng' : 'Tạm ngưng'}
+                      dot={cfg.isActive ? 'bg-emerald-600' : 'bg-stone-400'}
+                    />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="inline-flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2.5 text-[11px]"
+                        onClick={() => openEdit(cfg)}
+                      >
+                        Sửa
+                      </Button>
+                      {cfg.isActive && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-[11px] text-red-600 hover:text-red-700"
+                          onClick={() =>
+                            setConfirmDelete({ open: true, item: cfg, loading: false })
+                          }
+                        >
+                          Ngừng
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editingItem ? 'Cập nhật khung phí dịch vụ' : 'Thêm khung phí dịch vụ'}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSave} className="flex flex-col gap-3.5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label>Hình thức tư vấn</Label>
+                <Select
+                  value={formData.sessionType}
+                  disabled={Boolean(editingItem)}
+                  onValueChange={(val) =>
+                    setFormData((prev) => ({ ...prev, sessionType: val }))
+                  }
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ONLINE_MEETING">Tư vấn trực tuyến 1-1</SelectItem>
+                    <SelectItem value="CHAT">Tư vấn qua tin nhắn</SelectItem>
+                    <SelectItem value="VOICE_CALL">Tư vấn qua cuộc gọi</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label>Thời lượng (phút)</Label>
+                <Input
+                  type="number"
+                  min={15}
+                  step={15}
+                  disabled={Boolean(editingItem)}
+                  value={formData.durationMinutes}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, durationMinutes: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label>Mức phí tối thiểu (VNĐ)</Label>
+                <Input
+                  type="number"
+                  step={10000}
+                  value={formData.minFee}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, minFee: e.target.value }))
+                  }
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label>Mức phí tối đa (VNĐ)</Label>
+                <Input
+                  type="number"
+                  step={10000}
+                  value={formData.maxFee}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, maxFee: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Tỷ lệ phí dịch vụ nền tảng (%)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={formData.platformFeePercentage}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    platformFeePercentage: e.target.value,
+                  }))
+                }
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Ghi chú</Label>
+              <Textarea
+                rows={2}
+                value={formData.description}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, description: e.target.value }))
+                }
+              />
+            </div>
+
+            {editingItem && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={formData.isActive}
+                  onCheckedChange={(checked) =>
+                    setFormData((prev) => ({ ...prev, isActive: Boolean(checked) }))
+                  }
+                />
+                <span className="text-xs font-medium text-on-surface">
+                  Đang áp dụng trên hệ thống
+                </span>
+              </label>
+            )}
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                Hủy
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Đang lưu...' : 'Lưu khung phí'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete((prev) => ({ ...prev, open }))}
+        title="Tạm ngưng khung phí"
+        description="Tạm ngưng khung phí dịch vụ này?"
+        confirmLabel="Xác nhận"
+        destructive
+        loading={confirmDelete.loading}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <NotificationDialog
+        open={notice.open}
+        onOpenChange={(open) => setNotice((prev) => ({ ...prev, open }))}
+        type={notice.type}
+        title={notice.title}
+        description={notice.description}
+      />
+    </div>
+  )
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TAB 9: CHÍNH SÁCH VẬN HÀNH SÀN (ĐỒNG BỘ ĐỦ 19 THAM SỐ VỚI BACKEND)
+// ═════════════════════════════════════════════════════════════════════════════
 
 function PlatformPolicyTab() {
-  const [policy, setPolicy] = useState(null)
+  const [policy, setPolicy] = useState({
+    expertMinFeeVnd: 100000,
+    expertMaxFeeVnd: 2000000,
+    bookingSlotHoldMinutes: 10,
+    bookingMinLeadTimeHours: 4,
+    expertConfirmTimeoutHours: 2,
+    platformCommissionRatePercent: 20,
+    sessionOpenBeforeMinutes: 10,
+    sessionNoShowMinutes: 15,
+    ratingWindowDays: 7,
+    escrowCooldownHours: 24,
+    cancelFullRefundHours: 24,
+    cancelPartialRefundHours: 4,
+    cancelPartialRefundPercent: 50,
+    expertMaxDailySlots: 6,
+    expertMinWithdrawalVnd: 500000,
+    expertLateCancelHours: 12,
+    expertLateCancelPenaltyVnd: 100000,
+    disputeWindowHours: 24,
+    disputeExpertReplyHours: 24,
+  })
+  const [updatedAt, setUpdatedAt] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
   const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+
+  const showNotice = (type, title, description) => {
+    setNotice({ open: true, type, title, description })
+  }
 
   const fetchPolicy = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
       const data = await expertService.getPlatformPolicy()
-      setPolicy(data)
+      if (data) {
+        setPolicy({
+          expertMinFeeVnd: data.expertMinFeeVnd ?? 100000,
+          expertMaxFeeVnd: data.expertMaxFeeVnd ?? 2000000,
+          bookingSlotHoldMinutes: data.bookingSlotHoldMinutes ?? 10,
+          bookingMinLeadTimeHours: data.bookingMinLeadTimeHours ?? 4,
+          expertConfirmTimeoutHours: data.expertConfirmTimeoutHours ?? 2,
+          platformCommissionRatePercent: data.platformCommissionRatePercent ?? 20,
+          sessionOpenBeforeMinutes: data.sessionOpenBeforeMinutes ?? 10,
+          sessionNoShowMinutes: data.sessionNoShowMinutes ?? 15,
+          ratingWindowDays: data.ratingWindowDays ?? 7,
+          escrowCooldownHours: data.escrowCooldownHours ?? 24,
+          cancelFullRefundHours: data.cancelFullRefundHours ?? 24,
+          cancelPartialRefundHours: data.cancelPartialRefundHours ?? 4,
+          cancelPartialRefundPercent: data.cancelPartialRefundPercent ?? 50,
+          expertMaxDailySlots: data.expertMaxDailySlots ?? 6,
+          expertMinWithdrawalVnd: data.expertMinWithdrawalVnd ?? 500000,
+          expertLateCancelHours: data.expertLateCancelHours ?? 12,
+          expertLateCancelPenaltyVnd: data.expertLateCancelPenaltyVnd ?? 100000,
+          disputeWindowHours: data.disputeWindowHours ?? 24,
+          disputeExpertReplyHours: data.disputeExpertReplyHours ?? 24,
+        })
+        setUpdatedAt(data.updatedAt)
+      }
     } catch (err) {
-      setError(err?.message || 'Không thể tải chính sách sàn tư vấn.')
+      showNotice('error', 'Không thể tải chính sách vận hành', err.message)
     } finally {
       setLoading(false)
     }
@@ -2947,513 +3483,345 @@ function PlatformPolicyTab() {
     fetchPolicy()
   }, [fetchPolicy])
 
-  const handleChange = (field, value) => {
-    setPolicy((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
+  const handleChange = (key, val) => {
+    setPolicy((prev) => ({ ...prev, [key]: val }))
   }
 
-  const handleSave = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!policy) return
-
     if (Number(policy.expertMinFeeVnd) > Number(policy.expertMaxFeeVnd)) {
-      setNotice({
-        open: true,
-        type: 'warning',
-        title: 'Mức phí không hợp lệ',
-        description: 'Mức phí tối thiểu không được lớn hơn mức phí tối đa.',
-      })
+      showNotice('warning', 'Thông số chưa hợp lệ', 'Phí tối thiểu không được lớn hơn phí tối đa.')
       return
     }
-
     if (Number(policy.cancelFullRefundHours) < Number(policy.cancelPartialRefundHours)) {
-      setNotice({
-        open: true,
-        type: 'warning',
-        title: 'Mốc thời gian hủy không hợp lệ',
-        description: 'Mốc thời gian hoàn tiền 100% phải lớn hơn hoặc bằng mốc hoàn tiền một phần.',
-      })
+      showNotice(
+        'warning',
+        'Thông số chưa hợp lệ',
+        'Mốc hủy hoàn tiền 100% phải lớn hơn hoặc bằng mốc hoàn tiền một phần.'
+      )
       return
     }
 
     setSaving(true)
     try {
       const payload = {
-        expertMinFeeVnd: Number(policy.expertMinFeeVnd) || 100000,
-        expertMaxFeeVnd: Number(policy.expertMaxFeeVnd) || 2000000,
-        bookingSlotHoldMinutes: Number(policy.bookingSlotHoldMinutes) || 10,
-        bookingMinLeadTimeHours: Number(policy.bookingMinLeadTimeHours) || 4,
-        expertConfirmTimeoutHours: Number(policy.expertConfirmTimeoutHours) || 2,
-        platformCommissionRatePercent: Number(policy.platformCommissionRatePercent) || 20,
-        sessionOpenBeforeMinutes: Number(policy.sessionOpenBeforeMinutes) || 10,
-        sessionNoShowMinutes: Number(policy.sessionNoShowMinutes) || 15,
-        ratingWindowDays: Number(policy.ratingWindowDays) || 7,
-        escrowCooldownHours: Number(policy.escrowCooldownHours) || 24,
-        cancelFullRefundHours: Number(policy.cancelFullRefundHours) || 24,
-        cancelPartialRefundHours: Number(policy.cancelPartialRefundHours) || 4,
-        cancelPartialRefundPercent: Number(policy.cancelPartialRefundPercent) || 50,
-        expertMaxDailySlots: Number(policy.expertMaxDailySlots) || 6,
-        expertMinWithdrawalVnd: Number(policy.expertMinWithdrawalVnd) || 500000,
-        expertLateCancelHours: Number(policy.expertLateCancelHours) || 12,
-        expertLateCancelPenaltyVnd: Number(policy.expertLateCancelPenaltyVnd) || 100000,
-        disputeWindowHours: Number(policy.disputeWindowHours) || 24,
-        disputeExpertReplyHours: Number(policy.disputeExpertReplyHours) || 24,
+        expertMinFeeVnd: Number(policy.expertMinFeeVnd),
+        expertMaxFeeVnd: Number(policy.expertMaxFeeVnd),
+        bookingSlotHoldMinutes: Number(policy.bookingSlotHoldMinutes),
+        bookingMinLeadTimeHours: Number(policy.bookingMinLeadTimeHours),
+        expertConfirmTimeoutHours: Number(policy.expertConfirmTimeoutHours),
+        platformCommissionRatePercent: Number(policy.platformCommissionRatePercent),
+        sessionOpenBeforeMinutes: Number(policy.sessionOpenBeforeMinutes),
+        sessionNoShowMinutes: Number(policy.sessionNoShowMinutes),
+        ratingWindowDays: Number(policy.ratingWindowDays),
+        escrowCooldownHours: Number(policy.escrowCooldownHours),
+        cancelFullRefundHours: Number(policy.cancelFullRefundHours),
+        cancelPartialRefundHours: Number(policy.cancelPartialRefundHours),
+        cancelPartialRefundPercent: Number(policy.cancelPartialRefundPercent),
+        expertMaxDailySlots: Number(policy.expertMaxDailySlots),
+        expertMinWithdrawalVnd: Number(policy.expertMinWithdrawalVnd),
+        expertLateCancelHours: Number(policy.expertLateCancelHours),
+        expertLateCancelPenaltyVnd: Number(policy.expertLateCancelPenaltyVnd),
+        disputeWindowHours: Number(policy.disputeWindowHours),
+        disputeExpertReplyHours: Number(policy.disputeExpertReplyHours),
       }
-
-      await expertService.updatePlatformPolicy(payload)
-      setNotice({
-        open: true,
-        type: 'success',
-        title: 'Cập nhật chính sách thành công',
-        description: 'Các thông số vận hành sàn tư vấn và quy chế ký quỹ bảo đảm đã được cập nhật và có hiệu lực ngay lập tức.',
-      })
-      fetchPolicy()
+      const updated = await expertService.updatePlatformPolicy(payload)
+      setUpdatedAt(updated?.updatedAt)
+      showNotice('success', 'Đã lưu chính sách', 'Các thông số vận hành sàn đã được cập nhật.')
     } catch (err) {
-      setNotice({
-        open: true,
-        type: 'error',
-        title: 'Lỗi cập nhật',
-        description: err?.message || 'Không thể lưu chính sách sàn tư vấn.',
-      })
+      showNotice('error', 'Không thể lưu chính sách', err.message)
     } finally {
       setSaving(false)
     }
   }
 
-  if (loading) return <LoadingState text="Đang tải chính sách sàn tư vấn và quy chế ký quỹ bảo đảm..." />
-
-  if (!policy) {
+  if (loading) {
     return (
-      <Card className="p-8 text-center">
-        <Icon name="error" className="text-destructive text-[36px] mx-auto mb-2" />
-        <p className="text-on-surface font-semibold">Chưa có dữ liệu chính sách sàn tư vấn.</p>
-        <Button onClick={fetchPolicy} className="mt-4" size="sm">
-          Thử lại
-        </Button>
+      <Card>
+        <CardContent className="py-16 flex justify-center">
+          <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </CardContent>
       </Card>
     )
   }
 
   return (
-    <form onSubmit={handleSave} className="flex flex-col gap-6">
-      <ErrorAlert message={error} onClose={() => setError(null)} />
-
-      {/* Header Info */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-amber-950/80 via-stone-900 to-amber-950/90 text-white shadow-md border border-amber-500/30">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500 text-stone-950 flex items-center justify-center font-bold">
-            <Icon name="tune" className="text-[24px]" />
-          </div>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <Card>
+        <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold text-white tracking-tight">
-              Quy chế vận hành sàn tư vấn & Giữ tiền bảo đảm
-            </h2>
-            <p className="text-xs text-amber-200/90 mt-0.5">
-              Cấu hình các tham số nghiệp vụ toàn hệ thống: hoa hồng sàn, mốc hoàn tiền, thời gian chờ và hạn mức giao dịch.
+            <h3 className="text-sm font-bold text-on-surface">Chính sách vận hành sàn tư vấn</h3>
+            <p className="text-xs text-on-surface-variant">
+              Thiết lập phí dịch vụ, thời hạn đặt lịch, phòng họp, hoàn tiền và giải quyết khiếu nại.
+              {updatedAt ? ` Cập nhật: ${formatDateTime(updatedAt)}` : ''}
             </p>
           </div>
-        </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button type="button" variant="outline" size="sm" onClick={fetchPolicy}>
+              Tải lại
+            </Button>
+            <Button type="submit" size="sm" disabled={saving}>
+              {saving ? 'Đang lưu...' : 'Lưu chính sách'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={saving}
-            onClick={fetchPolicy}
-            className="border-white/30 bg-white/10 text-white hover:bg-white/20 text-xs font-bold gap-1 cursor-pointer"
-          >
-            <Icon name="refresh" className="text-[16px]" />
-            <span>Tải lại</span>
-          </Button>
-          <Button
-            type="submit"
-            disabled={saving}
-            className="bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
-          >
-            {saving ? (
-              <>
-                <Icon name="progress_activity" className="text-[16px] animate-spin" />
-                <span>Đang lưu...</span>
-              </>
-            ) : (
-              <>
-                <Icon name="save" className="text-[16px]" />
-                <span>Lưu chính sách</span>
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Khối 1: Mức phí & Hoa hồng sàn */}
-        <Card className="shadow-sm border border-outline-variant/30">
-          <CardHeader className="pb-3 border-b border-surface-container/80">
-            <div className="flex items-center gap-2">
-              <Icon name="payments" className="text-amber-600 text-[20px]" />
-              <CardTitle className="text-sm font-bold text-on-surface">
-                Khung mức phí & Hoa hồng sàn
-              </CardTitle>
-            </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Khối 1: Biểu phí & Hoa hồng */}
+        <Card>
+          <CardHeader className="pb-3 border-b border-outline-variant/30">
+            <CardTitle className="text-sm font-bold">Biểu phí & Hạn mức rút tiền</CardTitle>
             <CardDescription className="text-xs">
-              Giới hạn thù lao tư vấn của chuyên gia và tỷ lệ phần trăm sàn thu
+              Tỷ lệ phí dịch vụ nền tảng và giới hạn giao dịch của chuyên gia
             </CardDescription>
           </CardHeader>
-          <CardContent className="pt-4 flex flex-col gap-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Phí tư vấn tối thiểu (VNĐ)
-                </Label>
-                <Input
-                  type="number"
-                  step="10000"
-                  min="0"
-                  value={policy.expertMinFeeVnd ?? 100000}
-                  onChange={(e) => handleChange('expertMinFeeVnd', e.target.value)}
-                  className="h-9 text-xs"
-                />
-                <span className="text-[11px] text-on-surface-variant font-mono">
-                  = {formatCurrency(policy.expertMinFeeVnd)}
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Phí tư vấn tối đa (VNĐ)
-                </Label>
-                <Input
-                  type="number"
-                  step="50000"
-                  min="0"
-                  value={policy.expertMaxFeeVnd ?? 2000000}
-                  onChange={(e) => handleChange('expertMaxFeeVnd', e.target.value)}
-                  className="h-9 text-xs"
-                />
-                <span className="text-[11px] text-on-surface-variant font-mono">
-                  = {formatCurrency(policy.expertMaxFeeVnd)}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-outline-variant/20">
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Tỷ lệ hoa hồng sàn (%)
-                </Label>
-                <Input
-                  type="number"
-                  step="1"
-                  min="0"
-                  max="100"
-                  value={policy.platformCommissionRatePercent ?? 20}
-                  onChange={(e) => handleChange('platformCommissionRatePercent', e.target.value)}
-                  className="h-9 text-xs font-bold"
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Chuyên gia nhận {100 - (Number(policy.platformCommissionRatePercent) || 20)}%
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Mức rút tiền tối thiểu (VNĐ)
-                </Label>
-                <Input
-                  type="number"
-                  step="50000"
-                  min="0"
-                  value={policy.expertMinWithdrawalVnd ?? 500000}
-                  onChange={(e) => handleChange('expertMinWithdrawalVnd', e.target.value)}
-                  className="h-9 text-xs"
-                />
-                <span className="text-[11px] text-on-surface-variant font-mono">
-                  = {formatCurrency(policy.expertMinWithdrawalVnd)}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Khối 2: Đặt lịch & Tiếp nhận */}
-        <Card className="shadow-sm border border-outline-variant/30">
-          <CardHeader className="pb-3 border-b border-surface-container/80">
-            <div className="flex items-center gap-2">
-              <Icon name="hourglass_top" className="text-blue-600 text-[20px]" />
-              <CardTitle className="text-sm font-bold text-on-surface">
-                Quy chế đặt và nhận lịch hẹn
-              </CardTitle>
-            </div>
-            <CardDescription className="text-xs">
-              Quy định thời gian giữ chỗ thanh toán và thời hạn chuyên gia nhận lịch.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-4 flex flex-col gap-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Thời gian giữ chỗ thanh toán (Phút)
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="60"
-                  value={policy.bookingSlotHoldMinutes ?? 10}
-                  onChange={(e) => handleChange('bookingSlotHoldMinutes', e.target.value)}
-                  className="h-9 text-xs"
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Tạm giữ chỗ để người dùng thanh toán
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Thời hạn chuyên gia nhận lịch (Giờ)
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="48"
-                  value={policy.expertConfirmTimeoutHours ?? 2}
-                  onChange={(e) => handleChange('expertConfirmTimeoutHours', e.target.value)}
-                  className="h-9 text-xs font-bold text-amber-700"
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Quá giờ tự động hủy và hoàn tiền cho khách
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-outline-variant/20">
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Thời gian đặt trước tối thiểu (Giờ)
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="72"
-                  value={policy.bookingMinLeadTimeHours ?? 4}
-                  onChange={(e) => handleChange('bookingMinLeadTimeHours', e.target.value)}
-                  className="h-9 text-xs"
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Thời gian đặt trước giờ bắt đầu hẹn
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Số ca tư vấn tối đa trong ngày
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="24"
-                  value={policy.expertMaxDailySlots ?? 6}
-                  onChange={(e) => handleChange('expertMaxDailySlots', e.target.value)}
-                  className="h-9 text-xs"
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Giới hạn số ca tư vấn mỗi ngày của chuyên gia
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Khối 3: Thực hiện phòng họp & Điểm danh */}
-        <Card className="shadow-sm border border-outline-variant/30">
-          <CardHeader className="pb-3 border-b border-surface-container/80">
-            <div className="flex items-center gap-2">
-              <Icon name="videocam" className="text-emerald-600 text-[20px]" />
-              <CardTitle className="text-sm font-bold text-on-surface">
-                Thực hiện phòng họp & Điểm danh
-              </CardTitle>
-            </div>
-            <CardDescription className="text-xs">
-              Quy tắc mở phòng trực tuyến và thời gian ghi nhận vắng mặt
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-4 flex flex-col gap-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Mở phòng trước giờ hẹn (Phút)
-                </Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="10000"
-                  value={policy.sessionOpenBeforeMinutes ?? 10}
-                  onChange={(e) => handleChange('sessionOpenBeforeMinutes', e.target.value)}
-                  className="h-9 text-xs"
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Cho phép hai bên vào chuẩn bị trước ca
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Thời gian chờ tối đa khi muộn (Phút)
-                </Label>
-                <Input
-                  type="number"
-                  min="5"
-                  max="60"
-                  value={policy.sessionNoShowMinutes ?? 15}
-                  onChange={(e) => handleChange('sessionNoShowMinutes', e.target.value)}
-                  className="h-9 text-xs font-bold text-red-600"
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Quá thời gian này sẽ ghi nhận vắng mặt
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5 pt-2 border-t border-outline-variant/20">
-              <Label className="text-xs font-semibold text-on-surface">
-                Thời hạn gửi đánh giá (Ngày)
-              </Label>
+          <CardContent className="pt-4 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="flex flex-col gap-1">
+              <Label>Tỷ lệ phí dịch vụ sàn (%)</Label>
               <Input
                 type="number"
-                min="1"
-                max="30"
-                value={policy.ratingWindowDays ?? 7}
-                onChange={(e) => handleChange('ratingWindowDays', e.target.value)}
-                className="h-9 text-xs"
+                min={0}
+                max={100}
+                step={0.5}
+                value={policy.platformCommissionRatePercent}
+                onChange={(e) => handleChange('platformCommissionRatePercent', e.target.value)}
               />
               <span className="text-[11px] text-on-surface-variant">
-                Khách hàng được quyền đánh giá sao & nhận xét trong vòng X ngày sau buổi tư vấn
+                Chuyên gia nhận {100 - Number(policy.platformCommissionRatePercent || 0)}% phí ca tư vấn
               </span>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>Mức rút tối thiểu chuyên gia (VNĐ)</Label>
+              <Input
+                type="number"
+                step={50000}
+                min={50000}
+                value={policy.expertMinWithdrawalVnd}
+                onChange={(e) => handleChange('expertMinWithdrawalVnd', e.target.value)}
+              />
+              <span className="text-[11px] text-on-surface-variant font-mono">
+                {formatCurrency(policy.expertMinWithdrawalVnd)} / lần rút
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>Phí tư vấn tối thiểu (VNĐ)</Label>
+              <Input
+                type="number"
+                step={10000}
+                value={policy.expertMinFeeVnd}
+                onChange={(e) => handleChange('expertMinFeeVnd', e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>Phí tư vấn tối đa (VNĐ)</Label>
+              <Input
+                type="number"
+                step={50000}
+                value={policy.expertMaxFeeVnd}
+                onChange={(e) => handleChange('expertMaxFeeVnd', e.target.value)}
+              />
             </div>
           </CardContent>
         </Card>
 
-        {/* Khối 4: Tiền cọc & Hủy lịch hoàn tiền */}
-        <Card className="shadow-sm border border-outline-variant/30">
-          <CardHeader className="pb-3 border-b border-surface-container/80">
-            <div className="flex items-center gap-2">
-              <Icon name="shield" className="text-indigo-600 text-[20px]" />
-              <CardTitle className="text-sm font-bold text-on-surface">
-                Tiền cọc & Hủy lịch hoàn tiền
-              </CardTitle>
-            </div>
+        {/* Khối 2: Đặt lịch & Xác nhận */}
+        <Card>
+          <CardHeader className="pb-3 border-b border-outline-variant/30">
+            <CardTitle className="text-sm font-bold">Đặt lịch & Tiếp nhận</CardTitle>
             <CardDescription className="text-xs">
-              Thời gian bảo đảm sau buổi hẹn và chính sách hoàn tiền bảo vệ quyền lợi
+              Thời gian giữ chỗ thanh toán và giới hạn lịch hẹn mỗi ngày
             </CardDescription>
           </CardHeader>
-          <CardContent className="pt-4 flex flex-col gap-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Thời gian chờ bảo đảm sau ca (Giờ)
-                </Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="168"
-                  value={policy.escrowCooldownHours ?? 24}
-                  onChange={(e) => handleChange('escrowCooldownHours', e.target.value)}
-                  className="h-9 text-xs font-bold text-indigo-700"
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Thời gian bảo đảm trước khi cộng tiền vào ví chuyên gia
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Khách hủy hoàn tiền 100% trước (Giờ)
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="168"
-                  value={policy.cancelFullRefundHours ?? 24}
-                  onChange={(e) => handleChange('cancelFullRefundHours', e.target.value)}
-                  className="h-9 text-xs text-emerald-700 font-bold"
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Hủy trước thời gian này được hoàn trả 100%
-                </span>
-              </div>
+          <CardContent className="pt-4 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="flex flex-col gap-1">
+              <Label>Thời gian giữ chỗ thanh toán (phút)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={60}
+                value={policy.bookingSlotHoldMinutes}
+                onChange={(e) => handleChange('bookingSlotHoldMinutes', e.target.value)}
+              />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-outline-variant/20">
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Hủy hoàn tiền một phần trước (Giờ)
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="168"
-                  value={policy.cancelPartialRefundHours ?? 4}
-                  onChange={(e) => handleChange('cancelPartialRefundHours', e.target.value)}
-                  className="h-9 text-xs"
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Hủy từ {policy.cancelPartialRefundHours}h đến {policy.cancelFullRefundHours}h trước ca
-                </span>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Tỷ lệ hoàn tiền một phần (%)
-                </Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={policy.cancelPartialRefundPercent ?? 50}
-                  onChange={(e) => handleChange('cancelPartialRefundPercent', e.target.value)}
-                  className="h-9 text-xs font-semibold"
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Khách nhận {policy.cancelPartialRefundPercent}%, còn lại bù đắp chuyên gia
-                </span>
-              </div>
+            <div className="flex flex-col gap-1">
+              <Label>Thời hạn chuyên gia xác nhận (giờ)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={48}
+                value={policy.expertConfirmTimeoutHours}
+                onChange={(e) => handleChange('expertConfirmTimeoutHours', e.target.value)}
+              />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-outline-variant/20">
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Chuyên gia hủy muộn trước (Giờ)
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="48"
-                  value={policy.expertLateCancelHours ?? 12}
-                  onChange={(e) => handleChange('expertLateCancelHours', e.target.value)}
-                  className="h-9 text-xs"
-                />
-                <span className="text-[11px] text-on-surface-variant">
-                  Hủy dưới X giờ bị tính là hủy muộn
-                </span>
-              </div>
+            <div className="flex flex-col gap-1">
+              <Label>Đặt trước giờ hẹn tối thiểu (giờ)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={72}
+                value={policy.bookingMinLeadTimeHours}
+                onChange={(e) => handleChange('bookingMinLeadTimeHours', e.target.value)}
+              />
+            </div>
 
-              <div className="flex flex-col gap-1.5">
-                <Label className="text-xs font-semibold text-on-surface">
-                  Phạt chuyên gia hủy muộn (VNĐ)
-                </Label>
-                <Input
-                  type="number"
-                  step="20000"
-                  min="0"
-                  value={policy.expertLateCancelPenaltyVnd ?? 100000}
-                  onChange={(e) => handleChange('expertLateCancelPenaltyVnd', e.target.value)}
-                  className="h-9 text-xs text-red-600 font-bold"
-                />
-                <span className="text-[11px] text-on-surface-variant font-mono">
-                  = {formatCurrency(policy.expertLateCancelPenaltyVnd)}
-                </span>
-              </div>
+            <div className="flex flex-col gap-1">
+              <Label>Số ca tối đa trong ngày / chuyên gia</Label>
+              <Input
+                type="number"
+                min={1}
+                max={24}
+                value={policy.expertMaxDailySlots}
+                onChange={(e) => handleChange('expertMaxDailySlots', e.target.value)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Khối 3: Phòng tư vấn & Khiếu nại */}
+        <Card>
+          <CardHeader className="pb-3 border-b border-outline-variant/30">
+            <CardTitle className="text-sm font-bold">Phòng tư vấn, Đánh giá & Khiếu nại</CardTitle>
+            <CardDescription className="text-xs">
+              Quy định mở phòng trực tuyến, thời hạn đánh giá và giải trình khiếu nại
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="flex flex-col gap-1">
+              <Label>Mở phòng trước giờ hẹn (phút)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={120}
+                value={policy.sessionOpenBeforeMinutes}
+                onChange={(e) => handleChange('sessionOpenBeforeMinutes', e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>Thời gian chờ vắng mặt tối đa (phút)</Label>
+              <Input
+                type="number"
+                min={5}
+                max={60}
+                value={policy.sessionNoShowMinutes}
+                onChange={(e) => handleChange('sessionNoShowMinutes', e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>Thời hạn gửi khiếu nại sau ca (giờ)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={168}
+                value={policy.disputeWindowHours}
+                onChange={(e) => handleChange('disputeWindowHours', e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>Thời hạn chuyên gia giải trình (giờ)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={168}
+                value={policy.disputeExpertReplyHours}
+                onChange={(e) => handleChange('disputeExpertReplyHours', e.target.value)}
+              />
+            </div>
+
+            <div className="sm:col-span-2 flex flex-col gap-1">
+              <Label>Thời hạn khách hàng gửi đánh giá (ngày)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={30}
+                value={policy.ratingWindowDays}
+                onChange={(e) => handleChange('ratingWindowDays', e.target.value)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Khối 4: Đối soát & Hoàn tiền hủy lịch */}
+        <Card>
+          <CardHeader className="pb-3 border-b border-outline-variant/30">
+            <CardTitle className="text-sm font-bold">Đối soát & Chính sách hủy lịch</CardTitle>
+            <CardDescription className="text-xs">
+              Thời gian giữ tiền bảo đảm sau ca và tỷ lệ hoàn tiền khi hủy hẹn
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="flex flex-col gap-1">
+              <Label>Thời gian chờ đối soát sau ca (giờ)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={168}
+                value={policy.escrowCooldownHours}
+                onChange={(e) => handleChange('escrowCooldownHours', e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>Khách hủy hoàn 100% trước (giờ)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={168}
+                value={policy.cancelFullRefundHours}
+                onChange={(e) => handleChange('cancelFullRefundHours', e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>Khách hủy hoàn một phần trước (giờ)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={168}
+                value={policy.cancelPartialRefundHours}
+                onChange={(e) => handleChange('cancelPartialRefundHours', e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>Tỷ lệ hoàn tiền một phần (%)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={policy.cancelPartialRefundPercent}
+                onChange={(e) => handleChange('cancelPartialRefundPercent', e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>Mốc tính chuyên gia hủy muộn (giờ)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={48}
+                value={policy.expertLateCancelHours}
+                onChange={(e) => handleChange('expertLateCancelHours', e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>Mức phạt chuyên gia hủy muộn (VNĐ)</Label>
+              <Input
+                type="number"
+                step={20000}
+                min={0}
+                value={policy.expertLateCancelPenaltyVnd}
+                onChange={(e) => handleChange('expertLateCancelPenaltyVnd', e.target.value)}
+              />
             </div>
           </CardContent>
         </Card>
@@ -3469,5 +3837,3 @@ function PlatformPolicyTab() {
     </form>
   )
 }
-
-

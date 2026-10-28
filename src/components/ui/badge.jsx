@@ -3,22 +3,22 @@ import { cva } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
-  "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold transition-colors whitespace-nowrap",
+  "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors whitespace-nowrap",
   {
     variants: {
       variant: {
-        default: "border-transparent bg-primary text-on-primary",
-        secondary: "border-transparent bg-surface-container-low text-on-surface",
-        outline: "border-outline-variant/50 text-on-surface-variant",
-        success: "border-transparent bg-emerald-50 text-emerald-700",
-        warning: "border-transparent bg-amber-50 text-amber-700",
-        orange: "border-transparent bg-orange-50 text-orange-700",
-        destructive: "border-transparent bg-red-50 text-red-600",
-        muted: "border-transparent bg-gray-100 text-gray-500",
+        default: "border-primary/25 bg-primary/8 text-primary",
+        secondary: "border-outline-variant/50 bg-surface-container-low text-on-surface",
+        outline: "border-outline-variant/60 bg-transparent text-on-surface-variant",
+        success: "border-outline-variant/60 bg-surface-container-lowest text-on-surface",
+        warning: "border-outline-variant/60 bg-surface-container-low text-on-surface",
+        orange: "border-outline-variant/60 bg-surface-container-low text-on-surface",
+        destructive: "border-red-200/80 bg-red-50/50 text-red-700",
+        muted: "border-outline-variant/40 bg-surface-container-low/60 text-on-surface-variant",
       },
     },
     defaultVariants: {
-      variant: "default",
+      variant: "secondary",
     },
   }
 )

@@ -250,6 +250,26 @@ export const expertService = {
     return unwrap(res, 'Không thể tải thông tin ký quỹ.')
   },
 
+  /**
+   * [Admin] Rút doanh thu hoa hồng sàn về tài khoản ngân hàng
+   * POST /api/v1/admin/platform-wallet/withdraw
+   */
+  withdrawPlatformRevenue: async (payload) => {
+    const res = await apiClient.post('/api/v1/admin/platform-wallet/withdraw', payload)
+    return unwrap(res, 'Không thể thực hiện lệnh rút doanh thu sàn.')
+  },
+
+  /**
+   * [Admin] Xem lịch sử rút doanh thu hoa hồng sàn
+   * GET /api/v1/admin/platform-wallet/withdrawals?page=1&size=10
+   */
+  getPlatformWithdrawals: async ({ page = 1, size = 10 } = {}) => {
+    const res = await apiClient.get('/api/v1/admin/platform-wallet/withdrawals', {
+      params: { page, size },
+    })
+    return unwrap(res, 'Không thể tải lịch sử rút doanh thu sàn.')
+  },
+
   // ═══════════════════════════════════════════
   // CHÍNH SÁCH SÀN TƯ VẤN & ESCROW (PLATFORM POLICY)
   // ═══════════════════════════════════════════

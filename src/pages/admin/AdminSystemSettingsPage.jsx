@@ -7,6 +7,8 @@ import { SystemConfigModal } from '@/components/admin/SystemConfigModal'
 import { ThresholdTesterModal } from '@/components/admin/ThresholdTesterModal'
 import { taxDocumentTypeService } from '@/services/taxDocumentTypeService'
 import { TaxDocumentTypeModal } from '@/components/admin/TaxDocumentTypeModal'
+import { ExpertSearchConfigTab } from '@/components/admin/ExpertSearchConfigTab'
+import { ExpertCertificateConfigTab } from '@/components/admin/ExpertCertificateConfigTab'
 import {
   DATA_TYPE_META,
   CONFIG_SORT_ORDER,
@@ -587,10 +589,10 @@ export function AdminSystemSettingsPage() {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-outline-variant/30 pb-1">
+      <div className="flex items-center gap-2 border-b border-outline-variant/30 pb-1 overflow-x-auto">
         <button
           onClick={() => handleTabChange('ai-configs')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
             activeTab === 'ai-configs'
               ? 'bg-primary text-on-primary shadow-xs'
               : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
@@ -602,7 +604,7 @@ export function AdminSystemSettingsPage() {
 
         <button
           onClick={() => handleTabChange('domains')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
             activeTab === 'domains'
               ? 'bg-primary text-on-primary shadow-xs'
               : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
@@ -614,7 +616,7 @@ export function AdminSystemSettingsPage() {
 
         <button
           onClick={() => handleTabChange('document-types')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
             activeTab === 'document-types'
               ? 'bg-primary text-on-primary shadow-xs'
               : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
@@ -625,8 +627,32 @@ export function AdminSystemSettingsPage() {
         </button>
 
         <button
+          onClick={() => handleTabChange('expert-search')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'expert-search'
+              ? 'bg-primary text-on-primary shadow-xs'
+              : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">person_search</span>
+          <span>Đề xuất & Tìm kiếm Chuyên gia</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('expert-certificates')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'expert-certificates'
+              ? 'bg-primary text-on-primary shadow-xs'
+              : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">workspace_premium</span>
+          <span>Danh mục Chứng chỉ Chuyên gia</span>
+        </button>
+
+        <button
           onClick={() => handleTabChange('system')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
             activeTab === 'system'
               ? 'bg-primary text-on-primary shadow-xs'
               : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
@@ -1497,6 +1523,20 @@ export function AdminSystemSettingsPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 5: ĐỀ XUẤT & TÌM KIẾM CHUYÊN GIA (AdminExpertSearchConfig)            */}
+      {/* ========================================================================= */}
+      {activeTab === 'expert-search' && (
+        <ExpertSearchConfigTab onShowToast={showToast} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 6: DANH MỤC CHỨNG CHỈ CHUYÊN GIA (ExpertCertificateConfig)          */}
+      {/* ========================================================================= */}
+      {activeTab === 'expert-certificates' && (
+        <ExpertCertificateConfigTab onShowToast={showToast} />
       )}
 
       {/* ========================================================================= */}

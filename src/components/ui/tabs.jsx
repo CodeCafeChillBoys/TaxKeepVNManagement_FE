@@ -15,7 +15,7 @@ const TabsList = React.forwardRef(({ className, ...props }, ref) => (
   <div
     ref={ref}
     role="tablist"
-    className={cn("inline-flex w-full items-center gap-1 rounded-xl bg-surface-container-lowest p-1 shadow-sm", className)}
+    className={cn("inline-flex w-full items-center gap-1 rounded-xl bg-surface-container-lowest p-1 shadow-xs", className)}
     {...props}
   />
 ))
@@ -33,8 +33,10 @@ const TabsTrigger = React.forwardRef(({ className, value, ...props }, ref) => {
       data-state={active ? "active" : "inactive"}
       onClick={() => ctx.onValueChange?.(value)}
       className={cn(
-        "flex-1 inline-flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-bold transition-all cursor-pointer",
-        active ? "bg-primary text-on-primary shadow-md" : "text-on-surface-variant hover:bg-surface-container-low",
+        "inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold whitespace-nowrap transition-all cursor-pointer",
+        active
+          ? "bg-primary text-on-primary shadow-xs"
+          : "text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface",
         className
       )}
       {...props}
