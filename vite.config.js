@@ -17,9 +17,12 @@ export default defineConfig({
     }
   },
   server: {
+    host: true,
+    port: 5173,
     proxy: {
       '/hubs': {
         target: 'http://localhost:5000',
+        secure: false,
         ws: true,
         changeOrigin: true,
       },

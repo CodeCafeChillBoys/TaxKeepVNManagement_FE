@@ -1,90 +1,186 @@
-import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { AdminLayout } from '@/layouts/AdminLayout'
 import { TaxDocumentUploadPage } from './TaxDocumentUploadPage'
 import { TaxRuleReviewPage } from './TaxRuleReviewPage'
 import { AdminProfileSettings } from './AdminProfileSettings'
+import { AdminSystemSettingsPage } from './AdminSystemSettingsPage'
 import { AdminDependentRulesPage } from './AdminDependentRulesPage'
+import { AdminApprovalHistoryPage } from './AdminApprovalHistoryPage'
+import { AdminExpertManagementPage } from './AdminExpertManagementPage'
+import { taxRuleService } from '@/services/taxRuleService'
 import { useAuth } from '@/hooks/useAuth'
 
 export function AdminDashboard({ onLogout }) {
-  const { section = 'boc-tach-van-ban-ai' } = useParams()
+  const { section = 'boc-tach-van-ban-ai', id: routeId } = useParams()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { user } = useAuth()
 
+  const activeRuleSetId =
+    routeId ||
+    searchParams.get('id') ||
+    searchParams.get('ruleSetId') ||
+    ''
+
+  // Dữ liệu bóc tách chỉ lưu trong React State của phiên làm việc, không lưu bộ nhớ tạm Client
   const [extractedData, setExtractedData] = useState(() => {
+    // Dọn sạch các key bộ nhớ tạm cũ nếu còn lưu trên trình duyệt
     try {
-      const saved = sessionStorage.getItem('taxkeep_extracted_data')
-      const approvedList = JSON.parse(localStorage.getItem('taxkeepvn_approved_rulesets') || '[]')
-
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        const ruleId = parsed.taxRuleSet?.ruleSetId || parsed.ruleSetId || parsed.id
-        const year = parsed.taxRuleSet?.taxYear || parsed.taxYear
-        if ((ruleId && approvedList.includes(ruleId)) || (year && approvedList.includes(String(year)))) {
-          parsed.status = 'Active'
-          if (parsed.taxRuleSet) parsed.taxRuleSet.status = 'Active'
-        }
-        return parsed
-      }
-
-      // Fallback từ localStorage nếu sessionStorage trống
-      const docs = JSON.parse(localStorage.getItem('taxkeepvn_uploaded_documents') || '[]')
-      if (docs.length > 0 && docs[0].extractedData) {
-        const docData = { ...docs[0].extractedData }
-        const ruleId = docData.taxRuleSet?.ruleSetId || docData.ruleSetId || docs[0].id
-        const year = docData.taxRuleSet?.taxYear || docs[0].taxYear
-        if ((ruleId && approvedList.includes(ruleId)) || (year && approvedList.includes(String(year)))) {
-          docData.status = 'Active'
-          if (docData.taxRuleSet) docData.taxRuleSet = { ...docData.taxRuleSet, status: 'Active' }
-        }
-        return docData
-      }
-      return null
+      sessionStorage.removeItem('taxkeep_extracted_data')
+      localStorage.removeItem('taxkeepvn_uploaded_documents')
+      localStorage.removeItem('taxkeepvn_approved_rulesets')
     } catch {
-      return null
+      // Bỏ qua
     }
+    return null
   })
 
-  // Danh sách tài liệu đã upload gần đây từ localStorage, đồng bộ trạng thái đã phê duyệt
-  const recentDocs = (() => {
-    try {
-      const saved = localStorage.getItem('taxkeepvn_uploaded_documents')
-      const docs = saved ? JSON.parse(saved) : []
-      const approvedList = JSON.parse(localStorage.getItem('taxkeepvn_approved_rulesets') || '[]')
-      return docs.map((d) => {
-        const docId = d.id || d.ruleSetId || d.extractedData?.taxRuleSet?.ruleSetId
-        const docYear = d.taxYear || d.extractedData?.taxRuleSet?.taxYear
-        if ((docId && approvedList.includes(docId)) || (docYear && approvedList.includes(String(docYear)))) {
-          return { ...d, status: 'Active' }
+  // Ghi nhớ mã bộ quy tắc thuế đang làm việc trong phiên (In-Memory React State)
+  const [lastRuleSetId, setLastRuleSetId] = useState(activeRuleSetId || null)
+  // Danh sách các bộ quy tắc đã lưu trữ trên cơ sở dữ liệu hệ thống
+  const [savedRuleSets, setSavedRuleSets] = useState([])
+
+  const currentRoute = section
+
+  // Tải danh sách bộ quy tắc từ CSDL để thiết lập mã bộ quy tắc ban đầu
+  useEffect(() => {
+    taxRuleService
+      .getAllRuleSets()
+      .then((res) => {
+        const list = Array.isArray(res) ? res : (res?.data || [])
+        setSavedRuleSets(list)
+        if (!lastRuleSetId && list.length > 0) {
+          const activeSet =
+            list.find((s) => String(s.status).toUpperCase() === 'ACTIVE') || list[0]
+          if (activeSet?.ruleSetId) {
+            setLastRuleSetId(activeSet.ruleSetId)
+          }
         }
-        return d
       })
-    } catch {
-      return []
+      .catch((err) => {
+        console.warn('Lỗi khi tải danh mục bộ quy tắc:', err)
+      })
+  }, [])
+
+  // Đồng bộ ID từ URL hoặc tự động khôi phục URL kèm ?id= khi chuyển lại tab Quy tắc thuế
+  useEffect(() => {
+    const queryId =
+      routeId ||
+      searchParams.get('id') ||
+      searchParams.get('ruleSetId')
+    if (queryId) {
+      setLastRuleSetId(queryId)
+    } else if (currentRoute === 'quy-tac-thue') {
+      const idToUse =
+        lastRuleSetId ||
+        extractedData?.ruleSetId ||
+        extractedData?.taxRuleSet?.ruleSetId ||
+        extractedData?.id ||
+        savedRuleSets.find((s) => String(s.status).toUpperCase() === 'ACTIVE')?.ruleSetId ||
+        savedRuleSets[0]?.ruleSetId
+      if (idToUse && idToUse !== 'current') {
+        navigate(`/admin/quy-tac-thue?id=${idToUse}`, { replace: true })
+      }
     }
-  })()
+  }, [currentRoute, searchParams, routeId, lastRuleSetId, extractedData, savedRuleSets, navigate])
+
+  // Danh sách tài liệu: Kết hợp phiên làm việc và tài liệu đã lưu trên CSDL
+  const recentDocs = [
+    ...(extractedData
+      ? [
+          {
+            id:
+              extractedData.ruleSetId ||
+              extractedData.taxRuleSet?.ruleSetId ||
+              lastRuleSetId ||
+              'current',
+            name:
+              extractedData.taxRuleSet?.name ||
+              (extractedData.taxRuleSet?.taxYear
+                ? `Quy tắc thuế năm ${extractedData.taxRuleSet.taxYear}`
+                : 'Văn bản thuế'),
+            taxYear: extractedData.taxRuleSet?.taxYear || '—',
+            rulesCount: extractedData.taxRules?.length || 'Đầy đủ',
+            status: extractedData.status || extractedData.taxRuleSet?.status || 'Draft',
+            extractedData: extractedData,
+          },
+        ]
+      : []),
+    ...savedRuleSets
+      .filter(
+        (s) =>
+          s.ruleSetId !== (extractedData?.ruleSetId || extractedData?.taxRuleSet?.ruleSetId)
+      )
+      .map((s) => ({
+        id: s.ruleSetId,
+        ruleSetId: s.ruleSetId,
+        name: s.name || `Quy tắc thuế năm ${s.taxYear}`,
+        taxYear: s.taxYear || '—',
+        rulesCount: 'Đầy đủ',
+        status: s.status || 'Active',
+      })),
+  ]
 
   const handleUploadSuccess = (data) => {
     setExtractedData(data)
-    try {
-      sessionStorage.setItem('taxkeep_extracted_data', JSON.stringify(data))
-    } catch {
-      // Bỏ qua lỗi lưu sessionStorage
+    const targetId = data?.ruleSetId || data?.taxRuleSet?.ruleSetId || data?.id
+    if (targetId) {
+      setLastRuleSetId(targetId)
+      navigate(`/admin/quy-tac-thue?id=${targetId}`)
+    } else {
+      navigate('/admin/quy-tac-thue')
     }
-    navigate('/admin/quy-tac-thue')
   }
 
   const handleApproveSuccess = (updatedData) => {
     setExtractedData(updatedData)
-    try {
-      sessionStorage.setItem('taxkeep_extracted_data', JSON.stringify(updatedData))
-    } catch {
-      // Bỏ qua lỗi lưu sessionStorage
+    const targetId = updatedData?.ruleSetId || updatedData?.taxRuleSet?.ruleSetId || updatedData?.id
+    if (targetId) {
+      setLastRuleSetId(targetId)
+      setSavedRuleSets((prev) =>
+        prev.map((s) => (s.ruleSetId === targetId ? { ...s, status: 'Active' } : s))
+      )
     }
   }
 
-  const currentRoute = section
+  // Đồng bộ dữ liệu chi tiết khi TaxRuleReviewPage tải từ API GET /api/tax-rules/{id}
+  const handleDataLoaded = useCallback((data) => {
+    if (!data) return
+    setExtractedData((prev) => {
+      if (!prev) return data
+      return {
+        ...prev,
+        ...data,
+        verification: data.verification || prev.verification || null,
+        warning: data.warning || prev.warning || null,
+      }
+    })
+    const id = data.ruleSetId || data.taxRuleSet?.ruleSetId || data.id
+    if (id) {
+      setLastRuleSetId(id)
+    }
+  }, [])
+
+  // Điều hướng thông minh: Giữ nguyên mã bộ quy tắc khi chuyển giữa các tab sidebar
+  const handleNavigation = (route) => {
+    if (route === 'quy-tac-thue') {
+      const idToUse =
+        activeRuleSetId ||
+        lastRuleSetId ||
+        extractedData?.ruleSetId ||
+        extractedData?.taxRuleSet?.ruleSetId ||
+        extractedData?.id ||
+        savedRuleSets.find((s) => String(s.status).toUpperCase() === 'ACTIVE')?.ruleSetId ||
+        savedRuleSets[0]?.ruleSetId ||
+        (recentDocs[0]?.id !== 'current' ? recentDocs[0]?.id : null)
+      if (idToUse) {
+        navigate(`/admin/quy-tac-thue?id=${idToUse}`)
+        return
+      }
+    }
+    navigate(`/admin/${route}`)
+  }
 
   const breadcrumbTitle =
     currentRoute === 'boc-tach-van-ban-ai'
@@ -93,16 +189,20 @@ export function AdminDashboard({ onLogout }) {
       ? 'Thẩm định & Phê duyệt'
       : currentRoute === 'van-ban-quy-pham'
       ? 'Danh mục văn bản quy phạm'
-      : currentRoute === 'lich-su-phe-duyet'
+      : currentRoute === 'lich-su-phe-duyet' || currentRoute === 'lich-su' || currentRoute === 'lich-su-duyet'
       ? 'Lịch sử phê duyệt'
       : currentRoute === 'cai-dat'
-      ? 'Cài đặt hệ thống'
+      ? 'Cấu hình hệ thống'
+      : currentRoute === 'ho-so'
+      ? 'Hồ sơ cá nhân & Bảo mật'
+      : currentRoute === 'quan-ly-chuyen-gia'
+      ? 'Quản lý Chuyên gia Tư vấn'
       : 'Tổng quan hệ thống'
 
   return (
     <AdminLayout
       currentRoute={currentRoute}
-      onNavigate={(route) => navigate(`/admin/${route}`)}
+      onNavigate={handleNavigation}
       breadcrumbTitle={breadcrumbTitle}
       onLogout={onLogout}
     >
@@ -110,7 +210,7 @@ export function AdminDashboard({ onLogout }) {
       {currentRoute === 'boc-tach-van-ban-ai' && (
         <TaxDocumentUploadPage
           onUploadSuccess={handleUploadSuccess}
-          onCancel={() => navigate('/admin/quy-tac-thue')}
+          onCancel={() => handleNavigation('quy-tac-thue')}
         />
       )}
 
@@ -118,8 +218,10 @@ export function AdminDashboard({ onLogout }) {
       {currentRoute === 'quy-tac-thue' && (
         <TaxRuleReviewPage
           extractedData={extractedData}
+          ruleSetId={activeRuleSetId || lastRuleSetId}
           onBackToUpload={() => navigate('/admin/boc-tach-van-ban-ai')}
           onApproveSuccess={handleApproveSuccess}
+          onDataLoaded={handleDataLoaded}
         />
       )}
 
@@ -128,12 +230,36 @@ export function AdminDashboard({ onLogout }) {
         <AdminDependentRulesPage />
       )}
 
-      {/* Route 4: Cài đặt tài khoản & Hồ sơ */}
+      {/* Route 4: Cấu hình hệ thống */}
       {currentRoute === 'cai-dat' && (
+        <AdminSystemSettingsPage />
+      )}
+
+      {/* Route 5: Hồ sơ cá nhân & Đổi mật khẩu (từ submenu avatar góc dưới màn hình) */}
+      {currentRoute === 'ho-so' && (
         <AdminProfileSettings />
       )}
 
-      {/* Route 5: Tổng quan hệ thống */}
+      {/* Route 5: Lịch sử phê duyệt & Lưu trữ văn bản quy phạm */}
+      {(currentRoute === 'lich-su-phe-duyet' || currentRoute === 'lich-su' || currentRoute === 'lich-su-duyet') && (
+        <AdminApprovalHistoryPage
+          initialYear={searchParams.get('year') || searchParams.get('taxYear')}
+          onNavigateToReview={(ruleSetId) => {
+            if (ruleSetId) {
+              navigate(`/admin/quy-tac-thue?id=${ruleSetId}`)
+            } else {
+              navigate('/admin/quy-tac-thue')
+            }
+          }}
+        />
+      )}
+
+      {/* Route 7: Quản lý chuyên gia tư vấn thuế */}
+      {currentRoute === 'quan-ly-chuyen-gia' && (
+        <AdminExpertManagementPage />
+      )}
+
+      {/* Route 6: Tổng quan hệ thống */}
       {currentRoute === 'tong-quan' && (
         <div className="p-space-xl flex flex-col gap-space-lg">
           {/* Header Banner */}
@@ -161,7 +287,6 @@ export function AdminDashboard({ onLogout }) {
           </div>
 
           {/* Service Status Cards */}
-          {/* Service Status Cards (Connected via API Gateway) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
             <div className="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex items-start gap-space-md border border-outline-variant/30">
               <div className="w-12 h-12 rounded-xl bg-primary-container/40 flex items-center justify-center text-primary shrink-0">
@@ -171,14 +296,14 @@ export function AdminDashboard({ onLogout }) {
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   <span className="font-label-sm text-label-sm font-bold text-on-surface uppercase tracking-wider">
-                    API Gateway
+                    Cổng liên thông
                   </span>
                 </div>
                 <span className="font-title-sm text-title-sm font-bold text-primary mt-1">
-                  YARP Port 5000
+                  Trực tuyến • Sẵn sàng
                 </span>
                 <span className="font-body-sm text-on-surface-variant text-[12px] mt-0.5 truncate">
-                  Reverse Proxy • Unified
+                  Đồng bộ dữ liệu tập trung
                 </span>
               </div>
             </div>
@@ -191,34 +316,34 @@ export function AdminDashboard({ onLogout }) {
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   <span className="font-label-sm text-label-sm font-bold text-on-surface uppercase tracking-wider">
-                    AI Service
+                    Trí tuệ nhân tạo
                   </span>
                 </div>
                 <span className="font-title-sm text-title-sm font-bold text-primary mt-1">
-                  FastAPI Port 8000
+                  Sẵn sàng trích xuất
                 </span>
                 <span className="font-body-sm text-on-surface-variant text-[12px] mt-0.5 truncate">
-                  Gemini 2.5 Flash • Bóc tách
+                  Tự động phân loại quy tắc
                 </span>
               </div>
             </div>
 
             <div className="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex items-start gap-space-md border border-outline-variant/30">
               <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                <span className="material-symbols-outlined text-[26px]">dns</span>
+                <span className="material-symbols-outlined text-[26px]">account_balance</span>
               </div>
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   <span className="font-label-sm text-label-sm font-bold text-on-surface uppercase tracking-wider">
-                    Core Backend
+                    Nghiệp vụ quản lý
                   </span>
                 </div>
                 <span className="font-title-sm text-title-sm font-bold text-primary mt-1">
-                  .NET Core Port 5023
+                  Kết nối ổn định
                 </span>
                 <span className="font-body-sm text-on-surface-variant text-[12px] mt-0.5 truncate">
-                  Auth • Profile • NPT
+                  Hồ sơ giảm trừ &amp; NPT
                 </span>
               </div>
             </div>
@@ -229,13 +354,13 @@ export function AdminDashboard({ onLogout }) {
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="font-label-sm text-label-sm font-bold text-on-surface uppercase tracking-wider">
-                  Văn bản đã bóc tách
+                  Văn bản quy phạm
                 </span>
                 <span className="font-title-sm text-title-sm font-bold text-primary mt-1">
                   {recentDocs.length} tài liệu lưu trữ
                 </span>
                 <span className="font-body-sm text-on-surface-variant text-[12px] mt-0.5 truncate">
-                  Lưu trữ phiên làm việc
+                  Đã ghi nhận trong phiên
                 </span>
               </div>
             </div>
@@ -272,7 +397,7 @@ export function AdminDashboard({ onLogout }) {
                 </button>
 
                 <button
-                  onClick={() => navigate('/admin/quy-tac-thue')}
+                  onClick={() => handleNavigation('quy-tac-thue')}
                   className="p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all flex items-center justify-between text-left cursor-pointer group"
                 >
                   <div className="flex items-center gap-space-md">
@@ -342,9 +467,14 @@ export function AdminDashboard({ onLogout }) {
                               onClick={() => {
                                 if (doc.extractedData) {
                                   setExtractedData(doc.extractedData)
-                                  sessionStorage.setItem('taxkeep_extracted_data', JSON.stringify(doc.extractedData))
                                 }
-                                navigate('/admin/quy-tac-thue')
+                                const targetId = doc.id || doc.ruleSetId || doc.extractedData?.taxRuleSet?.ruleSetId
+                                if (targetId && targetId !== 'current') {
+                                  setLastRuleSetId(targetId)
+                                  navigate(`/admin/quy-tac-thue?id=${targetId}`)
+                                } else {
+                                  handleNavigation('quy-tac-thue')
+                                }
                               }}
                               className="px-2.5 py-1 rounded bg-primary text-on-primary text-[11px] font-semibold hover:bg-primary-container transition-colors cursor-pointer"
                             >
@@ -378,7 +508,10 @@ export function AdminDashboard({ onLogout }) {
         currentRoute !== 'quy-tac-thue' &&
         currentRoute !== 'van-ban-quy-pham' &&
         currentRoute !== 'cai-dat' &&
-        currentRoute !== 'tong-quan' && (
+        currentRoute !== 'ho-so' &&
+        currentRoute !== 'lich-su-phe-duyet' &&
+        currentRoute !== 'tong-quan' &&
+        currentRoute !== 'quan-ly-chuyen-gia' && (
           <div className="p-space-xl flex flex-col items-center justify-center min-h-[60vh] text-center gap-space-md">
             <div className="w-16 h-16 rounded-full bg-secondary-container/40 flex items-center justify-center text-secondary">
               <span className="material-symbols-outlined text-[36px]">construction</span>

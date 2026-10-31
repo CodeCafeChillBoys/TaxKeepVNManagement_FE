@@ -10,6 +10,40 @@ class SignalRService {
     this.connection = null
     this.listeners = new Map()
     this.isConnecting = false
+
+    // Khởi tạo sẵn các kênh sự kiện cốt lõi của Tax AI
+    this.listeners.set('OnTaxExtractionCompleted', new Set())
+    this.listeners.set('OnTaxExtractionFailed', new Set())
+  }
+
+  /**
+   * Đăng ký dispatchers trung tâm lên HubConnection
+   * Đảm bảo luôn có handler nhận sự kiện (cả PascalCase và lowercase)
+   */
+  _bindHandlers(conn) {
+    if (!conn) return
+    this.listeners.forEach((_, eventName) => {
+      const lowerName = eventName.toLowerCase()
+      const handler = (...args) => {
+        const cbs = this.listeners.get(eventName)
+        if (cbs && cbs.size > 0) {
+          cbs.forEach((cb) => {
+            try {
+              cb(...args)
+            } catch (e) {
+              console.error(`[SignalR] Callback error for ${eventName}:`, e)
+            }
+          })
+        }
+      }
+
+      conn.off(eventName)
+      conn.on(eventName, handler)
+      if (lowerName !== eventName) {
+        conn.off(lowerName)
+        conn.on(lowerName, handler)
+      }
+    })
   }
 
   /**
@@ -56,36 +90,17 @@ class SignalRService {
         .configureLogging(signalR.LogLevel.Information)
         .build()
 
-      // Gán lại các listeners đã đăng ký
-      this.listeners.forEach((callbacks, eventName) => {
-        this.connection.on(eventName, (...args) => {
-          callbacks.forEach((cb) => {
-            try {
-              cb(...args)
-            } catch (e) {
-              console.error(`[SignalR] Callback error for ${eventName}:`, e)
-            }
-          })
-        })
-      })
+      this._bindHandlers(this.connection)
 
-      this.connection.onclose((error) => {
-        console.warn('[SignalR] Connection closed:', error)
-      })
-
-      this.connection.onreconnecting((error) => {
-        console.warn('[SignalR] Reconnecting:', error)
-      })
-
-      this.connection.onreconnected((connectionId) => {
-        console.log('[SignalR] Reconnected successfully with ID:', connectionId)
+      this.connection.onclose(() => {})
+      this.connection.onreconnecting(() => {})
+      this.connection.onreconnected(() => {
+        this._bindHandlers(this.connection)
       })
 
       await this.connection.start()
-      console.log(`[SignalR] Connected successfully to ${hubUrl}`)
       return this.connection
     } catch (err) {
-      console.error('[SignalR] Error connecting via proxy/gateway, trying direct WebSocket fallback:', err)
       // Fallback: kết nối trực tiếp Gateway với withCredentials: false và WebSockets
       try {
         const fallbackUrl = `${GATEWAY_URL}/hubs/tax-ai`
@@ -104,26 +119,14 @@ class SignalRService {
               signalR.HttpTransportType.LongPolling,
           })
           .withAutomaticReconnect([0, 2000, 5000, 10000])
-          .configureLogging(signalR.LogLevel.Warning)
+          .configureLogging(signalR.LogLevel.None)
           .build()
 
-        this.listeners.forEach((callbacks, eventName) => {
-          this.connection.on(eventName, (...args) => {
-            callbacks.forEach((cb) => {
-              try {
-                cb(...args)
-              } catch (e) {
-                console.error(`[SignalR] Callback error for ${eventName}:`, e)
-              }
-            })
-          })
-        })
+        this._bindHandlers(this.connection)
 
         await this.connection.start()
-        console.log(`[SignalR] Fallback connected to ${fallbackUrl}`)
         return this.connection
       } catch (fallbackErr) {
-        console.error('[SignalR] Fallback connection failed:', fallbackErr)
         throw fallbackErr
       }
     } finally {
@@ -143,19 +146,7 @@ class SignalRService {
     this.listeners.get(eventName).add(callback)
 
     if (this.connection) {
-      this.connection.off(eventName)
-      this.connection.on(eventName, (...args) => {
-        const cbs = this.listeners.get(eventName)
-        if (cbs) {
-          cbs.forEach((cb) => {
-            try {
-              cb(...args)
-            } catch (e) {
-              console.error(`[SignalR] Callback error for ${eventName}:`, e)
-            }
-          })
-        }
-      })
+      this._bindHandlers(this.connection)
     }
   }
 
@@ -169,10 +160,8 @@ class SignalRService {
       if (callback) {
         this.listeners.get(eventName).delete(callback)
       } else {
-        this.listeners.delete(eventName)
-        if (this.connection) {
-          this.connection.off(eventName)
-        }
+        // Chỉ xóa tập callbacks nhưng giữ lại channel để connection không báo Warning thiếu method
+        this.listeners.get(eventName).clear()
       }
     }
   }
@@ -187,10 +176,9 @@ class SignalRService {
       await this.startConnection()
       if (this.connection && this.connection.state === signalR.HubConnectionState.Connected) {
         await this.connection.invoke('JoinTaskGroup', taskId)
-        console.log(`[SignalR] Successfully joined task group: task_${taskId}`)
       }
-    } catch (err) {
-      console.warn(`[SignalR] JoinTaskGroup error for ${taskId}:`, err)
+    } catch {
+      // Bỏ qua lỗi gia nhập group
     }
   }
 
@@ -204,8 +192,8 @@ class SignalRService {
       if (this.connection && this.connection.state === signalR.HubConnectionState.Connected) {
         await this.connection.invoke('LeaveTaskGroup', taskId)
       }
-    } catch (err) {
-      console.warn(`[SignalR] LeaveTaskGroup error for ${taskId}:`, err)
+    } catch {
+      // Bỏ qua lỗi rời group
     }
   }
 
@@ -216,9 +204,8 @@ class SignalRService {
     if (this.connection) {
       try {
         await this.connection.stop()
-        console.log('[SignalR] Connection stopped.')
-      } catch (err) {
-        console.warn('[SignalR] Error stopping connection:', err)
+      } catch {
+        // Bỏ qua lỗi ngắt kết nối
       }
     }
   }

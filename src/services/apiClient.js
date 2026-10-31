@@ -1,9 +1,24 @@
 import axios from 'axios'
 
-export const MANAGEMENT_API_URL =
-  import.meta.env.VITE_API_GATEWAY_URL ||
-  import.meta.env.VITE_MANAGEMENT_API_URL ||
-  'http://localhost:5000'
+const getManagementApiUrl = () => {
+  const envUrl =
+    import.meta.env.VITE_API_GATEWAY_URL ||
+    import.meta.env.VITE_MANAGEMENT_API_URL ||
+    import.meta.env.VITE_API_BASE_URL;
+
+  if (typeof window !== 'undefined' && window.location?.hostname) {
+    const host = window.location.hostname;
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      const portMatch = envUrl?.match(/:(\d+)/);
+      const port = portMatch ? portMatch[1] : '5000';
+      return `${window.location.protocol}//${host}:${port}`;
+    }
+  }
+
+  return envUrl || 'http://localhost:5000';
+};
+
+export const MANAGEMENT_API_URL = getManagementApiUrl();
 
 export const apiClient = axios.create({
   baseURL: MANAGEMENT_API_URL,
@@ -20,8 +35,21 @@ apiClient.interceptors.request.use(
       localStorage.getItem('taxkeep_token') ||
       sessionStorage.getItem('taxkeep_token')
 
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+    if (token && !config.headers.Authorization) {
+      config.headers.Authorization = 'Bearer ' + token 
+    }
+
+    // Khi gửi FormData trong trình duyệt, bắt buộc xóa Content-Type để runtime tự tạo multipart boundary
+    if (config.data && (typeof FormData !== 'undefined' && config.data instanceof FormData)) {
+      if (config.headers) {
+        if (typeof config.headers.delete === 'function') {
+          config.headers.delete('Content-Type')
+          config.headers.delete('content-type')
+        }
+        delete config.headers['Content-Type']
+        delete config.headers['content-type']
+        config.headers['Content-Type'] = undefined
+      }
     }
 
     return config
@@ -40,38 +68,46 @@ apiClient.interceptors.response.use(
   (error) => {
     const status = error.response?.status
     const data = error.response?.data
+    const isLoginRequest = error.config?.url?.includes('/auth/login')
 
     let friendlyMessage = 'Đã có lỗi xảy ra khi kết nối máy chủ.'
 
     if (!error.response) {
-      friendlyMessage = `Không thể kết nối tới máy chủ Backend tại ${MANAGEMENT_API_URL}. Vui lòng kiểm tra lại dịch vụ Backend.`
+      friendlyMessage = 'Không thể kết nối tới máy chủ hệ thống. Vui lòng kiểm tra lại kết nối mạng.'
     } else if (data?.message) {
       friendlyMessage = data.message
     } else if (data?.title) {
       friendlyMessage = data.title
-    } else if (typeof data === 'string') {
-      friendlyMessage = data
+    } else if (typeof data === 'string' && data.trim()) {
+      friendlyMessage = data.trim()
     } else if (status === 401) {
-      friendlyMessage = 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ.'
+      friendlyMessage = isLoginRequest
+        ? 'Số CCCD hoặc mật khẩu không chính xác.'
+        : 'Phiên đăng nhập đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.'
     } else if (status === 403) {
-      friendlyMessage = 'Bạn không có quyền thực hiện thao tác này.'
+      friendlyMessage = 'Bạn không có quyền truy cập vào tài nguyên hoặc chức năng này.'
     } else if (status === 404) {
-      friendlyMessage = 'Không tìm thấy tài nguyên yêu cầu.'
+      friendlyMessage = 'Không tìm thấy tài nguyên yêu cầu trên máy chủ.'
     } else if (status >= 500) {
-      friendlyMessage = 'Máy chủ Backend gặp sự cố nội bộ. Vui lòng thử lại sau.'
+      friendlyMessage = 'Máy chủ hệ thống gặp sự cố. Vui lòng thử lại sau.'
     }
 
     const customError = new Error(friendlyMessage)
     customError.status = status
     customError.data = data
     customError.errors = data?.errors
+    customError.response = error.response
 
-    // Nếu bị 401 Unauthorized do token hết hạn/bị thu hồi, xóa token lưu cục bộ
-    if (status === 401) {
+    // Nếu bị 401 Unauthorized do token hết hạn/bị thu hồi trên phiên đang hoạt động
+    if (status === 401 && !isLoginRequest) {
       localStorage.removeItem('taxkeep_token')
       localStorage.removeItem('taxkeep_user')
       sessionStorage.removeItem('taxkeep_token')
       sessionStorage.removeItem('taxkeep_user')
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('taxkeep:unauthorized'))
+      }
     }
 
     return Promise.reject(customError)

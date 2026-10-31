@@ -71,7 +71,7 @@ export const dependentService = {
 
     return apiClient.post(`/api/v1/dependents/${dependentId}/documents`, formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': undefined,
       },
     })
   },

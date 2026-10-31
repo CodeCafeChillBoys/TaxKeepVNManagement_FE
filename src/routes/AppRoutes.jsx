@@ -2,15 +2,22 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { LoginPage } from '@/pages/LoginPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { AdminDashboard } from '@/pages/admin/AdminDashboard'
+import { ExpertDashboard } from '@/pages/expert/ExpertDashboard'
+import { PaymentResultPage } from '@/pages/PaymentResultPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { ProtectedRoute } from './ProtectedRoute'
 import { PublicRoute } from './PublicRoute'
 import { useAuth } from '@/hooks/useAuth'
 
 function RootRedirect() {
-  const { isAuthenticated, isLoading } = useAuth()
+  const { isAuthenticated, isLoading, user } = useAuth()
   if (isLoading) return null
-  return <Navigate to={isAuthenticated ? '/admin' : '/login'} replace />
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  const role = (user?.userRole || user?.role || '').toLowerCase()
+  if (role === 'expert') {
+    return <Navigate to="/expert" replace />
+  }
+  return <Navigate to="/admin" replace />
 }
 
 export function AppRoutes() {
@@ -36,12 +43,13 @@ export function AppRoutes() {
           </PublicRoute>
         }
       />
+      <Route path="/payments/vnpay-return" element={<PaymentResultPage />} />
 
       {/* Protected Admin Routes */}
       <Route
         path="/admin"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['admin']}>
             <AdminDashboard />
           </ProtectedRoute>
         }
@@ -49,8 +57,42 @@ export function AppRoutes() {
       <Route
         path="/admin/:section"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['admin']}>
             <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/:section/:id"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Protected Expert Routes */}
+      <Route
+        path="/expert"
+        element={
+          <ProtectedRoute allowedRoles={['expert']}>
+            <ExpertDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/expert/:section"
+        element={
+          <ProtectedRoute allowedRoles={['expert']}>
+            <ExpertDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/expert/:section/:id"
+        element={
+          <ProtectedRoute allowedRoles={['expert']}>
+            <ExpertDashboard />
           </ProtectedRoute>
         }
       />
