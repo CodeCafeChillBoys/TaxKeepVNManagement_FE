@@ -79,6 +79,7 @@ export function AdminLayout({
     { id: 'boc-tach-van-ban-ai', label: 'Tải lên văn bản thuế', icon: 'document_scanner' },
     { id: 'lich-su-phe-duyet', label: 'Lịch sử phê duyệt', icon: 'history_edu' },
     { id: 'quan-ly-chuyen-gia', label: 'Quản lý chuyên gia', icon: 'support_agent' },
+    { id: 'goi-dich-vu', label: 'Gói dịch vụ', icon: 'workspace_premium' },
     { id: 'cai-dat', label: 'Cấu hình hệ thống', icon: 'tune' },
   ]
 

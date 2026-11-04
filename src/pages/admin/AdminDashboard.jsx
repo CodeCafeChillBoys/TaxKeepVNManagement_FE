@@ -8,6 +8,7 @@ import { AdminSystemSettingsPage } from './AdminSystemSettingsPage'
 import { AdminDependentRulesPage } from './AdminDependentRulesPage'
 import { AdminApprovalHistoryPage } from './AdminApprovalHistoryPage'
 import { AdminExpertManagementPage } from './AdminExpertManagementPage'
+import { AdminSubscriptionPlansPage } from './AdminSubscriptionPlansPage'
 import { taxRuleService } from '@/services/taxRuleService'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -197,6 +198,8 @@ export function AdminDashboard({ onLogout }) {
       ? 'Hồ sơ cá nhân & Bảo mật'
       : currentRoute === 'quan-ly-chuyen-gia'
       ? 'Quản lý Chuyên gia Tư vấn'
+      : currentRoute === 'goi-dich-vu'
+      ? 'Gói dịch vụ'
       : 'Tổng quan hệ thống'
 
   return (
@@ -257,6 +260,11 @@ export function AdminDashboard({ onLogout }) {
       {/* Route 7: Quản lý chuyên gia tư vấn thuế */}
       {currentRoute === 'quan-ly-chuyen-gia' && (
         <AdminExpertManagementPage />
+      )}
+
+      {/* Route 8: Gói dịch vụ (giá, hạn mức, quyền lợi) */}
+      {currentRoute === 'goi-dich-vu' && (
+        <AdminSubscriptionPlansPage />
       )}
 
       {/* Route 6: Tổng quan hệ thống */}
