@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { subscriptionPlanService } from '@/services/subscriptionPlanService'
 import { SubscriptionPlanModal } from '@/components/admin/SubscriptionPlanModal'
+import { SubscriptionUsersTab } from '@/components/admin/SubscriptionUsersTab'
+import { SubscriptionRevenueTab } from '@/components/admin/SubscriptionRevenueTab'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -36,6 +39,7 @@ function StatusBadge({ active }) {
 }
 
 export function AdminSubscriptionPlansPage() {
+  const [tab, setTab] = useState('plans')
   const [plans, setPlans] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
@@ -156,161 +160,188 @@ export function AdminSubscriptionPlansPage() {
         <div className="flex flex-col gap-1">
           <h2 className="font-headline-md text-headline-md font-bold text-on-surface">Gói dịch vụ</h2>
           <p className="text-sm text-on-surface-variant max-w-2xl">
-            Cấu hình giá và quyền lợi các gói người nộp thuế mua trên app. Thay đổi chỉ áp dụng cho lượt mua sau,
-            người đang dùng giữ quyền lợi cũ đến khi hết hạn.
+            Cấu hình giá và quyền lợi các gói người nộp thuế mua trên app, theo dõi người dùng từng gói và doanh thu.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={fetchPlans}>
-            Làm mới
-          </Button>
-          <Button type="button" size="sm" onClick={handleOpenCreate}>
-            Tạo gói
-          </Button>
-        </div>
-      </div>
-
-      {/* Thống kê gọn */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[11px] font-medium text-on-surface-variant">Tổng số gói</p>
-            <p className="text-xl font-bold text-on-surface tabular-nums mt-0.5">{plans.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[11px] font-medium text-on-surface-variant">Đang mở bán</p>
-            <p className="text-xl font-bold text-on-surface tabular-nums mt-0.5">{activeCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[11px] font-medium text-on-surface-variant">Gói trả phí đang bán</p>
-            <p className="text-xl font-bold text-on-surface tabular-nums mt-0.5">{paidActiveCount}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Bảng gói */}
-      <Card>
-        {isLoading ? (
-          <CardContent className="py-16 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
-            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs font-medium">Đang tải danh sách gói...</span>
-          </CardContent>
-        ) : loadError ? (
-          <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-2">
-            <p className="text-sm font-semibold text-red-600">{loadError}</p>
-            <Button type="button" size="sm" variant="outline" onClick={fetchPlans}>
-              Tải lại
+        {tab === 'plans' && (
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={fetchPlans}>
+              Làm mới
             </Button>
-          </CardContent>
-        ) : plans.length === 0 ? (
-          <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-2">
-            <p className="text-sm font-semibold text-on-surface">Chưa có gói dịch vụ nào</p>
-            <p className="text-xs text-on-surface-variant max-w-sm">
-              Tạo gói đầu tiên để người nộp thuế chọn mua trên app.
-            </p>
-            <Button type="button" size="sm" onClick={handleOpenCreate} className="mt-1">
+            <Button type="button" size="sm" onClick={handleOpenCreate}>
               Tạo gói
             </Button>
-          </CardContent>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-16 text-center">Thứ tự</TableHead>
-                <TableHead>Gói</TableHead>
-                <TableHead className="text-right w-32">Giá tháng</TableHead>
-                <TableHead className="text-right w-40">Giá năm</TableHead>
-                <TableHead className="w-56">Hạn mức chính</TableHead>
-                <TableHead className="text-center w-32">Trạng thái</TableHead>
-                <TableHead className="text-right w-52">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {plans.map((plan) => {
-                const freeMonths = freeMonthsOf(plan)
-                return (
-                  <TableRow key={plan.id} className={plan.isActive ? '' : 'opacity-60'}>
-                    <TableCell className="text-center font-mono text-on-surface-variant tabular-nums">
-                      {plan.displayOrder ?? 0}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-semibold text-on-surface">{plan.name}</span>
-                        <span className="font-mono text-[11px] text-on-surface-variant">{plan.slug}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">{formatPrice(plan.priceMonthly)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      <div className="flex flex-col items-end">
-                        <span className="font-semibold">{formatPrice(plan.priceYearly)}</span>
-                        {freeMonths > 0 && <span className="text-[11px] text-emerald-700">Tặng {freeMonths} tháng</span>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-[11px] text-on-surface-variant leading-relaxed">
-                      <div>AI: {formatLimit(plan.maxAiQuestionsPerMonth, 'câu/tháng')}</div>
-                      <div>OCR: {formatLimit(plan.maxOcrScansPerMonth, 'lượt/tháng')}</div>
-                      <div>
-                        Nguồn thu nhập {formatLimit(plan.maxIncomeSources)}, NPT {formatLimit(plan.maxDependents)}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <StatusBadge active={plan.isActive} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="inline-flex items-center justify-end gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleView(plan)}
-                          className="h-7 px-2 text-[11px]"
-                        >
-                          Chi tiết
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenEdit(plan)}
-                          className="h-7 px-2.5 text-[11px]"
-                        >
-                          Sửa
-                        </Button>
-                        {isBasicPlan(plan) ? null : plan.isActive ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeactivatingPlan(plan)}
-                            className="h-7 px-2 text-[11px] text-red-600 hover:text-red-700 hover:bg-red-50/60"
-                          >
-                            Ngừng bán
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            disabled={reactivatingId === plan.id}
-                            onClick={() => handleReactivate(plan)}
-                            className="h-7 px-2 text-[11px]"
-                          >
-                            {reactivatingId === plan.id ? 'Đang mở...' : 'Mở bán lại'}
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+          </div>
         )}
-      </Card>
+      </div>
+
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <TabsList className="w-full justify-start h-auto p-1 bg-surface-container-low border border-outline-variant/40 rounded-xl flex-wrap gap-1">
+          <TabsTrigger value="plans">Gói và giá</TabsTrigger>
+          <TabsTrigger value="users">Người dùng</TabsTrigger>
+          <TabsTrigger value="revenue">Doanh thu</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="users">
+          <SubscriptionUsersTab plans={plans} />
+        </TabsContent>
+
+        <TabsContent value="revenue">
+          <SubscriptionRevenueTab />
+        </TabsContent>
+
+        <TabsContent value="plans" className="flex flex-col gap-space-lg">
+          <p className="text-[11px] text-on-surface-variant">
+            Thay đổi giá và quyền lợi chỉ áp dụng cho lượt mua sau. Người đang dùng giữ quyền lợi cũ đến khi hết hạn.
+          </p>
+
+          {/* Thống kê gọn */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-[11px] font-medium text-on-surface-variant">Tổng số gói</p>
+                <p className="text-xl font-bold text-on-surface tabular-nums mt-0.5">{plans.length}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-[11px] font-medium text-on-surface-variant">Đang mở bán</p>
+                <p className="text-xl font-bold text-on-surface tabular-nums mt-0.5">{activeCount}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-[11px] font-medium text-on-surface-variant">Gói trả phí đang bán</p>
+                <p className="text-xl font-bold text-on-surface tabular-nums mt-0.5">{paidActiveCount}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Bảng gói */}
+          <Card>
+            {isLoading ? (
+              <CardContent className="py-16 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
+                <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-medium">Đang tải danh sách gói...</span>
+              </CardContent>
+            ) : loadError ? (
+              <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-2">
+                <p className="text-sm font-semibold text-red-600">{loadError}</p>
+                <Button type="button" size="sm" variant="outline" onClick={fetchPlans}>
+                  Tải lại
+                </Button>
+              </CardContent>
+            ) : plans.length === 0 ? (
+              <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-2">
+                <p className="text-sm font-semibold text-on-surface">Chưa có gói dịch vụ nào</p>
+                <p className="text-xs text-on-surface-variant max-w-sm">
+                  Tạo gói đầu tiên để người nộp thuế chọn mua trên app.
+                </p>
+                <Button type="button" size="sm" onClick={handleOpenCreate} className="mt-1">
+                  Tạo gói
+                </Button>
+              </CardContent>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-16 text-center">Thứ tự</TableHead>
+                    <TableHead>Gói</TableHead>
+                    <TableHead className="text-right w-32">Giá tháng</TableHead>
+                    <TableHead className="text-right w-40">Giá năm</TableHead>
+                    <TableHead className="w-56">Hạn mức chính</TableHead>
+                    <TableHead className="text-center w-32">Trạng thái</TableHead>
+                    <TableHead className="text-right w-52">Thao tác</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {plans.map((plan) => {
+                    const freeMonths = freeMonthsOf(plan)
+                    return (
+                      <TableRow key={plan.id} className={plan.isActive ? '' : 'opacity-60'}>
+                        <TableCell className="text-center font-mono text-on-surface-variant tabular-nums">
+                          {plan.displayOrder ?? 0}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-semibold text-on-surface">{plan.name}</span>
+                            <span className="font-mono text-[11px] text-on-surface-variant">{plan.slug}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums font-semibold">
+                          {formatPrice(plan.priceMonthly)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          <div className="flex flex-col items-end">
+                            <span className="font-semibold">{formatPrice(plan.priceYearly)}</span>
+                            {freeMonths > 0 && (
+                              <span className="text-[11px] text-emerald-700">Tặng {freeMonths} tháng</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-[11px] text-on-surface-variant leading-relaxed">
+                          <div>AI: {formatLimit(plan.maxAiQuestionsPerMonth, 'câu/tháng')}</div>
+                          <div>OCR: {formatLimit(plan.maxOcrScansPerMonth, 'lượt/tháng')}</div>
+                          <div>
+                            Nguồn thu nhập {formatLimit(plan.maxIncomeSources)}, NPT {formatLimit(plan.maxDependents)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <StatusBadge active={plan.isActive} />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="inline-flex items-center justify-end gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleView(plan)}
+                              className="h-7 px-2 text-[11px]"
+                            >
+                              Chi tiết
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenEdit(plan)}
+                              className="h-7 px-2.5 text-[11px]"
+                            >
+                              Sửa
+                            </Button>
+                            {isBasicPlan(plan) ? null : plan.isActive ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDeactivatingPlan(plan)}
+                                className="h-7 px-2 text-[11px] text-red-600 hover:text-red-700 hover:bg-red-50/60"
+                              >
+                                Ngừng bán
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={reactivatingId === plan.id}
+                                onClick={() => handleReactivate(plan)}
+                                className="h-7 px-2 text-[11px]"
+                              >
+                                {reactivatingId === plan.id ? 'Đang mở...' : 'Mở bán lại'}
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <SubscriptionPlanModal
         isOpen={isModalOpen}
