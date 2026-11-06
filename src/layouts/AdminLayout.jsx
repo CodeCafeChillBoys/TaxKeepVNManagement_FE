@@ -116,7 +116,10 @@ export function AdminLayout({
 
         <nav className="flex-1 px-space-sm flex flex-col gap-space-xs overflow-y-auto">
           {navItems.map((item) => {
-            const isActive = currentRoute === item.id
+            const isActive =
+              currentRoute === item.id ||
+              (item.id === 'cai-dat' &&
+                ['ai-keys', 'ai-prompts', 'prompt-ai', 'prompt-templates'].includes(currentRoute))
             return (
               <button
                 key={item.id}
