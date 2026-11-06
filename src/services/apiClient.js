@@ -8,6 +8,16 @@ const getManagementApiUrl = () => {
     ''
   ).trim();
 
+  // Khi web chạy trên HTTPS (vd: Vercel):
+  // Trình duyệt chặn 100% các request HTTP (Mixed Content).
+  // Do đó, nếu envUrl là HTTP (không có SSL https://), client BẮT BUỘC phải dùng ''
+  // để gọi cùng origin và chuyển tiếp an toàn qua Vercel Reverse Proxy Rewrites.
+  if (typeof window !== 'undefined' && window.location?.protocol === 'https:') {
+    if (!envUrl.startsWith('https://')) {
+      return '';
+    }
+  }
+
   // Hỗ trợ đường dẫn tương đối (vd: /api khi dùng Reverse Proxy / Rewrites trên Vercel)
   if (envUrl.startsWith('/')) {
     return envUrl.replace(/\/+$/, '');

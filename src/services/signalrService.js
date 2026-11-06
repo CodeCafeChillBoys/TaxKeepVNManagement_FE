@@ -66,8 +66,10 @@ class SignalRService {
     try {
       // Ưu tiên dùng đường dẫn tương đối '/hubs/tax-ai' để tận dụng Vite proxy (tránh hoàn toàn CORS)
       // hoặc kết nối trực tiếp tới ApiGateway với withCredentials: false
+      const isHttps = typeof window !== 'undefined' && window.location?.protocol === 'https:'
       const hubUrl =
-        typeof window !== 'undefined' && window.location?.origin?.includes('5173')
+        (typeof window !== 'undefined' && window.location?.origin?.includes('5173')) ||
+        (isHttps && !GATEWAY_URL.startsWith('https://'))
           ? '/hubs/tax-ai'
           : `${GATEWAY_URL}/hubs/tax-ai`
 
