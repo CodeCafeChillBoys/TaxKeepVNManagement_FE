@@ -1,13 +1,38 @@
 import axios from 'axios'
 
 const getManagementApiUrl = () => {
-  const envUrl =
+  const envUrl = (
     import.meta.env.VITE_API_GATEWAY_URL ||
     import.meta.env.VITE_MANAGEMENT_API_URL ||
-    import.meta.env.VITE_API_BASE_URL;
+    import.meta.env.VITE_API_BASE_URL ||
+    ''
+  ).trim();
+
+  // Hỗ trợ đường dẫn tương đối (vd: /api khi dùng Reverse Proxy / Rewrites trên Vercel)
+  if (envUrl.startsWith('/')) {
+    return envUrl.replace(/\/+$/, '');
+  }
+
+  const isLocalEnvUrl =
+    !envUrl ||
+    envUrl.includes('://localhost') ||
+    envUrl.includes('://127.0.0.1');
+
+  if (!isLocalEnvUrl) {
+    return envUrl.replace(/\/+$/, '');
+  }
 
   if (typeof window !== 'undefined' && window.location?.hostname) {
     const host = window.location.hostname;
+    // Khi deploy trên cloud như Vercel (không phải localhost hoặc IP nội bộ LAN)
+    const isCloudHost =
+      host.endsWith('.vercel.app') ||
+      (!host.includes('localhost') && !/^(\d{1,3}\.){3}\d{1,3}$/.test(host));
+
+    if (isCloudHost) {
+      return '';
+    }
+
     if (host !== 'localhost' && host !== '127.0.0.1') {
       const portMatch = envUrl?.match(/:(\d+)/);
       const port = portMatch ? portMatch[1] : '5000';
@@ -15,7 +40,7 @@ const getManagementApiUrl = () => {
     }
   }
 
-  return envUrl || 'http://localhost:5000';
+  return (envUrl || 'http://localhost:5000').replace(/\/+$/, '');
 };
 
 export const MANAGEMENT_API_URL = getManagementApiUrl();

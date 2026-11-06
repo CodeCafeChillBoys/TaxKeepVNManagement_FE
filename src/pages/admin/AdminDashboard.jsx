@@ -8,6 +8,7 @@ import { AdminSystemSettingsPage } from './AdminSystemSettingsPage'
 import { AdminDependentRulesPage } from './AdminDependentRulesPage'
 import { AdminApprovalHistoryPage } from './AdminApprovalHistoryPage'
 import { AdminExpertManagementPage } from './AdminExpertManagementPage'
+import { AdminSubscriptionPlansPage } from './AdminSubscriptionPlansPage'
 import { taxRuleService } from '@/services/taxRuleService'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -69,9 +70,9 @@ export function AdminDashboard({ onLogout }) {
       routeId ||
       searchParams.get('id') ||
       searchParams.get('ruleSetId')
-    if (queryId) {
+    if (queryId && queryId !== lastRuleSetId) {
       setLastRuleSetId(queryId)
-    } else if (currentRoute === 'quy-tac-thue') {
+    } else if (currentRoute === 'quy-tac-thue' && !queryId) {
       const idToUse =
         lastRuleSetId ||
         extractedData?.ruleSetId ||
@@ -182,6 +183,19 @@ export function AdminDashboard({ onLogout }) {
     navigate(`/admin/${route}`)
   }
 
+  // Tự động điều hướng các route trực tiếp của AI sang tab tương ứng trong Cấu hình hệ thống
+  useEffect(() => {
+    if (currentRoute === 'ai-keys') {
+      navigate('/admin/cai-dat?tab=ai-keys', { replace: true })
+    } else if (
+      currentRoute === 'ai-prompts' ||
+      currentRoute === 'prompt-ai' ||
+      currentRoute === 'prompt-templates'
+    ) {
+      navigate('/admin/cai-dat?tab=ai-prompts', { replace: true })
+    }
+  }, [currentRoute, navigate])
+
   const breadcrumbTitle =
     currentRoute === 'boc-tach-van-ban-ai'
       ? 'Tải lên & Trích xuất AI'
@@ -192,11 +206,21 @@ export function AdminDashboard({ onLogout }) {
       : currentRoute === 'lich-su-phe-duyet' || currentRoute === 'lich-su' || currentRoute === 'lich-su-duyet'
       ? 'Lịch sử phê duyệt'
       : currentRoute === 'cai-dat'
-      ? 'Cấu hình hệ thống'
+      ? (searchParams.get('tab') === 'ai-keys'
+          ? 'Quản lý API Key AI Hệ thống'
+          : searchParams.get('tab') === 'ai-prompts'
+          ? 'Quản trị System Prompt AI'
+          : 'Cấu hình hệ thống')
+      : currentRoute === 'ai-keys'
+      ? 'Quản lý API Key AI Hệ thống'
+      : currentRoute === 'ai-prompts' || currentRoute === 'prompt-ai' || currentRoute === 'prompt-templates'
+      ? 'Quản trị System Prompt AI'
       : currentRoute === 'ho-so'
       ? 'Hồ sơ cá nhân & Bảo mật'
       : currentRoute === 'quan-ly-chuyen-gia'
       ? 'Quản lý Chuyên gia Tư vấn'
+      : currentRoute === 'goi-dich-vu'
+      ? 'Gói dịch vụ'
       : 'Tổng quan hệ thống'
 
   return (
@@ -257,6 +281,11 @@ export function AdminDashboard({ onLogout }) {
       {/* Route 7: Quản lý chuyên gia tư vấn thuế */}
       {currentRoute === 'quan-ly-chuyen-gia' && (
         <AdminExpertManagementPage />
+      )}
+
+      {/* Route 8: Gói dịch vụ (giá, hạn mức, quyền lợi) */}
+      {currentRoute === 'goi-dich-vu' && (
+        <AdminSubscriptionPlansPage />
       )}
 
       {/* Route 6: Tổng quan hệ thống */}
@@ -414,6 +443,50 @@ export function AdminDashboard({ onLogout }) {
                     </div>
                   </div>
                   <span className="material-symbols-outlined text-outline group-hover:text-secondary transition-colors">
+                    chevron_right
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => navigate('/admin/cai-dat?tab=ai-keys')}
+                  className="p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all flex items-center justify-between text-left cursor-pointer group"
+                >
+                  <div className="flex items-center gap-space-md">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
+                      <span className="material-symbols-outlined text-[22px]">vpn_key</span>
+                    </div>
+                    <div>
+                      <h4 className="font-title-sm text-title-sm font-bold text-on-surface group-hover:text-emerald-700 transition-colors">
+                        Sửa & Quản lý API Key AI
+                      </h4>
+                      <p className="font-body-sm text-on-surface-variant text-[12px]">
+                        Thiết lập khóa Gemini/OpenAI, xoay vòng key & hạn mức
+                      </p>
+                    </div>
+                  </div>
+                  <span className="material-symbols-outlined text-outline group-hover:text-emerald-700 transition-colors">
+                    chevron_right
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => navigate('/admin/cai-dat?tab=ai-prompts')}
+                  className="p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all flex items-center justify-between text-left cursor-pointer group"
+                >
+                  <div className="flex items-center gap-space-md">
+                    <div className="w-10 h-10 rounded-lg bg-purple-600 text-white flex items-center justify-center">
+                      <span className="material-symbols-outlined text-[22px]">terminal</span>
+                    </div>
+                    <div>
+                      <h4 className="font-title-sm text-title-sm font-bold text-on-surface group-hover:text-purple-700 transition-colors">
+                        Quản trị System Prompt AI
+                      </h4>
+                      <p className="font-body-sm text-on-surface-variant text-[12px]">
+                        Chỉ dẫn AI Chatbot, bóc tách OCR & thử nghiệm biến động
+                      </p>
+                    </div>
+                  </div>
+                  <span className="material-symbols-outlined text-outline group-hover:text-purple-700 transition-colors">
                     chevron_right
                   </span>
                 </button>

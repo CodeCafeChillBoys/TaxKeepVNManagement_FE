@@ -9,6 +9,8 @@ import { taxDocumentTypeService } from '@/services/taxDocumentTypeService'
 import { TaxDocumentTypeModal } from '@/components/admin/TaxDocumentTypeModal'
 import { ExpertSearchConfigTab } from '@/components/admin/ExpertSearchConfigTab'
 import { ExpertCertificateConfigTab } from '@/components/admin/ExpertCertificateConfigTab'
+import { AiKeyManagementTab } from '@/components/admin/AiKeyManagementTab'
+import { AiPromptTemplateTab } from '@/components/admin/AiPromptTemplateTab'
 import {
   DATA_TYPE_META,
   CONFIG_SORT_ORDER,
@@ -25,13 +27,10 @@ import {
 
 export function AdminSystemSettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const initialTab = searchParams.get('tab') || 'ai-configs'
-
-  // Tabs: 'ai-configs' (Cấu hình AI & Ngưỡng OCR) | 'domains' (Nguồn văn bản pháp quy) | 'system' (Tham số vận hành)
-  const [activeTab, setActiveTab] = useState(initialTab)
+  // Tabs: 'ai-configs' | 'ai-keys' | 'ai-prompts' | 'domains' | 'document-types' | 'expert-search' | 'expert-certificates' | 'system'
+  const activeTab = searchParams.get('tab') || 'ai-configs'
 
   const handleTabChange = (tab) => {
-    setActiveTab(tab)
     setSearchParams({ tab })
   }
 
@@ -600,6 +599,30 @@ export function AdminSystemSettingsPage() {
         >
           <span className="material-symbols-outlined text-[18px]">psychology</span>
           <span>Cấu hình AI & Ngưỡng OCR ({totalConfigsCount || 6})</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('ai-keys')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'ai-keys'
+              ? 'bg-primary text-on-primary shadow-xs'
+              : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">vpn_key</span>
+          <span>API Key AI Hệ thống</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('ai-prompts')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'ai-prompts'
+              ? 'bg-primary text-on-primary shadow-xs'
+              : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">terminal</span>
+          <span>System Prompt AI</span>
         </button>
 
         <button
@@ -1537,6 +1560,20 @@ export function AdminSystemSettingsPage() {
       {/* ========================================================================= */}
       {activeTab === 'expert-certificates' && (
         <ExpertCertificateConfigTab onShowToast={showToast} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 7: QUẢN LÝ & SỬA API KEY AI HỆ THỐNG (AdminAiKey)                    */}
+      {/* ========================================================================= */}
+      {activeTab === 'ai-keys' && (
+        <AiKeyManagementTab onShowToast={showToast} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 8: QUẢN TRỊ DÒNG SYSTEM PROMPT AI ĐỘNG (AdminPromptTemplate)          */}
+      {/* ========================================================================= */}
+      {activeTab === 'ai-prompts' && (
+        <AiPromptTemplateTab onShowToast={showToast} />
       )}
 
       {/* ========================================================================= */}

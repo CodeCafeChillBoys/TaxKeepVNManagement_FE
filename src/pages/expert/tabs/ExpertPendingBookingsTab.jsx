@@ -140,6 +140,23 @@ export function ExpertPendingBookingsTab({ initialBookingId, onRefreshStats }) {
     }
   }, [page, onRefreshStats])
 
+  const handleOpenDetail = async (id) => {
+    setDetailLoading(true)
+    try {
+      const data = await expertPortalService.getBookingDetail(id)
+      setDetailBooking(data)
+    } catch (err) {
+      setNotice({
+        open: true,
+        type: 'error',
+        title: 'Không thể xem chi tiết ca tư vấn',
+        description: err.message || 'Lỗi khi tải thông tin chi tiết.',
+      })
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchPendingBookings()
   }, [fetchPendingBookings])
@@ -159,23 +176,6 @@ export function ExpertPendingBookingsTab({ initialBookingId, onRefreshStats }) {
     }, 30000)
     return () => clearInterval(interval)
   }, [autoRefresh, fetchPendingBookings])
-
-  const handleOpenDetail = async (id) => {
-    setDetailLoading(true)
-    try {
-      const data = await expertPortalService.getBookingDetail(id)
-      setDetailBooking(data)
-    } catch (err) {
-      setNotice({
-        open: true,
-        type: 'error',
-        title: 'Không thể xem chi tiết ca tư vấn',
-        description: err.message || 'Lỗi khi tải thông tin chi tiết.',
-      })
-    } finally {
-      setDetailLoading(false)
-    }
-  }
 
   const handleAccept = async (id) => {
     setActionLoading(true)

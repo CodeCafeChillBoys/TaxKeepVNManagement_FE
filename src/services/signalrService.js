@@ -100,35 +100,31 @@ class SignalRService {
 
       await this.connection.start()
       return this.connection
-    } catch (err) {
+    } catch {
       // Fallback: kết nối trực tiếp Gateway với withCredentials: false và WebSockets
-      try {
-        const fallbackUrl = `${GATEWAY_URL}/hubs/tax-ai`
-        this.connection = new signalR.HubConnectionBuilder()
-          .withUrl(fallbackUrl, {
-            accessTokenFactory: () => {
-              return (
-                localStorage.getItem('taxkeep_token') ||
-                sessionStorage.getItem('taxkeep_token') ||
-                ''
-              )
-            },
-            withCredentials: false,
-            transport:
-              signalR.HttpTransportType.WebSockets |
-              signalR.HttpTransportType.LongPolling,
-          })
-          .withAutomaticReconnect([0, 2000, 5000, 10000])
-          .configureLogging(signalR.LogLevel.None)
-          .build()
+      const fallbackUrl = `${GATEWAY_URL}/hubs/tax-ai`
+      this.connection = new signalR.HubConnectionBuilder()
+        .withUrl(fallbackUrl, {
+          accessTokenFactory: () => {
+            return (
+              localStorage.getItem('taxkeep_token') ||
+              sessionStorage.getItem('taxkeep_token') ||
+              ''
+            )
+          },
+          withCredentials: false,
+          transport:
+            signalR.HttpTransportType.WebSockets |
+            signalR.HttpTransportType.LongPolling,
+        })
+        .withAutomaticReconnect([0, 2000, 5000, 10000])
+        .configureLogging(signalR.LogLevel.None)
+        .build()
 
-        this._bindHandlers(this.connection)
+      this._bindHandlers(this.connection)
 
-        await this.connection.start()
-        return this.connection
-      } catch (fallbackErr) {
-        throw fallbackErr
-      }
+      await this.connection.start()
+      return this.connection
     } finally {
       this.isConnecting = false
     }

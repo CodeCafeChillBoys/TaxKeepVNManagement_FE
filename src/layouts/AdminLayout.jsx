@@ -79,6 +79,7 @@ export function AdminLayout({
     { id: 'boc-tach-van-ban-ai', label: 'Tải lên văn bản thuế', icon: 'document_scanner' },
     { id: 'lich-su-phe-duyet', label: 'Lịch sử phê duyệt', icon: 'history_edu' },
     { id: 'quan-ly-chuyen-gia', label: 'Quản lý chuyên gia', icon: 'support_agent' },
+    { id: 'goi-dich-vu', label: 'Gói dịch vụ', icon: 'workspace_premium' },
     { id: 'cai-dat', label: 'Cấu hình hệ thống', icon: 'tune' },
   ]
 
@@ -115,7 +116,10 @@ export function AdminLayout({
 
         <nav className="flex-1 px-space-sm flex flex-col gap-space-xs overflow-y-auto">
           {navItems.map((item) => {
-            const isActive = currentRoute === item.id
+            const isActive =
+              currentRoute === item.id ||
+              (item.id === 'cai-dat' &&
+                ['ai-keys', 'ai-prompts', 'prompt-ai', 'prompt-templates'].includes(currentRoute))
             return (
               <button
                 key={item.id}
