@@ -90,12 +90,14 @@ export function ExpertLayout({
         {/* Brand Header */}
         <div className="px-6 pt-6 pb-5 flex flex-col gap-1 bg-white/[0.03] border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300 shadow-md">
-              <span className="material-symbols-outlined text-[24px]">support_agent</span>
-            </div>
+            <img
+              src="/logo.png"
+              alt="TaxKeep VN"
+              className="w-10 h-10 rounded-xl object-contain shadow-md"
+            />
             <div className="flex flex-col">
               <span className="text-base tracking-tight text-white font-extrabold leading-none">
-                TAX KEEP VN
+                TaxKeep VN
               </span>
               <span className="text-[10px] uppercase tracking-widest text-amber-300 font-semibold mt-1">
                 CỔNG CHUYÊN GIA TƯ VẤN

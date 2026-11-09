@@ -44,6 +44,7 @@ export function AppRoutes() {
         }
       />
       <Route path="/payments/vnpay-return" element={<PaymentResultPage />} />
+      <Route path="/subscription/vnpay-return" element={<PaymentResultPage />} />
 
       {/* Protected Admin Routes */}
       <Route
