@@ -97,12 +97,14 @@ export function AdminLayout({
       <aside className="fixed left-0 top-0 h-full w-72 bg-primary-container text-on-primary z-50 flex flex-col shadow-[0_4px_20px_rgba(45,22,0,0.12)]">
         <div className="px-gutter pt-space-lg pb-space-md flex flex-col gap-space-xs bg-primary">
           <div className="flex items-center gap-space-sm">
-            <div className="w-10 h-10 rounded-lg bg-secondary-container flex items-center justify-center text-on-secondary-container shadow-sm">
-              <span className="material-symbols-outlined text-[24px]">verified</span>
-            </div>
+            <img
+              src="/logo.png"
+              alt="TaxKeep VN"
+              className="w-10 h-10 rounded-lg object-contain shadow-sm"
+            />
             <div className="flex flex-col">
               <span className="font-headline-md text-headline-md tracking-tight text-on-primary font-bold leading-none">
-                TAX KEEP VN
+                TaxKeep VN
               </span>
               <span className="font-label-sm text-label-sm uppercase tracking-widest text-secondary-fixed mt-space-xs">
                 QUẢN LÝ THUẾ THU NHẬP CÁ NHÂN

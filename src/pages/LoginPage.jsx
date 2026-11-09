@@ -113,12 +113,14 @@ export function LoginPage({ onNavigateToRegister, onLoginSuccess }) {
 
             <div className="relative z-10 flex flex-col h-full justify-between space-y-4">
               <div className="flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-full bg-brand-800 border-2 border-gold-500 flex items-center justify-center shadow-sm shrink-0">
-                  <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                </div>
+                <img
+                  src="/logo.png"
+                  alt="TaxKeep VN Logo"
+                  className="w-10 h-10 object-contain drop-shadow-sm shrink-0"
+                />
                 <div>
                   <div className="text-xs sm:text-sm font-bold tracking-wider uppercase text-white">
-                    TAX KEEP VN
+                    TaxKeep VN
                   </div>
                   <div className="text-[11px] text-stone-200/80 font-medium">
                     Nền tảng quản lý thuế thu nhập cá nhân
