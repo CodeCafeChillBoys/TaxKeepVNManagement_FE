@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { pickApiErrorMessage } from '@/utils/apiErrorCatalog'
 
 const getManagementApiUrl = () => {
   const envUrl = (
@@ -105,16 +106,14 @@ apiClient.interceptors.response.use(
     const data = error.response?.data
     const isLoginRequest = error.config?.url?.includes('/auth/login')
 
+    const serverText = data?.message || data?.title || (typeof data === 'string' ? data : '')
+    const fromCode = pickApiErrorMessage(data?.errorCode, serverText, '')
     let friendlyMessage = 'Đã có lỗi xảy ra khi kết nối máy chủ.'
 
     if (!error.response) {
       friendlyMessage = 'Không thể kết nối tới máy chủ hệ thống. Vui lòng kiểm tra lại kết nối mạng.'
-    } else if (data?.message) {
-      friendlyMessage = data.message
-    } else if (data?.title) {
-      friendlyMessage = data.title
-    } else if (typeof data === 'string' && data.trim()) {
-      friendlyMessage = data.trim()
+    } else if (fromCode) {
+      friendlyMessage = fromCode
     } else if (status === 401) {
       friendlyMessage = isLoginRequest
         ? 'Số CCCD hoặc mật khẩu không chính xác.'
@@ -129,6 +128,7 @@ apiClient.interceptors.response.use(
 
     const customError = new Error(friendlyMessage)
     customError.status = status
+    customError.errorCode = data?.errorCode || null
     customError.data = data
     customError.errors = data?.errors
     customError.response = error.response
