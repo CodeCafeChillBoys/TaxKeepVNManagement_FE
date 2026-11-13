@@ -20,8 +20,6 @@ const LIMIT_FIELDS = [
   { key: 'maxAiQuestionsPerMonth', label: 'Câu hỏi trợ lý AI', unit: 'câu/tháng' },
   { key: 'chatHistoryRetentionDays', label: 'Lưu lịch sử chat AI', unit: 'ngày', unlimitedLabel: 'Vĩnh viễn' },
   { key: 'maxOcrScansPerMonth', label: 'Lượt quét OCR', unit: 'lượt/tháng' },
-  { key: 'maxIncomeSources', label: 'Nguồn thu nhập tối đa', unit: 'nguồn' },
-  { key: 'maxDependents', label: 'Người phụ thuộc tối đa', unit: 'người' },
 ]
 
 /** Mặc định khớp CreateSubscriptionPlanRequest của BE */
@@ -34,8 +32,6 @@ const EMPTY_FORM = {
   maxAiQuestionsPerMonth: 20,
   chatHistoryRetentionDays: 30,
   maxOcrScansPerMonth: 5,
-  maxIncomeSources: 1,
-  maxDependents: 3,
   canExportPdf: false,
   canExportZip: false,
   bookingDiscountPercent: 0,

@@ -282,9 +282,6 @@ export function AdminSubscriptionPlansPage() {
                         <TableCell className="text-[11px] text-on-surface-variant leading-relaxed">
                           <div>AI: {formatLimit(plan.maxAiQuestionsPerMonth, 'câu/tháng')}</div>
                           <div>OCR: {formatLimit(plan.maxOcrScansPerMonth, 'lượt/tháng')}</div>
-                          <div>
-                            Nguồn thu nhập {formatLimit(plan.maxIncomeSources)}, NPT {formatLimit(plan.maxDependents)}
-                          </div>
                         </TableCell>
                         <TableCell className="text-center">
                           <StatusBadge active={plan.isActive} />
@@ -397,8 +394,6 @@ export function AdminSubscriptionPlansPage() {
                       : `${viewingPlan.chatHistoryRetentionDays} ngày`,
                   ],
                   ['Lượt quét OCR', formatLimit(viewingPlan.maxOcrScansPerMonth, 'lượt/tháng')],
-                  ['Nguồn thu nhập tối đa', formatLimit(viewingPlan.maxIncomeSources)],
-                  ['Người phụ thuộc tối đa', formatLimit(viewingPlan.maxDependents)],
                   ['Xuất PDF Mẫu 02/QTT-TNCN', viewingPlan.canExportPdf ? 'Có' : 'Chỉ xem'],
                   ['Xuất ZIP chứng từ', viewingPlan.canExportZip ? 'Có' : 'Không'],
                   ['Đặt lịch chuyên gia', bookingBenefit(viewingPlan)],
