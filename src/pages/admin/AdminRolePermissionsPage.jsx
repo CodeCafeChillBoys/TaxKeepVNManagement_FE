@@ -3,6 +3,8 @@ import { rolePermissionService } from '@/services/rolePermissionService'
 import { PermissionModal } from '@/components/admin/PermissionModal'
 import { ConfirmDialog, NotificationDialog } from '@/components/ui/notification-dialog'
 import { useAuth } from '@/hooks/useAuth'
+import { useDebounce } from '@/hooks/useDebounce'
+import { SectionLoading, TableLoadingRow } from '@/components/ui/loading'
 import {
   MANAGE_PERMISSION_CODE,
   isLockedPermission,
@@ -33,14 +35,16 @@ export function AdminRolePermissionsPage() {
   const [original, setOriginal] = useState(new Set())
   const [granted, setGranted] = useState(new Set())
   const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounce(search, 300)
   const [loadingRoles, setLoadingRoles] = useState(true)
   const [loadedKey, setLoadedKey] = useState(null)
   const [saving, setSaving] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
 
+  const debouncedRoleId = useDebounce(selectedRoleId, 120)
   const selectedRole = roles.find((r) => r.id === selectedRoleId) || null
-  const permsKey = `${selectedRoleId}:${reloadKey}`
-  const loadingPerms = selectedRoleId != null && loadedKey !== permsKey
+  const permsKey = `${debouncedRoleId}:${reloadKey}`
+  const loadingPerms = debouncedRoleId != null && loadedKey !== permsKey
   const dirty = !sameIdSet(original, granted)
 
   useEffect(() => {
@@ -55,11 +59,11 @@ export function AdminRolePermissionsPage() {
   }, [])
 
   useEffect(() => {
-    if (selectedRoleId == null) return
+    if (debouncedRoleId == null) return
     let mounted = true
-    const key = `${selectedRoleId}:${reloadKey}`
+    const key = `${debouncedRoleId}:${reloadKey}`
     rolePermissionService
-      .getRolePermissions(selectedRoleId)
+      .getRolePermissions(debouncedRoleId)
       .then((res) => {
         if (!mounted) return
         const perms = res?.permissions || []
@@ -72,9 +76,9 @@ export function AdminRolePermissionsPage() {
     return () => {
       mounted = false
     }
-  }, [selectedRoleId, reloadKey])
+  }, [debouncedRoleId, reloadKey])
 
-  const groups = useMemo(() => groupPermissions(rolePerms, search), [rolePerms, search])
+  const groups = useMemo(() => groupPermissions(rolePerms, debouncedSearch), [rolePerms, debouncedSearch])
 
   const chooseRole = (id) => {
     if (id === selectedRoleId) return
@@ -130,6 +134,7 @@ export function AdminRolePermissionsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [catalogSearch, setCatalogSearch] = useState('')
+  const debouncedCatalogSearch = useDebounce(catalogSearch, 300)
 
   const loadCatalog = useCallback(() => {
     setLoadingCatalog(true)
@@ -145,7 +150,7 @@ export function AdminRolePermissionsPage() {
     if (id === 'catalog') loadCatalog()
   }
 
-  const catalogGroups = useMemo(() => groupPermissions(catalog, catalogSearch), [catalog, catalogSearch])
+  const catalogGroups = useMemo(() => groupPermissions(catalog, debouncedCatalogSearch), [catalog, debouncedCatalogSearch])
   const groupSuggestions = useMemo(() => [...new Set(catalog.map((p) => p.groupName).filter(Boolean))], [catalog])
 
   const afterCatalogChange = () => {
@@ -190,7 +195,7 @@ export function AdminRolePermissionsPage() {
   }
 
   return (
-    <div className="p-space-xl flex flex-col gap-space-lg">
+    <div className="p-4 sm:p-6 lg:p-space-xl flex flex-col gap-space-lg">
       <div className="flex flex-col gap-1">
         <span className="font-label-sm uppercase tracking-wider text-secondary font-bold">QUẢN TRỊ TRUY CẬP</span>
         <h2 className="font-headline-md text-headline-md font-bold text-on-surface">Phân quyền hệ thống</h2>
@@ -199,12 +204,12 @@ export function AdminRolePermissionsPage() {
         </p>
       </div>
 
-      <div className="flex gap-2 border-b border-outline-variant/30">
+      <div className="flex gap-2 border-b border-outline-variant/30 overflow-x-auto">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => openTab(t.id)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px cursor-pointer ${
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px cursor-pointer whitespace-nowrap shrink-0 ${
               tab === t.id ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
             }`}
           >
@@ -218,7 +223,9 @@ export function AdminRolePermissionsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-space-lg items-start">
           {/* Danh sách vai trò */}
           <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/30 shadow-xs p-2 flex flex-col gap-1">
-            {loadingRoles && <p className="p-3 text-xs text-on-surface-variant">Đang tải vai trò...</p>}
+            {loadingRoles && (
+              <SectionLoading title="Đang tải vai trò..." minHeight="min-h-[120px]" size="sm" />
+            )}
             {roles.map((r) => (
               <button
                 key={r.id}
@@ -227,10 +234,7 @@ export function AdminRolePermissionsPage() {
                   r.id === selectedRoleId ? 'bg-primary/10 text-primary' : 'hover:bg-surface-container-low text-on-surface'
                 }`}
               >
-                <span className="flex flex-col">
-                  <span className="text-sm font-bold">{r.name}</span>
-                  <span className="text-[11px] font-mono text-on-surface-variant">{r.code}</span>
-                </span>
+                <span className="text-sm font-bold">{r.name}</span>
                 {!r.isActive && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-stone-100 text-stone-600 border border-stone-200">
                     Tạm tắt
@@ -249,12 +253,12 @@ export function AdminRolePermissionsPage() {
                   Đang bật {granted.size}/{rolePerms.length} quyền{dirty ? ' · có thay đổi chưa lưu' : ''}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full md:w-auto">
                 <div className="relative w-full md:w-64">
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Tìm mã, tên hoặc nhóm quyền..."
+                    placeholder="Tìm tên hoặc nhóm quyền..."
                     className="w-full h-9 pl-9 pr-3 rounded-lg border border-outline-variant/40 text-xs bg-surface-container-low focus:outline-none"
                   />
                   <span className="material-symbols-outlined absolute left-2.5 top-2 text-outline text-[18px]">search</span>
@@ -262,14 +266,14 @@ export function AdminRolePermissionsPage() {
                 <button
                   disabled={!dirty || saving}
                   onClick={() => setGranted(new Set(original))}
-                  className="h-9 px-3 rounded-lg border border-outline-variant/50 text-xs font-semibold disabled:opacity-40 cursor-pointer"
+                  className="h-9 px-3 rounded-lg border border-outline-variant/50 text-xs font-semibold disabled:opacity-40 cursor-pointer shrink-0"
                 >
                   Hoàn tác
                 </button>
                 <button
                   disabled={!dirty || saving}
                   onClick={save}
-                  className="h-9 px-4 rounded-lg bg-primary text-on-primary text-xs font-bold disabled:opacity-40 cursor-pointer"
+                  className="h-9 px-4 rounded-lg bg-primary text-on-primary text-xs font-bold disabled:opacity-40 cursor-pointer shrink-0"
                 >
                   {saving ? 'Đang lưu...' : 'Lưu phân quyền'}
                 </button>
@@ -277,7 +281,7 @@ export function AdminRolePermissionsPage() {
             </div>
 
             {loadingPerms ? (
-              <p className="p-space-lg text-xs text-on-surface-variant">Đang tải quyền của vai trò...</p>
+              <SectionLoading title="Đang tải quyền của vai trò..." minHeight="min-h-[200px]" />
             ) : groups.length === 0 ? (
               <p className="p-space-lg text-xs text-on-surface-variant">Không có quyền nào khớp từ khóa.</p>
             ) : (
@@ -306,7 +310,7 @@ export function AdminRolePermissionsPage() {
                             <label
                               key={p.id}
                               className={`flex items-start gap-2 py-1 ${locked ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                              title={locked ? 'Không thể gỡ quyền quản trị phân quyền khỏi vai trò của chính bạn' : p.code}
+                              title={locked ? 'Không thể gỡ quyền quản trị phân quyền khỏi vai trò của chính bạn' : p.name}
                             >
                               <input
                                 type="checkbox"
@@ -317,10 +321,11 @@ export function AdminRolePermissionsPage() {
                               />
                               <span className="flex flex-col">
                                 <span className="text-sm text-on-surface">{p.name}</span>
-                                <span className="text-[11px] font-mono text-on-surface-variant">
-                                  {p.code}
-                                  {locked && ' · khóa để tránh mất quyền truy cập trang này'}
-                                </span>
+                                {locked && (
+                                  <span className="text-[11px] text-on-surface-variant">
+                                    Khóa để tránh mất quyền truy cập trang này
+                                  </span>
+                                )}
                               </span>
                             </label>
                           )
@@ -342,7 +347,7 @@ export function AdminRolePermissionsPage() {
               <input
                 value={catalogSearch}
                 onChange={(e) => setCatalogSearch(e.target.value)}
-                placeholder="Tìm mã, tên hoặc nhóm quyền..."
+                placeholder="Tìm tên hoặc nhóm quyền..."
                 className="w-full h-9 pl-9 pr-3 rounded-lg border border-outline-variant/40 text-xs bg-surface-container-low focus:outline-none"
               />
               <span className="material-symbols-outlined absolute left-2.5 top-2 text-outline text-[18px]">search</span>
@@ -359,7 +364,6 @@ export function AdminRolePermissionsPage() {
             <table className="w-full text-left border-collapse text-sm">
               <thead>
                 <tr className="bg-surface-container-low/70 text-secondary font-bold text-xs uppercase tracking-wider border-b border-surface-container-high">
-                  <th className="py-3 px-4">Mã quyền</th>
                   <th className="py-3 px-4">Tên quyền</th>
                   <th className="py-3 px-4">Nhóm</th>
                   <th className="py-3 px-4 text-right">Thao tác</th>
@@ -368,8 +372,7 @@ export function AdminRolePermissionsPage() {
               <tbody className="divide-y divide-surface-container-high/40">
                 {catalogGroups.flatMap(({ items }) => items).map((p) => (
                   <tr key={p.id} className="hover:bg-surface-container-low/30">
-                    <td className="py-2.5 px-4 font-mono text-xs font-semibold">{p.code}</td>
-                    <td className="py-2.5 px-4">{p.name}</td>
+                    <td className="py-2.5 px-4 font-medium text-on-surface">{p.name}</td>
                     <td className="py-2.5 px-4 text-xs text-on-surface-variant">{p.groupName}</td>
                     <td className="py-2.5 px-4 text-right whitespace-nowrap">
                       <button
@@ -392,15 +395,11 @@ export function AdminRolePermissionsPage() {
                   </tr>
                 ))}
                 {loadingCatalog && (
-                  <tr>
-                    <td colSpan={4} className="py-10 text-center text-xs text-on-surface-variant">
-                      Đang tải danh mục quyền...
-                    </td>
-                  </tr>
+                  <TableLoadingRow colSpan={3} title="Đang tải danh mục quyền..." />
                 )}
                 {!loadingCatalog && catalogGroups.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-10 text-center text-xs text-on-surface-variant">
+                    <td colSpan={3} className="py-10 text-center text-xs text-on-surface-variant">
                       Không có quyền nào.
                     </td>
                   </tr>
@@ -428,7 +427,7 @@ export function AdminRolePermissionsPage() {
         onOpenChange={(o) => !o && setDeleteTarget(null)}
         type="destructive"
         title="Xóa quyền"
-        description={`Xóa quyền "${deleteTarget?.name}" (${deleteTarget?.code})? Quyền đang được gán cho vai trò nào thì phải thu hồi trước mới xóa được.`}
+        description={`Xóa quyền "${deleteTarget?.name}"? Quyền đang được gán cho vai trò nào thì phải thu hồi trước mới xóa được.`}
         confirmText="Xóa quyền"
         loading={deleting}
         onConfirm={confirmDelete}

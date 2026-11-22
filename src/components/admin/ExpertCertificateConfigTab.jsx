@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { expertCertificateConfigService } from '@/services/expertCertificateConfigService'
 import { ExpertCertificateModal } from '@/components/admin/ExpertCertificateModal'
 import { useDebounce } from '@/hooks/useDebounce'
+import { SectionLoading } from '@/components/ui/loading'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -165,7 +166,7 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
               <p className="text-[11px] font-medium text-on-surface-variant">Tổng danh mục</p>
               <p className="text-xl font-bold text-on-surface tabular-nums mt-0.5">{items.length}</p>
             </div>
-            <Badge variant="outline">Loại văn bằng</Badge>
+            <span className="text-xs text-on-surface-variant">Loại văn bằng</span>
           </CardContent>
         </Card>
 
@@ -175,10 +176,10 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
               <p className="text-[11px] font-medium text-on-surface-variant">Đang áp dụng</p>
               <p className="text-xl font-bold text-on-surface tabular-nums mt-0.5">{activeCount}</p>
             </div>
-            <Badge variant="secondary">
+            <span className="inline-flex items-center gap-1.5 text-xs text-on-surface-variant">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
               Hoạt động
-            </Badge>
+            </span>
           </CardContent>
         </Card>
 
@@ -190,7 +191,7 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
                 {requiresExpiryCount}
               </p>
             </div>
-            <Badge variant="outline">Cần ngày hết hạn</Badge>
+            <span className="text-xs text-on-surface-variant">Cần ngày hết hạn</span>
           </CardContent>
         </Card>
       </div>
@@ -200,7 +201,7 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
         <CardContent className="p-3 flex flex-col md:flex-row items-center justify-between gap-2.5">
           <div className="flex flex-1 items-center gap-2 w-full">
             <Input
-              placeholder="Tìm theo mã, tên chứng chỉ hoặc cơ quan cấp..."
+              placeholder="Tìm theo tên chứng chỉ hoặc cơ quan cấp..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="max-w-sm"
@@ -231,9 +232,8 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
       {/* Bảng dữ liệu */}
       <Card>
         {isLoading ? (
-          <CardContent className="py-16 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
-            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs font-medium">Đang tải danh mục chứng chỉ...</span>
+          <CardContent className="p-0">
+            <SectionLoading title="Đang tải danh mục chứng chỉ..." minHeight="min-h-[200px]" />
           </CardContent>
         ) : filteredItems.length === 0 ? (
           <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-2">
@@ -250,7 +250,6 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-16 text-center">Thứ tự</TableHead>
-                <TableHead className="w-36">Mã</TableHead>
                 <TableHead>Tên loại chứng chỉ & Cơ quan cấp</TableHead>
                 <TableHead className="text-center w-36">Thời hạn</TableHead>
                 <TableHead className="text-center w-32">Trạng thái</TableHead>
@@ -260,13 +259,8 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
             <TableBody>
               {filteredItems.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="text-center font-mono text-on-surface-variant tabular-nums">
+                  <TableCell className="text-center text-on-surface-variant tabular-nums">
                     {item.displayOrder ?? 1}
-                  </TableCell>
-                  <TableCell>
-                    <span className="font-mono text-xs font-semibold text-on-surface">
-                      {item.code}
-                    </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-0.5">
@@ -278,27 +272,23 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant="outline">
-                      {item.requiresExpiryDate ? 'Có hạn hiệu lực' : 'Vô thời hạn'}
-                    </Badge>
+                  <TableCell className="text-center text-xs text-on-surface-variant">
+                    {item.requiresExpiryDate ? 'Có hạn hiệu lực' : 'Vô thời hạn'}
                   </TableCell>
                   <TableCell className="text-center">
                     <button
                       type="button"
                       disabled={togglingId === item.id}
                       onClick={() => handleToggleActive(item)}
-                      className="cursor-pointer disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-outline-variant/40 bg-surface-container-low text-xs font-medium text-on-surface hover:bg-surface-container cursor-pointer disabled:opacity-50"
                       title="Nhấn để bật/tắt"
                     >
-                      <Badge variant="secondary">
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            item.isActive ? 'bg-emerald-600' : 'bg-stone-400'
-                          }`}
-                        />
-                        {item.isActive ? 'Đang áp dụng' : 'Tạm ngưng'}
-                      </Badge>
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          item.isActive ? 'bg-emerald-600' : 'bg-stone-400'
+                        }`}
+                      />
+                      {item.isActive ? 'Đang áp dụng' : 'Tạm ngưng'}
                     </button>
                   </TableCell>
                   <TableCell className="text-right">
@@ -310,7 +300,7 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
                         onClick={() => setViewingItem(item)}
                         className="h-7 px-2 text-[11px]"
                       >
-                        Chi tiết
+                        Xem chi tiết
                       </Button>
                       <Button
                         type="button"
@@ -326,7 +316,7 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
                         variant="ghost"
                         size="sm"
                         onClick={() => setDeletingItem(item)}
-                        className="h-7 px-2 text-[11px] text-red-600 hover:text-red-700 hover:bg-red-50/60"
+                        className="h-7 px-2 text-[11px] text-on-surface-variant hover:text-error"
                       >
                         Xóa
                       </Button>
@@ -359,19 +349,17 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
             <div className="flex flex-col gap-3 text-xs">
               <div className="p-3 rounded-lg border border-outline-variant/40 bg-surface-container-low/40 flex flex-col gap-1">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono font-semibold text-on-surface">
-                    {viewingItem.code}
-                  </span>
-                  <Badge variant="secondary">
+                  <span className="text-[11px] text-on-surface-variant">Tên văn bằng</span>
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-on-surface">
                     <span
                       className={`w-1.5 h-1.5 rounded-full ${
                         viewingItem.isActive ? 'bg-emerald-600' : 'bg-stone-400'
                       }`}
                     />
                     {viewingItem.isActive ? 'Đang áp dụng' : 'Tạm ngưng'}
-                  </Badge>
+                  </span>
                 </div>
-                <p className="text-sm font-bold text-on-surface mt-1">{viewingItem.name}</p>
+                <p className="text-sm font-bold text-on-surface mt-0.5">{viewingItem.name}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-2.5">

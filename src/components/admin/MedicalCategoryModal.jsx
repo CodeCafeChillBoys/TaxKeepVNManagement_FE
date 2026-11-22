@@ -60,31 +60,27 @@ export function MedicalCategoryModal({ mode = 'create', initialData = null, dele
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-space-md pt-1">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
-            <div className="flex flex-col gap-1.5">
-              {label('Mã danh mục', isCreate)}
-              {isCreate ? (
+          <div className={`grid grid-cols-1 ${isCreate ? 'md:grid-cols-2' : ''} gap-space-md`}>
+            {isCreate && (
+              <div className="flex flex-col gap-1.5">
+                {label('Mã định danh danh mục', true)}
                 <input
                   autoFocus
                   value={form.categoryCode}
                   onChange={(e) => setForm((f) => ({ ...f, categoryCode: e.target.value.toUpperCase() }))}
-                  placeholder="VD: EXCLUDED_COSMETIC"
+                  placeholder="VD: CHI_PHI_THAM_MY"
                   className={`${inputBase} h-10 font-mono ${border('categoryCode')}`}
                 />
-              ) : (
-                <div className={`${inputBase} h-10 flex items-center font-mono text-on-surface-variant border-outline-variant/40`}>
-                  {form.categoryCode}
-                </div>
-              )}
-              {err('categoryCode')}
-              {willRestore && (
-                <p className="text-[11px] text-amber-700 font-medium">
-                  Mã này thuộc một danh mục đã xóa. Lưu sẽ khôi phục danh mục đó với nội dung mới.
-                </p>
-              )}
-            </div>
+                {err('categoryCode')}
+                {willRestore && (
+                  <p className="text-[11px] text-on-surface-variant font-medium">
+                    Mã này thuộc một danh mục đã xóa. Lưu sẽ khôi phục danh mục đó với nội dung mới.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
-              {label('Mã mục trên bảng kê', true)}
+              {label('Mục trên bảng kê khám chữa bệnh', true)}
               <input
                 value={form.sectionCode}
                 onChange={set('sectionCode')}
@@ -113,11 +109,11 @@ export function MedicalCategoryModal({ mode = 'create', initialData = null, dele
           </div>
 
           <div className="flex flex-col gap-1.5">
-            {label('Kết quả với giảm trừ thuế TNCN', true)}
+            {label('Quy định giảm trừ thuế thu nhập cá nhân', true)}
             <div className="grid grid-cols-2 gap-2">
               {[
-                { v: true, text: 'Được giảm trừ', cls: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
-                { v: false, text: 'Loại trừ', cls: 'border-red-300 bg-red-50 text-red-800' },
+                { v: true, text: 'Được giảm trừ', cls: 'border-primary bg-primary/10 text-primary' },
+                { v: false, text: 'Loại trừ', cls: 'border-outline-variant bg-surface-container text-on-surface' },
               ].map((o) => (
                 <button
                   key={String(o.v)}
@@ -139,11 +135,11 @@ export function MedicalCategoryModal({ mode = 'create', initialData = null, dele
               rows={2}
               value={form.keywords}
               onChange={set('keywords')}
-              placeholder="Ngăn cách bằng dấu phẩy. VD: nâng mũi, cắt mí, botox"
+              placeholder="Ngăn cách bằng dấu phẩy. VD: nâng mũi, cắt mí, chăm sóc da"
               className={`${inputBase} py-2 border-outline-variant/40`}
             />
             <p className="text-[11px] text-on-surface-variant">
-              AI dùng các từ khóa này để xếp từng dòng trên bảng kê vào danh mục.
+              Hệ thống đối chiếu các từ khóa này để phân loại từng dòng chi phí trên bảng kê.
             </p>
           </div>
 

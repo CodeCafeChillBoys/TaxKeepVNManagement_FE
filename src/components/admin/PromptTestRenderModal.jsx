@@ -10,8 +10,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { adminPromptTemplateService } from '@/services/adminPromptTemplateService'
+import {
+  formatPromptKeyLabel,
+  formatPromptVariableLabel,
+} from '@/utils/configDataTypeUtils'
 
 export function PromptTestRenderModal({
   isOpen,
@@ -119,18 +122,15 @@ export function PromptTestRenderModal({
         <DialogHeader className="p-6 pb-4 bg-surface-container-low border-b border-outline-variant/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-[24px]">terminal</span>
+              <div className="w-10 h-10 rounded-xl bg-surface-container text-on-surface flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[24px]">fact_check</span>
               </div>
               <div>
                 <DialogTitle className="text-base font-bold text-on-surface flex items-center gap-2">
-                  <span>Thử nghiệm Render Prompt</span>
-                  <Badge variant="outline" className="font-mono text-[11px] text-primary border-primary/30 bg-primary/5">
-                    {prompt.prompt_key}
-                  </Badge>
+                  <span>Kiểm tra ghép dữ liệu mẫu: {formatPromptKeyLabel(prompt.prompt_key)}</span>
                 </DialogTitle>
                 <DialogDescription className="text-xs text-on-surface-variant mt-0.5">
-                  Kiểm tra xem nội dung prompt được giải mã và điền biến thực tế như thế nào trước khi chạy thật.
+                  Kiểm tra xem nội dung chỉ dẫn sau khi điền thông tin thực tế sẽ hiển thị như thế nào trước khi áp dụng.
                 </DialogDescription>
               </div>
             </div>
@@ -141,7 +141,7 @@ export function PromptTestRenderModal({
               size="sm"
               onClick={handleFillSampleData}
               className="text-xs h-8 flex items-center gap-1.5 shrink-0"
-              title="Điền dữ liệu giả lập cho tất cả các biến"
+              title="Điền dữ liệu mẫu cho tất cả các mục thông tin"
             >
               <span className="material-symbols-outlined text-[16px]">auto_fix_high</span>
               <span>Điền mẫu nhanh</span>
@@ -151,61 +151,61 @@ export function PromptTestRenderModal({
 
         {/* Content Body: 2 Columns Layout */}
         <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-5 max-h-[72vh] overflow-y-auto">
-          {/* Cột trái: Nhập giá trị các biến tham số (5 columns) */}
+          {/* Cột trái: Nhập giá trị các mục thông tin (5 columns) */}
           <div className="md:col-span-5 flex flex-col gap-3.5 border-r border-outline-variant/30 pr-0 md:pr-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-on-surface uppercase tracking-wider flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-[16px] text-primary">tune</span>
-                <span>Tham số đầu vào (Params)</span>
+                <span>Thông tin đầu vào</span>
               </span>
               <span className="text-[11px] text-on-surface-variant">
-                {paramKeys.length} biến
+                {paramKeys.length} mục
               </span>
             </div>
 
             {paramKeys.length === 0 ? (
               <div className="p-4 rounded-xl bg-surface-container-low text-center text-xs text-on-surface-variant">
-                Prompt này không có biến tham số nào. Bạn có thể nhấn Render ngay để kiểm tra nguyên mẫu.
+                Mẫu chỉ dẫn này không có mục thông tin chèn tự động. Bạn có thể nhấn Kiểm tra ngay để xem nguyên mẫu.
               </div>
             ) : (
               <div className="flex flex-col gap-2.5">
                 {paramKeys.map((key) => (
                   <div key={key} className="flex flex-col gap-1">
                     <div className="flex items-center justify-between">
-                      <Label className="text-[11px] font-mono font-bold text-primary">
-                        {`{${key}}`}
+                      <Label className="text-[11px] font-bold text-on-surface">
+                        {formatPromptVariableLabel(key)}
                       </Label>
                       <button
                         type="button"
                         onClick={() => handleRemoveParam(key)}
                         className="text-on-surface-variant hover:text-red-600 text-[10px] cursor-pointer"
-                        title="Bỏ biến này khỏi thử nghiệm"
+                        title="Bỏ mục này khỏi lần kiểm tra"
                       >
                         gỡ
                       </button>
                     </div>
                     <Input
-                      placeholder={`Giá trị cho ${key}...`}
+                      placeholder={`Nhập nội dung cho ${formatPromptVariableLabel(key).toLowerCase()}...`}
                       value={params[key]}
                       onChange={(e) => handleParamChange(key, e.target.value)}
-                      className="h-8 text-xs font-mono"
+                      className="h-8 text-xs"
                     />
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Thêm biến tùy biến khác */}
+            {/* Thêm mục tùy biến khác */}
             <div className="pt-2 border-t border-outline-variant/20 flex flex-col gap-1.5">
               <span className="text-[11px] font-medium text-on-surface-variant">
-                Thêm tham số tùy biến:
+                Thêm thông tin thử nghiệm:
               </span>
               <div className="flex items-center gap-1.5">
                 <Input
-                  placeholder="Tên biến..."
+                  placeholder="Tên mục..."
                   value={newParamKey}
                   onChange={(e) => setNewParamKey(e.target.value)}
-                  className="h-7 text-[11px] font-mono flex-1"
+                  className="h-7 text-[11px] flex-1"
                 />
                 <Input
                   placeholder="Giá trị..."
@@ -225,7 +225,7 @@ export function PromptTestRenderModal({
               </div>
             </div>
 
-            {/* Nút hành động Render */}
+            {/* Nút hành động */}
             <Button
               type="button"
               onClick={handleTestRender}
@@ -235,23 +235,23 @@ export function PromptTestRenderModal({
               {isRendering ? (
                 <>
                   <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Đang render thử nghiệm...</span>
+                  <span>Đang ghép nội dung...</span>
                 </>
               ) : (
                 <>
                   <span className="material-symbols-outlined text-[18px]">play_arrow</span>
-                  <span>Render Thử Nghiệm</span>
+                  <span>Xem nội dung sau khi ghép</span>
                 </>
               )}
             </Button>
           </div>
 
-          {/* Cột phải: Kết quả Render (7 columns) */}
+          {/* Cột phải: Kết quả (7 columns) */}
           <div className="md:col-span-7 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-on-surface uppercase tracking-wider flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-emerald-600">visibility</span>
-                <span>Kết quả Render (Rendered Output)</span>
+                <span className="material-symbols-outlined text-[16px] text-on-surface-variant">visibility</span>
+                <span>Nội dung sau khi ghép</span>
               </span>
 
               {renderResult?.rendered_prompt && (
@@ -279,37 +279,36 @@ export function PromptTestRenderModal({
 
             {renderResult ? (
               <div className="flex flex-col gap-2">
-                {/* Danh sách biến đã dùng */}
+                {/* Danh sách mục đã ghép */}
                 <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                  <span className="text-on-surface-variant font-medium">Biến đã nội suy:</span>
+                  <span className="text-on-surface-variant font-medium">Thông tin đã ghép:</span>
                   {renderResult.variables_used && renderResult.variables_used.length > 0 ? (
                     renderResult.variables_used.map((v) => (
-                      <Badge
+                      <span
                         key={v}
-                        variant="outline"
-                        className="font-mono text-[10px] text-emerald-800 bg-emerald-50 border-emerald-300"
+                        className="text-[11px] font-medium text-on-surface bg-surface-container border border-outline-variant/40 rounded px-2 py-0.5"
                       >
-                        ✓ {v}
-                      </Badge>
+                        ✓ {formatPromptVariableLabel(v)}
+                      </span>
                     ))
                   ) : (
-                    <span className="text-on-surface-variant italic">Không có biến nào</span>
+                    <span className="text-on-surface-variant italic">Không có mục nào</span>
                   )}
                 </div>
 
-                {/* Khung nội dung render */}
-                <div className="p-4 rounded-xl bg-surface-container-high border border-outline-variant/40 font-mono text-xs text-on-surface whitespace-pre-wrap leading-relaxed max-h-[460px] overflow-y-auto select-text">
+                {/* Khung nội dung */}
+                <div className="p-4 rounded-xl bg-surface-container-high border border-outline-variant/40 text-xs text-on-surface whitespace-pre-wrap leading-relaxed max-h-[460px] overflow-y-auto select-text">
                   {renderResult.rendered_prompt}
                 </div>
               </div>
             ) : (
               <div className="p-8 rounded-xl bg-surface-container-low/70 border border-outline-variant/30 flex flex-col items-center justify-center text-center gap-2 h-full min-h-[260px]">
                 <span className="material-symbols-outlined text-4xl text-on-surface-variant/40">
-                  smart_toy
+                  description
                 </span>
-                <p className="font-semibold text-xs text-on-surface">Chưa thực hiện Render</p>
+                <p className="font-semibold text-xs text-on-surface">Chưa có nội dung ghép thử</p>
                 <p className="text-[11px] text-on-surface-variant max-w-sm">
-                  Nhập các giá trị tham số ở cột bên trái hoặc bấm "Điền mẫu nhanh", sau đó nhấn "Render Thử Nghiệm" để xem kết quả.
+                  Nhập các thông tin ở cột bên trái hoặc bấm "Điền mẫu nhanh", sau đó nhấn "Xem nội dung sau khi ghép" để kiểm tra.
                 </p>
               </div>
             )}

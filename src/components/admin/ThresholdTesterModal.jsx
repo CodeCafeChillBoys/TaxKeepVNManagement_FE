@@ -1,8 +1,9 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { systemConfigService } from '@/services/systemConfigService'
+import { formatDocTypeCode } from '@/utils/configDataTypeUtils'
 
 export function ThresholdTesterModal({ isOpen, onClose }) {
-  const [selectedCategory, setSelectedCategory] = useState('MEDICAL_EXPENSE_INVOICE')
+  const [selectedCategory, setSelectedCategory] = useState('MEDICAL_RECEIPT')
   const [customCategory, setCustomCategory] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState(null)
@@ -11,12 +12,15 @@ export function ThresholdTesterModal({ isOpen, onClose }) {
   if (!isOpen) return null
 
   const standardCategories = [
-    { code: 'MEDICAL_EXPENSE_INVOICE', name: 'Hóa đơn viện phí - y tế' },
-    { code: 'EDUCATION_EXPENSE_INVOICE', name: 'Hóa đơn học phí - giáo dục' },
-    { code: 'DONATION_VOUCHER', name: 'Chứng từ từ thiện - đóng góp nhân đạo' },
-    { code: 'SALES_INVOICE', name: 'Hóa đơn bán hàng thông thường' },
+    { code: 'MEDICAL_RECEIPT', name: 'Biên lai viện phí khám chữa bệnh' },
+    { code: 'MEDICAL_COST_STATEMENT', name: 'Bảng kê chi phí khám chữa bệnh' },
+    { code: 'EDUCATION_RECEIPT', name: 'Biên lai học phí - giáo dục đào tạo' },
+    { code: 'DONATION_RECEIPT', name: 'Chứng từ đóng góp từ thiện, nhân đạo' },
+    { code: 'WITHHOLDING_VOUCHER', name: 'Chứng từ khấu trừ thuế thu nhập cá nhân' },
     { code: 'VAT_INVOICE', name: 'Hóa đơn giá trị gia tăng (GTGT)' },
-    { code: '__CUSTOM__', name: 'Kiểm tra theo mã loại chứng từ khác...' },
+    { code: 'SALES_INVOICE', name: 'Hóa đơn bán hàng thông thường' },
+    { code: 'INSURANCE_PREMIUM_RECEIPT', name: 'Biên lai bảo hiểm nhân thọ / hưu trí tự nguyện' },
+    { code: 'INCOME_PAYSLIP', name: 'Phiếu lương & Xác nhận thu nhập' },
   ]
 
   const handleTest = async () => {
@@ -33,7 +37,6 @@ export function ThresholdTesterModal({ isOpen, onClose }) {
       const data = await systemConfigService.testResolveThreshold(codeToTest || null)
       setResult(data)
     } catch (err) {
-      console.error('Lỗi khi kiểm tra quy tắc xét duyệt:', err)
       setError(err?.message || 'Không thể kết nối máy chủ để kiểm tra quy tắc xét duyệt.')
     } finally {
       setIsLoading(false)
@@ -149,25 +152,28 @@ export function ThresholdTesterModal({ isOpen, onClose }) {
 
         {/* Kết quả */}
         {result && (
-          <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex flex-col gap-3 animate-in fade-in-0">
+          <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant/40 flex flex-col gap-3 animate-in fade-in-0">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[18px] text-emerald-600">check_circle</span>
+                <span className="material-symbols-outlined text-[18px] text-primary">check_circle</span>
                 Mức độ chính xác yêu cầu:
               </span>
-              <div className="px-3.5 py-1.5 rounded-full bg-emerald-600 text-white text-sm font-bold shadow-xs flex items-center gap-1">
-                <span>{(result.resolved_threshold * 100).toFixed(0)}%</span>
-                <span className="text-[11px] opacity-80 font-normal">({result.resolved_threshold})</span>
+              <div className="px-3.5 py-1 rounded-lg bg-primary text-on-primary text-sm font-bold shadow-xs">
+                {(result.resolved_threshold * 100).toFixed(0)}%
               </div>
             </div>
 
             <div className="text-xs text-on-surface-variant font-medium leading-relaxed bg-surface-container-lowest p-3 rounded-lg border border-outline-variant/20">
-              <p className="text-on-surface">{result.note}</p>
+              <p className="text-on-surface">
+                Hệ thống áp dụng mức độ chính xác tối thiểu{' '}
+                <strong>{(result.resolved_threshold * 100).toFixed(0)}%</strong> khi kiểm tra{' '}
+                <strong>{formatDocTypeCode(result.category_code || selectedCategory)}</strong>.
+              </p>
               <div className="mt-2.5 pt-2.5 border-t border-surface-container-high/40 text-[11px] text-on-surface-variant flex items-start gap-2">
-                <span className="material-symbols-outlined text-[16px] text-amber-600 shrink-0 mt-0.5">verified_user</span>
+                <span className="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0 mt-0.5">verified_user</span>
                 <span>
-                  <strong className="text-on-surface">Lưu ý kiểm soát an toàn thông tin:</strong> Kể cả khi điểm quét tổng thể đạt mức yêu cầu &ge;{' '}
-                  <strong className="text-primary font-bold">{(result.resolved_threshold * 100).toFixed(0)}%</strong>, các mục thông tin bắt buộc gồm: <strong>Tổng tiền</strong>, <strong>Mã số thuế bên bán</strong>, <strong>CCCD/MST người mua</strong> và <strong>Số hóa đơn</strong> phải đạt độ nét và chính xác cao. Nếu có bất kỳ trường nào mờ hoặc thiếu, hệ thống sẽ tự động chuyển sang trạng thái chờ chuyên viên kiểm tra trực tiếp.
+                  <strong className="text-on-surface">Lưu ý kiểm soát an toàn thông tin:</strong> Kể cả khi mức độ rõ nét tổng thể đạt &ge;{' '}
+                  <strong className="text-on-surface font-bold">{(result.resolved_threshold * 100).toFixed(0)}%</strong>, các mục thông tin bắt buộc gồm: <strong>Tổng số tiền</strong>, <strong>Mã số thuế đơn vị phát hành</strong>, <strong>Số CCCD / Mã số thuế người nộp</strong> và <strong>Số ký hiệu chứng từ</strong> phải đầy đủ và rõ nét. Nếu có mục nào mờ hoặc thiếu, hồ sơ sẽ chuyển sang trạng thái chờ chuyên viên rà soát trực tiếp.
                 </span>
               </div>
             </div>

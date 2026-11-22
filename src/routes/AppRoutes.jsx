@@ -1,22 +1,20 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { LoginPage } from '@/pages/LoginPage'
-import { RegisterPage } from '@/pages/RegisterPage'
+import { VerifyEmailPage } from '@/pages/VerifyEmailPage'
+import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage'
+import { ResetPasswordPage } from '@/pages/ResetPasswordPage'
 import { AdminDashboard } from '@/pages/admin/AdminDashboard'
-import { ExpertDashboard } from '@/pages/expert/ExpertDashboard'
 import { PaymentResultPage } from '@/pages/PaymentResultPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { ProtectedRoute } from './ProtectedRoute'
 import { PublicRoute } from './PublicRoute'
 import { useAuth } from '@/hooks/useAuth'
+import { PageLoading } from '@/components/ui/loading'
 
 function RootRedirect() {
-  const { isAuthenticated, isLoading, user } = useAuth()
-  if (isLoading) return null
+  const { isAuthenticated, isLoading } = useAuth()
+  if (isLoading) return <PageLoading title="Đang chuyển hướng hệ thống..." />
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  const role = (user?.userRole || user?.role || '').toLowerCase()
-  if (role === 'expert') {
-    return <Navigate to="/expert" replace />
-  }
   return <Navigate to="/admin" replace />
 }
 
@@ -35,11 +33,21 @@ export function AppRoutes() {
           </PublicRoute>
         }
       />
+      <Route path="/register" element={<Navigate to="/login" replace />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
       <Route
-        path="/register"
+        path="/forgot-password"
         element={
           <PublicRoute>
-            <RegisterPage />
+            <ForgotPasswordPage />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="/reset-password"
+        element={
+          <PublicRoute>
+            <ResetPasswordPage />
           </PublicRoute>
         }
       />
@@ -68,32 +76,6 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminDashboard />
-          </ProtectedRoute>
-        }
-      />
-
-      {/* Protected Expert Routes */}
-      <Route
-        path="/expert"
-        element={
-          <ProtectedRoute allowedRoles={['expert']}>
-            <ExpertDashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/expert/:section"
-        element={
-          <ProtectedRoute allowedRoles={['expert']}>
-            <ExpertDashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/expert/:section/:id"
-        element={
-          <ProtectedRoute allowedRoles={['expert']}>
-            <ExpertDashboard />
           </ProtectedRoute>
         }
       />

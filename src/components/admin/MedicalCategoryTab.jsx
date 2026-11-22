@@ -3,6 +3,8 @@ import { medicalCategoryService } from '@/services/medicalCategoryService'
 import { MedicalCategoryModal } from '@/components/admin/MedicalCategoryModal'
 import { ConfirmDialog } from '@/components/ui/notification-dialog'
 import { SECTION_OPTIONS, sectionLabel, splitKeywords, filterCategories } from '@/utils/medicalCategoryUtils'
+import { useDebounce } from '@/hooks/useDebounce'
+import { TableLoadingRow } from '@/components/ui/loading'
 
 const selectClass =
   'h-9 px-3 rounded-lg border border-outline-variant/40 text-xs font-semibold bg-surface-container-low focus:outline-none cursor-pointer'
@@ -30,7 +32,12 @@ export function MedicalCategoryTab({ onShowToast }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ tải một lần khi mở tab
   }, [])
 
-  const visible = useMemo(() => filterCategories(items, filters), [items, filters])
+  const debouncedSearch = useDebounce(filters.search, 300)
+  const debouncedFilters = useMemo(
+    () => ({ ...filters, search: debouncedSearch }),
+    [filters, debouncedSearch]
+  )
+  const visible = useMemo(() => filterCategories(items, debouncedFilters), [items, debouncedFilters])
   const activeCount = items.filter((c) => !c.isDeleted).length
   const deletedCodes = useMemo(() => items.filter((c) => c.isDeleted).map((c) => c.categoryCode), [items])
   const setFilter = (key) => (e) => setFilters((f) => ({ ...f, [key]: e.target.value }))
@@ -79,12 +86,10 @@ export function MedicalCategoryTab({ onShowToast }) {
 
   return (
     <div className="flex flex-col gap-space-md">
-      <div className="p-4 rounded-xl bg-sky-50/80 border border-sky-200/80 text-sky-900 text-sm flex items-start gap-3">
-        <span className="material-symbols-outlined text-sky-600 text-[20px] mt-0.5 shrink-0">info</span>
-        <span className="text-[13px] leading-relaxed">
-          Khi người dùng tải <strong>bảng kê chi phí KCB</strong>, AI dùng danh mục này (tên, mô tả, từ khóa) để xếp từng dòng
-          chi phí vào loại <strong>được giảm trừ</strong> hoặc <strong>loại trừ</strong>. Thay đổi chỉ áp dụng cho bảng kê tải
-          lên sau đó, không tính lại bảng kê cũ.
+      <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant/40 text-on-surface-variant text-xs flex items-start gap-3">
+        <span className="material-symbols-outlined text-on-surface-variant text-[18px] mt-0.5 shrink-0">info</span>
+        <span className="leading-relaxed">
+          Khi người nộp thuế tải lên <strong className="text-on-surface">bảng kê chi phí khám chữa bệnh</strong>, hệ thống đối chiếu danh mục này (tên khoản mục, mô tả, từ khóa) để phân loại từng dòng chi phí vào nhóm <strong className="text-on-surface">được giảm trừ</strong> hoặc <strong className="text-on-surface">loại trừ</strong>. Thay đổi áp dụng cho các hồ sơ tải lên tiếp theo.
         </span>
       </div>
 
@@ -112,7 +117,7 @@ export function MedicalCategoryTab({ onShowToast }) {
             <input
               value={filters.search}
               onChange={setFilter('search')}
-              placeholder="Tìm mã, tên, từ khóa..."
+              placeholder="Tìm tên danh mục, từ khóa..."
               className="w-full h-9 pl-9 pr-3 rounded-lg border border-outline-variant/40 text-xs bg-surface-container-low focus:outline-none"
             />
             <span className="material-symbols-outlined absolute left-2.5 top-2 text-outline text-[18px]">search</span>
@@ -131,10 +136,10 @@ export function MedicalCategoryTab({ onShowToast }) {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead>
-              <tr className="bg-surface-container-low/70 text-secondary font-bold text-xs uppercase tracking-wider border-b border-surface-container-high">
-                <th className="py-3 px-4">Mã / Tên danh mục</th>
+              <tr className="bg-surface-container-low/70 text-on-surface-variant font-bold text-xs uppercase tracking-wider border-b border-surface-container-high">
+                <th className="py-3 px-4">Tên danh mục</th>
                 <th className="py-3 px-4">Mục bảng kê</th>
-                <th className="py-3 px-4 text-center">Giảm trừ</th>
+                <th className="py-3 px-4 text-center">Quy định giảm trừ</th>
                 <th className="py-3 px-4">Từ khóa nhận diện</th>
                 <th className="py-3 px-4 text-right">Thao tác</th>
               </tr>
@@ -143,23 +148,21 @@ export function MedicalCategoryTab({ onShowToast }) {
               {visible.map((c) => (
                 <tr key={c.id} className={`hover:bg-surface-container-low/30 ${c.isDeleted ? 'opacity-60' : ''}`}>
                   <td className="py-3 px-4 max-w-xs">
-                    <div className="font-semibold text-on-surface">{c.categoryName}</div>
-                    <div className="text-[11px] font-mono text-on-surface-variant">{c.categoryCode}</div>
+                    <div className="font-semibold text-on-surface text-xs">{c.categoryName}</div>
                     {c.description && (
                       <div className="text-[11px] text-on-surface-variant mt-1 line-clamp-2" title={c.description}>
                         {c.description}
                       </div>
                     )}
                   </td>
-                  <td className="py-3 px-4 text-xs whitespace-nowrap">{sectionLabel(c.sectionCode)}</td>
-                  <td className="py-3 px-4 text-center">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${
-                        c.isEligible
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-red-50 text-red-700 border-red-200'
-                      }`}
-                    >
+                  <td className="py-3 px-4 text-xs whitespace-nowrap text-on-surface">{sectionLabel(c.sectionCode)}</td>
+                  <td className="py-3 px-4 text-center whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-on-surface">
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          c.isEligible ? 'bg-emerald-600' : 'bg-stone-400'
+                        }`}
+                      />
                       {c.isEligible ? 'Được giảm trừ' : 'Loại trừ'}
                     </span>
                   </td>
@@ -206,11 +209,7 @@ export function MedicalCategoryTab({ onShowToast }) {
                 </tr>
               ))}
               {isLoading && (
-                <tr>
-                  <td colSpan={5} className="py-10 text-center text-xs text-on-surface-variant">
-                    Đang tải danh mục chi phí y tế...
-                  </td>
-                </tr>
+                <TableLoadingRow colSpan={5} title="Đang tải danh mục chi phí y tế..." />
               )}
               {!isLoading && visible.length === 0 && (
                 <tr>

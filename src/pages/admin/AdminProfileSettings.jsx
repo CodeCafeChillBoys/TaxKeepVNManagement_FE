@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { profileService } from '@/services/profileService'
 import { authService } from '@/services/authService'
 import { useAuth } from '@/hooks/useAuth'
+import { SectionLoading } from '@/components/ui/loading'
 
 export function AdminProfileSettings() {
   const { user, updateUser } = useAuth()
@@ -176,8 +177,20 @@ export function AdminProfileSettings() {
     }
   }
 
+  if (isLoadingProfile) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-space-xl max-w-5xl">
+        <SectionLoading
+          title="Đang tải thông tin hồ sơ cá nhân..."
+          description="Đang đồng bộ thông tin chuyên viên quản trị từ máy chủ."
+          minHeight="min-h-[50vh]"
+        />
+      </div>
+    )
+  }
+
   return (
-    <div className="p-space-xl flex flex-col gap-space-lg max-w-5xl">
+    <div className="p-4 sm:p-6 lg:p-space-xl flex flex-col gap-space-lg max-w-5xl">
       {/* Toast Notification */}
       {toast && (
         <div

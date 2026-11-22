@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { ConfirmDialog, NotificationDialog } from '@/components/ui/notification-dialog'
+import { SectionLoading } from '@/components/ui/loading'
 
 const UNLIMITED = -1
 
@@ -154,7 +155,7 @@ export function AdminSubscriptionPlansPage() {
   }
 
   return (
-    <div className="p-space-xl flex flex-col gap-space-lg">
+    <div className="p-4 sm:p-6 lg:p-space-xl flex flex-col gap-space-lg">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-space-md">
         <div className="flex flex-col gap-1">
@@ -220,9 +221,8 @@ export function AdminSubscriptionPlansPage() {
           {/* Bảng gói */}
           <Card>
             {isLoading ? (
-              <CardContent className="py-16 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
-                <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs font-medium">Đang tải danh sách gói...</span>
+              <CardContent className="p-0">
+                <SectionLoading title="Đang tải danh sách gói..." minHeight="min-h-[200px]" />
               </CardContent>
             ) : loadError ? (
               <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-2">

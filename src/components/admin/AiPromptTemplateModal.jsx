@@ -10,9 +10,12 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  formatPromptKeyLabel,
+  formatPromptVariableLabel,
+} from '@/utils/configDataTypeUtils'
 
 export function AiPromptTemplateModal({
   isOpen,
@@ -157,13 +160,13 @@ export function AiPromptTemplateModal({
             <div>
               <DialogTitle className="text-base font-bold text-on-surface">
                 {mode === 'create'
-                  ? 'Tạo mới System Prompt AI'
-                  : `Chỉnh sửa Prompt: ${initialData?.prompt_key || ''}`}
+                  ? 'Tạo mới mẫu chỉ dẫn nghiệp vụ'
+                  : `Chỉnh sửa mẫu chỉ dẫn: ${formatPromptKeyLabel(initialData?.prompt_key)}`}
               </DialogTitle>
               <DialogDescription className="text-xs text-on-surface-variant mt-0.5">
                 {mode === 'create'
-                  ? 'Khai báo mẫu chỉ dẫn hệ thống (System Prompt) cho AI với các biến tham số nội suy động.'
-                  : 'Cập nhật nội dung chỉ dẫn. Backend sẽ tự động tăng Version và làm mới Cache trên AI Service.'}
+                  ? 'Khai báo mẫu chỉ dẫn nghiệp vụ cho hệ thống với các mục thông tin chèn tự động.'
+                  : 'Cập nhật nội dung chỉ dẫn. Hệ thống sẽ tự động ghi nhận phiên bản mới và áp dụng ngay.'}
               </DialogDescription>
             </div>
           </div>
@@ -171,33 +174,33 @@ export function AiPromptTemplateModal({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4 max-h-[75vh] overflow-y-auto">
-          {/* Thông tin Version & Key khi Edit */}
+          {/* Thông tin Phiên bản khi Edit */}
           {mode === 'edit' && initialData && (
             <div className="p-3 rounded-xl bg-surface-container-low/80 border border-outline-variant/30 flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
-                <span className="font-medium text-on-surface-variant">Mã định danh:</span>
-                <code className="font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
-                  {initialData.prompt_key}
-                </code>
+                <span className="font-medium text-on-surface-variant">Tên nghiệp vụ:</span>
+                <span className="font-bold text-on-surface">
+                  {formatPromptKeyLabel(initialData.prompt_key)}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-medium text-on-surface-variant">Phiên bản hiện tại:</span>
-                <Badge variant="outline" className="font-bold bg-amber-50 text-amber-800 border-amber-300">
-                  Version {initialData.version || 1}
-                </Badge>
+                <span className="font-bold text-on-surface">
+                  Phiên bản {initialData.version || 1}
+                </span>
               </div>
             </div>
           )}
 
-          {/* Prompt Key Input khi Create */}
+          {/* Mã định danh khi Create */}
           {mode === 'create' && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="prompt_key" className="text-xs font-bold text-on-surface">
-                Mã khóa Prompt (Prompt Key) <span className="text-red-500">*</span>
+                Mã định danh mẫu chỉ dẫn <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="prompt_key"
-                placeholder="VD: PROMPT_TAX_CHAT_ADVISORY hoặc PROMPT_OCR_INCOME"
+                placeholder="VD: PROMPT_TU_VAN_THUE"
                 value={formData.prompt_key}
                 onChange={(e) =>
                   setFormData((prev) => ({
@@ -211,7 +214,7 @@ export function AiPromptTemplateModal({
                 <p className="text-[11px] text-red-500 font-medium">{errors.prompt_key}</p>
               )}
               <span className="text-[10px] text-on-surface-variant">
-                Quy ước: Viết HOA nối nhau bằng dấu gạch dưới (UPPER_SNAKE_CASE).
+                Quy ước: Viết chữ in hoa không dấu nối nhau bằng dấu gạch dưới.
               </span>
             </div>
           )}
@@ -223,29 +226,26 @@ export function AiPromptTemplateModal({
             </Label>
             <Input
               id="description"
-              placeholder="VD: Chỉ dẫn ngữ cảnh cho AI chuyên gia giải đáp thắc mắc thuế TNCN..."
+              placeholder="VD: Chỉ dẫn quy trình giải đáp thắc mắc thuế thu nhập cá nhân..."
               value={formData.description}
               onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
               className="h-9 text-xs"
             />
           </div>
 
-          {/* Biến tham số động (Variables) */}
+          {/* Thông tin chèn tự động */}
           <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-surface-container-low/50 border border-outline-variant/30">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold text-on-surface flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-primary">data_object</span>
-                <span>Các biến tham số động (Variables)</span>
+                <span className="material-symbols-outlined text-[16px] text-primary">tune</span>
+                <span>Các mục thông tin chèn tự động</span>
               </Label>
-              <span className="text-[11px] text-on-surface-variant">
-                Định dạng trong prompt: <code className="text-primary font-bold">{'{tên_biến}'}</code>
-              </span>
             </div>
 
-            {/* Input thêm biến */}
+            {/* Input thêm mục */}
             <div className="flex items-center gap-2">
               <Input
-                placeholder="Nhập tên biến (vd: user_name, tax_year) rồi nhấn Enter..."
+                placeholder="Nhập mã thông tin cần chèn rồi nhấn Enter..."
                 value={variableInput}
                 onChange={(e) => setVariableInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -263,28 +263,28 @@ export function AiPromptTemplateModal({
                 onClick={handleAddVariable}
                 className="h-8 text-xs shrink-0"
               >
-                + Thêm biến
+                + Thêm mục
               </Button>
             </div>
 
-            {/* Danh sách biến tags */}
+            {/* Danh sách tags */}
             <div className="flex flex-wrap items-center gap-1.5 min-h-[32px] pt-1">
               {formData.variables.length === 0 ? (
                 <span className="text-[11px] text-on-surface-variant italic">
-                  Chưa khai báo biến tham số nào. Nhập tên biến ở trên và nhấn Enter.
+                  Chưa khai báo mục thông tin chèn tự động nào.
                 </span>
               ) : (
                 formData.variables.map((varName) => (
                   <span
                     key={varName}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container-high border border-outline-variant/40 text-xs font-mono font-medium text-on-surface shadow-2xs group"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container-high border border-outline-variant/40 text-xs font-medium text-on-surface shadow-2xs group"
                   >
-                    <span>{`{${varName}}`}</span>
+                    <span>{formatPromptVariableLabel(varName)}</span>
                     <button
                       type="button"
                       onClick={() => handleInsertVariableAtCursor(varName)}
                       className="text-primary hover:text-primary/80 text-[10px] ml-1 underline cursor-pointer"
-                      title="Chèn biến vào con trỏ nội dung bên dưới"
+                      title="Chèn vào vị trí con trỏ nội dung bên dưới"
                     >
                       chèn
                     </button>
@@ -292,7 +292,7 @@ export function AiPromptTemplateModal({
                       type="button"
                       onClick={() => handleRemoveVariable(varName)}
                       className="text-on-surface-variant hover:text-red-600 transition-colors cursor-pointer ml-1"
-                      title="Xóa biến này"
+                      title="Xóa mục này"
                     >
                       <span className="material-symbols-outlined text-[14px]">close</span>
                     </button>
@@ -302,11 +302,11 @@ export function AiPromptTemplateModal({
             </div>
           </div>
 
-          {/* Nội dung System Prompt */}
+          {/* Nội dung mẫu chỉ dẫn */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
               <Label htmlFor="system_prompt" className="text-xs font-bold text-on-surface">
-                Nội dung System Prompt <span className="text-red-500">*</span>
+                Nội dung mẫu chỉ dẫn chi tiết <span className="text-red-500">*</span>
               </Label>
               <span className="text-[11px] text-on-surface-variant">
                 {formData.system_prompt.length} ký tự
@@ -321,9 +321,9 @@ export function AiPromptTemplateModal({
                     key={v}
                     type="button"
                     onClick={() => handleInsertVariableAtCursor(v)}
-                    className="shrink-0 px-2 py-0.5 rounded bg-primary/10 hover:bg-primary/20 text-primary font-mono text-[10px] font-bold cursor-pointer transition-colors"
+                    className="shrink-0 px-2 py-0.5 rounded bg-surface-container hover:bg-surface-container-high text-on-surface border border-outline-variant/40 text-[11px] font-medium cursor-pointer transition-colors"
                   >
-                    +{`{${v}}`}
+                    + {formatPromptVariableLabel(v)}
                   </button>
                 ))}
               </div>
@@ -333,10 +333,10 @@ export function AiPromptTemplateModal({
               ref={textareaRef}
               id="system_prompt"
               rows={12}
-              placeholder="Nhập nội dung system prompt chi tiết tại đây. Ví dụ:&#10;Bạn là trợ lý tư vấn thuế TAX KEEP VN. Hãy hỗ trợ người dùng {user_name} về các quy định quyết toán thuế năm {tax_year}..."
+              placeholder="Nhập nội dung chỉ dẫn nghiệp vụ chi tiết tại đây..."
               value={formData.system_prompt}
               onChange={(e) => setFormData((prev) => ({ ...prev, system_prompt: e.target.value }))}
-              className={`font-mono text-xs leading-relaxed p-3.5 rounded-xl ${errors.system_prompt ? 'border-red-500' : ''}`}
+              className={`text-xs leading-relaxed p-3.5 rounded-xl ${errors.system_prompt ? 'border-red-500' : ''}`}
             />
             {errors.system_prompt && (
               <p className="text-[11px] text-red-500 font-medium">{errors.system_prompt}</p>
@@ -353,7 +353,7 @@ export function AiPromptTemplateModal({
               }
             />
             <Label htmlFor="prompt_is_active" className="text-xs font-medium text-on-surface cursor-pointer">
-              Kích hoạt áp dụng System Prompt này ngay sau khi lưu
+              Đưa mẫu chỉ dẫn này vào áp dụng ngay sau khi lưu
             </Label>
           </div>
 
@@ -378,7 +378,7 @@ export function AiPromptTemplateModal({
               {isSubmitting && (
                 <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               )}
-              <span>{mode === 'create' ? 'Tạo System Prompt' : 'Cập nhật System Prompt'}</span>
+              <span>{mode === 'create' ? 'Tạo mẫu chỉ dẫn' : 'Cập nhật mẫu chỉ dẫn'}</span>
             </Button>
           </DialogFooter>
         </form>

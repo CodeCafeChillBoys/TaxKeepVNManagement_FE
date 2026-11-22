@@ -1,12 +1,8 @@
 import axios from 'axios'
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_GATEWAY_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  'http://localhost:5000'
+import { MANAGEMENT_API_URL } from './apiClient'
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: MANAGEMENT_API_URL,
   timeout: 90000, // 90s cho xử lý PDF và Gemini 2.5 Flash
 })
 

@@ -70,6 +70,63 @@ export const authService = {
   },
 
   /**
+   * 1. Xác minh email qua token trong link
+   * Chuẩn Backend: GET /api/v1/auth/verify-email?token=string
+   */
+  verifyEmail: async (token) => {
+    const response = await apiClient.get('/api/v1/auth/verify-email', {
+      params: { token: (token || '').trim() },
+    })
+    return response?.data || response
+  },
+
+  /**
+   * 2. Gửi lại mail xác minh
+   * Chuẩn Backend: POST /api/v1/auth/resend-verification
+   */
+  resendVerification: async (email) => {
+    const response = await apiClient.post('/api/v1/auth/resend-verification', {
+      email: (email || '').trim().toLowerCase(),
+    })
+    return response?.data || response
+  },
+
+  /**
+   * 3. Yêu cầu quên mật khẩu
+   * Chuẩn Backend: POST /api/v1/auth/forgot-password
+   */
+  forgotPassword: async (email) => {
+    const response = await apiClient.post('/api/v1/auth/forgot-password', {
+      email: (email || '').trim().toLowerCase(),
+    })
+    return response?.data || response
+  },
+
+  /**
+   * 4. Validate token đặt lại mật khẩu
+   * Chuẩn Backend: GET /api/v1/auth/validate-reset-token?token=string
+   */
+  validateResetToken: async (token) => {
+    const response = await apiClient.get('/api/v1/auth/validate-reset-token', {
+      params: { token: (token || '').trim() },
+    })
+    return response?.data || response
+  },
+
+  /**
+   * 5. Đặt lại mật khẩu mới
+   * Chuẩn Backend: POST /api/v1/auth/reset-password
+   */
+  resetPassword: async ({ token, newPassword, confirmNewPassword }) => {
+    const response = await apiClient.post('/api/v1/auth/reset-password', {
+      token: (token || '').trim(),
+      newPassword,
+      confirmNewPassword: confirmNewPassword || newPassword,
+    })
+    return response?.data || response
+  },
+
+  /**
    * Bóc tách thông tin CCCD khi đăng ký (eKYC / Onboarding)
    * Chuẩn Backend: POST /api/v1/auth/cccd-extractions
    * @param {File} file - Mặt trước CCCD
@@ -97,8 +154,8 @@ export const authService = {
   logout: async () => {
     try {
       await apiClient.post('/api/v1/auth/logout')
-    } catch (err) {
-      console.warn('Lỗi khi gọi API logout trên server:', err)
+    } catch {
+      // Bỏ qua lỗi khi thu hồi phiên trên máy chủ
     } finally {
       authService.clearAuth()
     }

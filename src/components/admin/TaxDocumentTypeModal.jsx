@@ -100,8 +100,8 @@ export function TaxDocumentTypeModal({
               </h3>
               <p className="text-xs text-on-surface-variant">
                 {mode === 'create'
-                  ? 'Đăng ký loại chứng từ để AI phân loại và tính giảm trừ thuế TNCN'
-                  : `Chỉnh sửa thông tin định danh: ${formData.code}`}
+                  ? 'Đăng ký loại chứng từ phục vụ phân loại và tính giảm trừ thuế thu nhập cá nhân'
+                  : `Chỉnh sửa thông tin: ${formData.name || 'Loại chứng từ'}`}
               </p>
             </div>
           </div>
@@ -115,84 +115,69 @@ export function TaxDocumentTypeModal({
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-space-md pt-1">
-          {/* Mã loại chứng từ (Code) */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-on-surface flex items-center gap-1">
-                <span>Mã loại chứng từ (Code)</span>
-                <span className="text-error">*</span>
-              </label>
-              {mode === 'edit' && (
-                <span className="text-[11px] text-on-surface-variant flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[14px]">lock</span>
-                  <span>Khóa cố định</span>
-                </span>
-              )}
-            </div>
-
-            {mode === 'create' ? (
-              <>
-                <input
-                  type="text"
-                  value={formData.code}
-                  onChange={(e) => {
-                    const val = e.target.value.toUpperCase().replace(/\s+/g, '_')
-                    setFormData((prev) => ({ ...prev, code: val }))
-                    if (validationErrors.code) {
-                      setValidationErrors((prev) => ({ ...prev, code: null }))
-                    }
-                  }}
-                  placeholder="VD: MEDICAL_EXPENSE_INVOICE"
-                  maxLength={50}
-                  className={`h-10 px-3 rounded-xl border text-xs font-mono tracking-wide bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all ${
-                    validationErrors.code
-                      ? 'border-error ring-1 ring-error'
-                      : 'border-outline-variant/50 focus:border-primary'
-                  }`}
-                />
-                {validationErrors.code ? (
-                  <p className="text-[11px] text-error font-medium">{validationErrors.code}</p>
-                ) : (
-                  <p className="text-[11px] text-on-surface-variant">
-                    Chỉ gồm chữ cái in hoa không dấu, chữ số và gạch dưới (VD: INVOICE_VAT, DONATION_RECEIPT).
-                  </p>
-                )}
-
-                {/* Gợi ý mẫu */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  <span className="text-[10px] text-on-surface-variant font-medium">Gợi ý nhanh:</span>
-                  {sampleCodes.map((s) => (
-                    <button
-                      key={s.code}
-                      type="button"
-                      onClick={() => {
-                        setFormData((prev) => ({
-                          ...prev,
-                          code: s.code,
-                          name: prev.name || s.name,
-                        }))
-                        setValidationErrors({})
-                      }}
-                      className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-surface-container border border-outline-variant/30 text-on-surface-variant hover:text-primary hover:border-primary/40 transition-colors cursor-pointer"
-                    >
-                      {s.code}
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="h-10 px-3 rounded-xl border border-outline-variant/30 bg-surface-container/60 flex items-center">
-                <span className="font-mono text-xs font-bold text-primary tracking-wide">
-                  {formData.code}
-                </span>
+          {/* Mã loại chứng từ */}
+          {mode === 'create' && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-on-surface flex items-center gap-1">
+                  <span>Mã định danh chứng từ</span>
+                  <span className="text-error">*</span>
+                </label>
               </div>
-            )}
-          </div>
+              <input
+                type="text"
+                value={formData.code}
+                onChange={(e) => {
+                  const val = e.target.value.toUpperCase().replace(/\s+/g, '_')
+                  setFormData((prev) => ({ ...prev, code: val }))
+                  if (validationErrors.code) {
+                    setValidationErrors((prev) => ({ ...prev, code: null }))
+                  }
+                }}
+                placeholder="VD: HOA_DON_VIEN_PHI"
+                maxLength={50}
+                className={`h-10 px-3 rounded-xl border text-xs font-mono tracking-wide bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all ${
+                  validationErrors.code
+                    ? 'border-error ring-1 ring-error'
+                    : 'border-outline-variant/50 focus:border-primary'
+                }`}
+              />
+              {validationErrors.code ? (
+                <p className="text-[11px] text-error font-medium">{validationErrors.code}</p>
+              ) : (
+                <p className="text-[11px] text-on-surface-variant">
+                  Chỉ gồm chữ cái in hoa không dấu, chữ số và gạch dưới.
+                </p>
+              )}
+
+              {/* Gợi ý mẫu */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-on-surface-variant font-medium">Chọn mẫu nhanh:</span>
+                {sampleCodes.map((s) => (
+                  <button
+                    key={s.code}
+                    type="button"
+                    onClick={() => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        code: s.code,
+                        name: prev.name || s.name,
+                      }))
+                      setValidationErrors({})
+                    }}
+                    className="text-[10px] px-2 py-0.5 rounded-md bg-surface-container border border-outline-variant/30 text-on-surface-variant hover:text-primary hover:border-primary/40 transition-colors cursor-pointer"
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Tên loại chứng từ (Name) */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-bold text-on-surface flex items-center gap-1">
-              <span>Tên mô tả loại chứng từ</span>
+              <span>Tên loại chứng từ</span>
               <span className="text-error">*</span>
             </label>
             <input
@@ -221,21 +206,20 @@ export function TaxDocumentTypeModal({
             )}
           </div>
 
-          {/* Đặc điểm nhận diện cho AI (Description) */}
+          {/* Đặc điểm nhận diện (Description) */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-bold text-on-surface flex items-center gap-1">
-              <span>Đặc điểm nhận diện cho AI</span>
-              <span className="text-on-surface-variant font-normal">(AI Prompt)</span>
+              <span>Mô tả đặc điểm nhận diện chứng từ</span>
             </label>
             <textarea
               rows={3}
               value={formData.description || ''}
               onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
-              placeholder="VD: Hóa đơn khám chữa bệnh, viện phí, tiền thuốc tại bệnh viện, phòng khám (kể cả khi biểu mẫu ghi tiêu đề là Hóa đơn bán hàng hoặc Hóa đơn GTGT)..."
+              placeholder="VD: Hóa đơn khám chữa bệnh, viện phí, tiền thuốc tại bệnh viện, phòng khám..."
               className="p-3 rounded-xl border text-xs bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all border-outline-variant/50 focus:border-primary resize-none"
             />
             <p className="text-[11px] text-on-surface-variant">
-              Mô tả chi tiết để AI Gemini đọc và phân loại chính xác các loại chứng từ thực tế (kể cả khi mẫu ghi "Hóa đơn bán hàng").
+              Mô tả chi tiết nội dung trên biểu mẫu để hệ thống đối chiếu và phân loại chính xác.
             </p>
           </div>
 
@@ -243,19 +227,13 @@ export function TaxDocumentTypeModal({
           <div className="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/40 flex items-center justify-between gap-4">
             <div className="flex flex-col gap-0.5">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-on-surface">Đủ điều kiện giảm trừ thuế TNCN</span>
-                <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                    formData.isTaxEligible
-                      ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/20'
-                      : 'bg-stone-500/10 text-stone-600 border border-stone-500/20'
-                  }`}
-                >
+                <span className="text-xs font-bold text-on-surface">Đủ điều kiện giảm trừ thuế thu nhập cá nhân</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-surface-container text-on-surface-variant border border-outline-variant/40">
                   {formData.isTaxEligible ? 'Đủ điều kiện' : 'Không tính giảm trừ'}
                 </span>
               </div>
               <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                Khi kích hoạt, hóa đơn thuộc loại này được AI và hệ thống tính vào các khoản giảm trừ hợp lệ khi quyết toán.
+                Khi bật, chứng từ thuộc loại này sẽ được ghi nhận vào các khoản giảm trừ hợp lệ khi quyết toán thuế.
               </p>
             </div>
 

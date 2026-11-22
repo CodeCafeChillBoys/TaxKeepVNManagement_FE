@@ -42,6 +42,8 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { NotificationDialog, ConfirmDialog } from '@/components/ui/notification-dialog'
+import { useDebounce } from '@/hooks/useDebounce'
+import { SectionLoading } from '@/components/ui/loading'
 
 const POPULAR_BANKS = [
   'Vietcombank',
@@ -196,6 +198,10 @@ const DISPUTE_STATUS_MAP = {
   PendingExpertResponse: { label: 'Chờ chuyên gia giải trình', dot: 'bg-amber-500' },
   AWAITING_ADMIN_RESOLUTION: { label: 'Chờ phán quyết', dot: 'bg-red-600' },
   AwaitingAdminResolution: { label: 'Chờ phán quyết', dot: 'bg-red-600' },
+  PENDING_ADMIN_REVIEW: { label: 'Chờ phán quyết', dot: 'bg-red-600' },
+  PendingAdminReview: { label: 'Chờ phán quyết', dot: 'bg-red-600' },
+  RESOLVED: { label: 'Đã giải quyết', dot: 'bg-emerald-600' },
+  Resolved: { label: 'Đã giải quyết', dot: 'bg-emerald-600' },
   RESOLVED_FULL_REFUND: { label: 'Đã hoàn 100% cho khách', dot: 'bg-emerald-600' },
   RESOLVED_REFUND_USER: { label: 'Đã hoàn 100% cho khách', dot: 'bg-emerald-600' },
   ResolvedFullRefund: { label: 'Đã hoàn 100% cho khách', dot: 'bg-emerald-600' },
@@ -208,23 +214,168 @@ const DISPUTE_STATUS_MAP = {
   Cancelled: { label: 'Đã rút khiếu nại', dot: 'bg-stone-400' },
 }
 
+const DISPUTE_DECISION_MAP = {
+  FULL_REFUND: 'Hoàn 100% phí cho khách hàng',
+  SETTLE_EXPERT: 'Bác khiếu nại • Giải ngân cho chuyên gia',
+  PARTIAL: 'Hoàn tiền một phần theo tỷ lệ',
+}
+
 const DISPUTE_REASON_MAP = {
-  WRONG_TAX_LAW_ADVICE: 'Tư vấn sai quy định thuế',
-  UNPROFESSIONAL_BEHAVIOR: 'Thái độ thiếu chuyên nghiệp',
-  EARLY_DISCONNECT: 'Kết thúc sớm không đủ thời lượng',
-  NETWORK_ISSUE: 'Sự cố đường truyền không thể tiếp tục',
-  OTHER: 'Lý do khác',
+  WRONG_TAX_LAW_ADVICE: 'Tư vấn sai quy định pháp luật thuế',
+  WRONG_ADVICE: 'Tư vấn sai quy định pháp luật thuế',
+  BAD_ADVICE: 'Nội dung tư vấn không chính xác',
+  UNPROFESSIONAL_BEHAVIOR: 'Thái độ ứng xử thiếu chuyên nghiệp',
+  RUDE_BEHAVIOR: 'Thái độ ứng xử thiếu chuẩn mực',
+  BAD_ATTITUDE: 'Thái độ tư vấn thiếu chuyên nghiệp',
+  EARLY_DISCONNECT: 'Chuyên gia rời phòng sớm / không đủ thời lượng',
+  SHORT_DURATION: 'Thời lượng tư vấn không đảm bảo theo lịch hẹn',
+  INCOMPLETE_CONSULTATION: 'Buổi tư vấn chưa giải quyết đầy đủ nội dung',
+  NETWORK_ISSUE: 'Sự cố đường truyền kết nối nghiêm trọng',
+  CONNECTION_ISSUE: 'Sự cố kết nối mạng trong buổi tư vấn',
+  TECHNICAL_ISSUE: 'Sự cố kỹ thuật âm thanh / hình ảnh',
+  AUDIO_VIDEO_ISSUE: 'Sự cố âm thanh hoặc hình ảnh khi tư vấn',
+  EXPERT_ABSENT: 'Chuyên gia vắng mặt trong phiên tư vấn',
+  EXPERT_NO_SHOW: 'Chuyên gia vắng mặt không tham gia ca tư vấn',
+  NO_SHOW: 'Chuyên gia vắng mặt trong phiên tư vấn',
+  LATE_ARRIVAL: 'Chuyên gia vào phòng tư vấn muộn',
+  EXPERT_LATE: 'Chuyên gia tham gia buổi tư vấn trễ giờ',
+  POOR_QUALITY: 'Chất lượng tư vấn không đạt yêu cầu',
+  LOW_QUALITY: 'Chất lượng buổi tư vấn chưa đạt cam kết',
+  POOR_SERVICE_QUALITY: 'Chất lượng dịch vụ tư vấn không đạt yêu cầu',
+  NOT_AS_DESCRIBED: 'Nội dung tư vấn không đúng mô tả chuyên môn',
+  OVERCHARGED: 'Khiếu nại về mức phí tư vấn',
+  FEE_DISPUTE: 'Tranh chấp về chi phí ca tư vấn',
+  OTHER: 'Lý do khiếu nại khác',
+}
+
+function formatDisputeReason(reason) {
+  if (!reason) return 'Lý do khác'
+  const raw = String(reason).trim()
+  const key = raw.toUpperCase()
+  if (DISPUTE_REASON_MAP[key]) return DISPUTE_REASON_MAP[key]
+
+  // Nếu là mã code tiếng Anh dạng SNAKE_CASE
+  if (/^[A-Z0-9_]+$/.test(key)) {
+    return key
+      .replace(/WRONG_TAX_LAW_ADVICE/g, 'Tư vấn sai quy định pháp luật thuế')
+      .replace(/UNPROFESSIONAL_BEHAVIOR/g, 'Thái độ ứng xử thiếu chuyên nghiệp')
+      .replace(/EARLY_DISCONNECT/g, 'Chuyên gia rời phòng sớm, không đủ thời lượng')
+      .replace(/NETWORK_ISSUE/g, 'Sự cố đường truyền kết nối')
+      .replace(/EXPERT_ABSENT|EXPERT_NO_SHOW|NO_SHOW/g, 'Chuyên gia vắng mặt trong ca tư vấn')
+      .replace(/EXPERT_LATE|LATE_ARRIVAL/g, 'Chuyên gia vào phòng tư vấn muộn')
+      .replace(/POOR_QUALITY|LOW_QUALITY/g, 'Chất lượng tư vấn không đạt yêu cầu')
+      .replace(/TECHNICAL_ISSUE|CONNECTION_ISSUE/g, 'Sự cố kỹ thuật / kết nối')
+      .replace(/WRONG|INCORRECT/g, 'Sai')
+      .replace(/TAX_LAW|TAX/g, 'luật thuế')
+      .replace(/ADVICE|CONSULTATION/g, 'tư vấn')
+      .replace(/UNPROFESSIONAL|RUDE/g, 'thiếu chuyên nghiệp')
+      .replace(/BEHAVIOR|ATTITUDE/g, 'Thái độ')
+      .replace(/EARLY/g, 'sớm')
+      .replace(/DISCONNECT|LEAVE/g, 'rời phòng / ngắt kết nối')
+      .replace(/NETWORK|CONNECTION|TECHNICAL/g, 'Kết nối / kỹ thuật')
+      .replace(/ISSUE|PROBLEM|ERROR/g, 'sự cố')
+      .replace(/EXPERT/g, 'Chuyên gia')
+      .replace(/USER|CLIENT|TAXPAYER/g, 'Khách hàng')
+      .replace(/ABSENT/g, 'vắng mặt')
+      .replace(/LATE/g, 'trễ giờ')
+      .replace(/POOR|LOW|BAD/g, 'chưa tốt')
+      .replace(/QUALITY|SERVICE/g, 'Chất lượng dịch vụ')
+      .replace(/OTHER/g, 'Lý do khác')
+      .replace(/_/g, ' ')
+      .trim()
+  }
+
+  // Nếu người dùng nhập tiếng Việt bị BE chuyển thành IN HOA toàn bộ
+  if (raw === raw.toUpperCase() && raw.length > 3) {
+    return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()
+  }
+
+  return raw
 }
 
 const PLATFORM_TX_TYPE_MAP = {
-  COMMISSION_EARNED: { label: 'Phí dịch vụ nhận được', isPositive: true },
-  PLATFORM_FEE: { label: 'Thu phí nền tảng', isPositive: true },
+  COMMISSION_EARNED: { label: 'Thu hoa hồng ca tư vấn', isPositive: true },
+  PLATFORM_FEE: { label: 'Thu phí nền tảng (Khiếu nại)', isPositive: true },
+  SUBSCRIPTION_REVENUE: { label: 'Doanh thu gói dịch vụ', isPositive: true },
+  PLATFORM_SUBSCRIPTION_REFUND: { label: 'Hoàn tiền gói dịch vụ', isPositive: false },
+  SUBSCRIPTION_REFUND: { label: 'Hoàn tiền gói dịch vụ', isPositive: true },
+  PAYMENT_SUBSCRIPTION: { label: 'Thanh toán gói dịch vụ', isPositive: false },
+  PAYMENT_CONSULTATION: { label: 'Thanh toán phí tư vấn bằng ví', isPositive: false },
   WITHDRAWAL: { label: 'Rút doanh thu về ngân hàng', isPositive: false },
   WITHDRAWAL_REFUND: { label: 'Hoàn tiền lệnh rút bị từ chối', isPositive: true },
-  DISBURSEMENT: { label: 'Giải ngân chuyên gia', isPositive: false },
+  DISBURSEMENT: { label: 'Giải ngân thù lao chuyên gia', isPositive: false },
   REFUND: { label: 'Hoàn trả khách hàng', isPositive: false },
+  PENALTY: { label: 'Thu phí phạt vi phạm hủy lịch', isPositive: true },
+  COMPENSATION: { label: 'Tiền đền bù hủy lịch / vắng mặt', isPositive: true },
+  TOPUP: { label: 'Nạp tiền vào ví', isPositive: true },
   TOP_UP: { label: 'Nạp tiền vào ví', isPositive: true },
-  BOOKING_PAYMENT: { label: 'Thanh toán đặt lịch', isPositive: false },
+  TOPUP_PENDING: { label: 'Chờ nạp tiền vào ví', isPositive: true },
+  TOPUP_FAILED: { label: 'Nạp tiền vào ví thất bại', isPositive: false },
+  PENDING_ESCROW: { label: 'Đang tạm giữ bảo chứng', isPositive: true },
+  PENDING_COOLING_DOWN: { label: 'Chờ đối soát giải ngân (24h)', isPositive: true },
+  BOOKING_PAYMENT: { label: 'Thanh toán đặt lịch tư vấn', isPositive: false },
+}
+
+const PAYMENT_GATEWAY_MAP = {
+  VNPAY: 'Cổng thanh toán VNPay',
+  PAYOS: 'Cổng thanh toán PayOS / VietQR',
+  VIETQR: 'Chuyển khoản nhanh VietQR',
+  WALLET: 'Số dư ví điện tử',
+  FREE: 'Miễn phí',
+  ADMIN_GRANT: 'Quản trị viên cấp',
+}
+
+function getPlatformTxTypeMeta(type, amount = 0) {
+  const isPos = Number(amount) >= 0
+  if (!type) {
+    return { label: isPos ? 'Thu doanh thu sàn' : 'Chi từ quỹ sàn', isPositive: isPos }
+  }
+  const key = String(type).trim().toUpperCase()
+  if (PLATFORM_TX_TYPE_MAP[key]) {
+    return PLATFORM_TX_TYPE_MAP[key]
+  }
+  const fallbackLabel = key
+    .replace(/PLATFORM_SUBSCRIPTION_REFUND/g, 'Hoàn tiền gói dịch vụ')
+    .replace(/SUBSCRIPTION_REVENUE/g, 'Doanh thu gói dịch vụ')
+    .replace(/SUBSCRIPTION_REFUND/g, 'Hoàn tiền gói dịch vụ')
+    .replace(/PAYMENT_SUBSCRIPTION/g, 'Thanh toán gói dịch vụ')
+    .replace(/PAYMENT_CONSULTATION/g, 'Thanh toán phí tư vấn')
+    .replace(/COMMISSION_EARNED/g, 'Thu hoa hồng ca tư vấn')
+    .replace(/PLATFORM_FEE/g, 'Thu phí nền tảng')
+    .replace(/WITHDRAWAL_REFUND/g, 'Hoàn tiền lệnh rút bị từ chối')
+    .replace(/PENDING_COOLING_DOWN/g, 'Chờ đối soát giải ngân (24h)')
+    .replace(/PENDING_ESCROW/g, 'Đang tạm giữ bảo chứng')
+    .replace(/SUBSCRIPTION/g, 'Gói dịch vụ')
+    .replace(/REVENUE/g, 'Doanh thu')
+    .replace(/COMMISSION/g, 'Hoa hồng sàn')
+    .replace(/EARNED/g, 'thực nhận')
+    .replace(/PLATFORM/g, 'Nền tảng')
+    .replace(/WITHDRAWAL/g, 'Rút tiền')
+    .replace(/DISBURSEMENT/g, 'Giải ngân')
+    .replace(/REFUND/g, 'Hoàn tiền')
+    .replace(/PAYMENT/g, 'Thanh toán')
+    .replace(/CONSULTATION/g, 'Tư vấn')
+    .replace(/PENALTY/g, 'Phí phạt')
+    .replace(/COMPENSATION/g, 'Đền bù')
+    .replace(/TOPUP|TOP_UP/g, 'Nạp tiền')
+    .replace(/PENDING/g, 'Đang chờ')
+    .replace(/FAILED/g, 'Thất bại')
+    .replace(/ESCROW/g, 'Tạm giữ')
+    .replace(/FEE/g, 'Phí dịch vụ')
+    .replace(/_/g, ' ')
+  return { label: fallbackLabel, isPositive: isPos }
+}
+
+function formatPlatformTxDescription(desc) {
+  if (!desc) return '—'
+  return String(desc)
+    .replace(/^TOPUP_ORDER:\d+\|/i, '')
+    .replace(/\bcho User\b/gi, 'cho người dùng')
+    .replace(/\bAdmin rút\b/gi, 'Quản trị viên rút')
+    .replace(/\bTạm giữ Cool-down\b/gi, 'Tạm giữ chờ đối soát')
+    .replace(/\bTạm giữ Escrow\b/gi, 'Tạm giữ bảo chứng')
+    .replace(/\(chu kỳ monthly\)/gi, '(chu kỳ tháng)')
+    .replace(/\(chu kỳ yearly\)/gi, '(chu kỳ năm)')
 }
 
 function StatusBadge({ label, dot = 'bg-stone-400' }) {
@@ -292,26 +443,19 @@ export function AdminExpertManagementPage() {
   const [activeTab, setActiveTab] = useState('applications')
   const [pendingBadges, setPendingBadges] = useState({
     applications: 0,
-    withdrawals: 0,
     disputes: 0,
   })
 
   const refreshBadges = useCallback(async () => {
     try {
-      const [appsRes, wdRes, dispRes] = await Promise.allSettled([
+      const [appsRes, dispRes] = await Promise.allSettled([
         expertService.getApplications({ status: 'PendingReview', page: 1, size: 1 }),
-        expertService.getAdminWithdrawals({ status: 'PENDING', page: 1, size: 1 }),
         expertService.getAdminDisputes({ page: 1, size: 50 }),
       ])
 
       const appsCount =
         appsRes.status === 'fulfilled'
           ? appsRes.value?.pagination?.totalItems ?? (appsRes.value?.items?.length || 0)
-          : 0
-
-      const wdCount =
-        wdRes.status === 'fulfilled'
-          ? wdRes.value?.pagination?.totalItems ?? (wdRes.value?.items?.length || 0)
           : 0
 
       let dispCount = 0
@@ -326,7 +470,6 @@ export function AdminExpertManagementPage() {
 
       setPendingBadges({
         applications: appsCount,
-        withdrawals: wdCount,
         disputes: dispCount,
       })
     } catch {
@@ -340,7 +483,7 @@ export function AdminExpertManagementPage() {
   }, [refreshBadges, activeTab])
 
   return (
-    <div className="flex flex-col gap-5 pb-10">
+    <div className="p-4 sm:p-6 lg:p-space-xl flex flex-col gap-5 pb-10">
       {/* Tiêu đề trang */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -348,7 +491,7 @@ export function AdminExpertManagementPage() {
             Quản trị Chuyên gia & Dịch vụ Tư vấn
           </h1>
           <p className="text-xs text-on-surface-variant mt-1">
-            Thẩm định hồ sơ hành nghề, phê duyệt rút tiền, xử lý khiếu nại và cấu hình quy chuẩn vận hành sàn.
+            Thẩm định hồ sơ hành nghề, xử lý khiếu nại và cấu hình quy chuẩn vận hành tư vấn.
           </p>
         </div>
       </div>
@@ -365,15 +508,6 @@ export function AdminExpertManagementPage() {
             )}
           </TabsTrigger>
 
-          <TabsTrigger value="withdrawals" className="text-xs px-3 py-2 rounded-lg">
-            <span>Lệnh rút tiền</span>
-            {pendingBadges.withdrawals > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.2 rounded bg-surface-container-high text-on-surface text-[10px] font-bold tabular-nums">
-                {pendingBadges.withdrawals}
-              </span>
-            )}
-          </TabsTrigger>
-
           <TabsTrigger value="disputes" className="text-xs px-3 py-2 rounded-lg">
             <span>Khiếu nại</span>
             {pendingBadges.disputes > 0 && (
@@ -381,10 +515,6 @@ export function AdminExpertManagementPage() {
                 {pendingBadges.disputes}
               </span>
             )}
-          </TabsTrigger>
-
-          <TabsTrigger value="platform-wallet" className="text-xs px-3 py-2 rounded-lg">
-            <span>Quỹ & Doanh thu sàn</span>
           </TabsTrigger>
 
           <TabsTrigger value="specializations" className="text-xs px-3 py-2 rounded-lg">
@@ -412,16 +542,8 @@ export function AdminExpertManagementPage() {
           <ApplicationsTab onBadgeRefresh={refreshBadges} />
         </TabsContent>
 
-        <TabsContent value="withdrawals" className="mt-4">
-          <WithdrawalsTab onBadgeRefresh={refreshBadges} />
-        </TabsContent>
-
         <TabsContent value="disputes" className="mt-4">
           <DisputesTab onBadgeRefresh={refreshBadges} />
-        </TabsContent>
-
-        <TabsContent value="platform-wallet" className="mt-4">
-          <PlatformWalletTab />
         </TabsContent>
 
         <TabsContent value="specializations" className="mt-4">
@@ -448,6 +570,71 @@ export function AdminExpertManagementPage() {
   )
 }
 
+export function AdminSystemFundPage() {
+  const [activeTab, setActiveTab] = useState('platform-wallet')
+  const [pendingWithdrawals, setPendingWithdrawals] = useState(0)
+
+  const refreshBadges = useCallback(async () => {
+    try {
+      const wdRes = await expertService.getAdminWithdrawals({
+        status: 'PENDING',
+        page: 1,
+        size: 1,
+      })
+      const wdCount =
+        wdRes?.pagination?.totalItems ?? (Array.isArray(wdRes?.items) ? wdRes.items.length : 0)
+      setPendingWithdrawals(wdCount)
+    } catch {
+      // Bỏ qua lỗi phụ
+    }
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshBadges()
+  }, [refreshBadges, activeTab])
+
+  return (
+    <div className="p-4 sm:p-6 lg:p-space-xl flex flex-col gap-5 pb-10">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="font-headline-sm text-headline-sm font-bold text-on-surface tracking-tight">
+            Quỹ hệ thống & Doanh thu sàn
+          </h1>
+          <p className="text-xs text-on-surface-variant mt-1">
+            Theo dõi dòng tiền quỹ hệ thống, đối soát doanh thu nền tảng và phê duyệt lệnh rút tiền.
+          </p>
+        </div>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="w-full justify-start h-auto p-1 bg-surface-container-low border border-outline-variant/40 rounded-xl flex-wrap gap-1">
+          <TabsTrigger value="platform-wallet" className="text-xs px-3 py-2 rounded-lg">
+            <span>Quỹ & Doanh thu sàn</span>
+          </TabsTrigger>
+
+          <TabsTrigger value="withdrawals" className="text-xs px-3 py-2 rounded-lg">
+            <span>Lệnh rút tiền</span>
+            {pendingWithdrawals > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.2 rounded bg-surface-container-high text-on-surface text-[10px] font-bold tabular-nums">
+                {pendingWithdrawals}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="platform-wallet" className="mt-4">
+          <PlatformWalletTab />
+        </TabsContent>
+
+        <TabsContent value="withdrawals" className="mt-4">
+          <WithdrawalsTab onBadgeRefresh={refreshBadges} />
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // TAB 1: THẨM ĐỊNH HỒ SƠ CHUYÊN GIA
 // ═════════════════════════════════════════════════════════════════════════════
@@ -463,8 +650,14 @@ function ApplicationsTab({ onBadgeRefresh }) {
   const [statusFilter, setStatusFilter] = useState('__ALL__')
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const debouncedSearchInput = useDebounce(searchInput, 350)
+  const debouncedStatusFilter = useDebounce(statusFilter, 120)
   const [loading, setLoading] = useState(true)
   const [certTypeMap, setCertTypeMap] = useState(CERT_TYPE_FALLBACK)
+
+  useEffect(() => {
+    setSearchQuery(debouncedSearchInput)
+  }, [debouncedSearchInput])
 
   const [selectedId, setSelectedId] = useState(null)
   const [detailData, setDetailData] = useState(null)
@@ -495,7 +688,7 @@ function ApplicationsTab({ onBadgeRefresh }) {
       setLoading(true)
       try {
         const res = await expertService.getApplications({
-          status: statusFilter,
+          status: debouncedStatusFilter,
           search: searchQuery,
           page,
           size: 10,
@@ -510,7 +703,7 @@ function ApplicationsTab({ onBadgeRefresh }) {
         setLoading(false)
       }
     },
-    [statusFilter, searchQuery]
+    [debouncedStatusFilter, searchQuery]
   )
 
   useEffect(() => {
@@ -665,9 +858,8 @@ function ApplicationsTab({ onBadgeRefresh }) {
       {/* Bảng danh sách hồ sơ */}
       <Card>
         {loading ? (
-          <CardContent className="py-16 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
-            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs font-medium">Đang tải danh sách hồ sơ...</span>
+          <CardContent className="p-0">
+            <SectionLoading title="Đang tải danh sách hồ sơ..." minHeight="min-h-[200px]" />
           </CardContent>
         ) : items.length === 0 ? (
           <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-1.5">
@@ -729,15 +921,24 @@ function ApplicationsTab({ onBadgeRefresh }) {
                       <StatusBadge label={st.label} dot={st.dot} />
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-3 text-xs"
-                        onClick={() => openDetailModal(app.id)}
-                      >
-                        Thẩm định
-                      </Button>
+                      {(() => {
+                        const isFinalized =
+                          app.status === 'Approved' ||
+                          app.status === 'APPROVED' ||
+                          app.status === 'Rejected' ||
+                          app.status === 'REJECTED'
+                        return (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-3 text-xs"
+                            onClick={() => openDetailModal(app.id)}
+                          >
+                            {isFinalized ? 'Xem chi tiết' : 'Thẩm định'}
+                          </Button>
+                        )
+                      })()}
                     </TableCell>
                   </TableRow>
                 )
@@ -796,6 +997,25 @@ function ApplicationsTab({ onBadgeRefresh }) {
   )
 }
 
+const REJECT_REASON_PRESETS = [
+  'Chứng chỉ hành nghề chưa hợp lệ hoặc không rõ thông tin đối soát.',
+  'Kinh nghiệm chuyên môn chưa đáp ứng tiêu chuẩn tư vấn thuế trên hệ thống.',
+  'Thông tin hồ sơ đăng ký chưa nhất quán với văn bằng đính kèm.',
+  'Mức phí tư vấn đề xuất chưa phù hợp với khung quy định hiện hành.',
+]
+
+const SUPPLEMENT_REASON_PRESETS = [
+  'Vui lòng bổ sung bản chụp rõ nét chứng chỉ hành nghề (mặt trước & số hiệu).',
+  'Vui lòng cập nhật chi tiết mô tả kinh nghiệm thực tế và đơn vị công tác.',
+  'Vui lòng điều chỉnh lại mức phí đề xuất theo khung phí tiêu chuẩn của sàn.',
+]
+
+const CERT_REJECT_PRESETS = [
+  'Bản chụp văn bằng bị mờ, không đọc được số hiệu hoặc ngày cấp.',
+  'Chứng chỉ đã hết thời hạn hiệu lực.',
+  'Thông tin họ tên / số hiệu trên chứng chỉ không khớp với hồ sơ.',
+]
+
 function ApplicationDetailDialog({
   open,
   onOpenChange,
@@ -807,9 +1027,16 @@ function ApplicationDetailDialog({
 }) {
   const [certActionLoading, setCertActionLoading] = useState(null)
   const [certNoteMap, setCertNoteMap] = useState({})
+  const [certRejectDialog, setCertRejectDialog] = useState({
+    open: false,
+    cert: null,
+    reason: '',
+    error: '',
+  })
   const [actionMode, setActionMode] = useState(null) // 'approve' | 'supplement' | 'reject'
   const [reasonInput, setReasonInput] = useState('')
   const [reviewNotesInput, setReviewNotesInput] = useState('')
+  const [formError, setFormError] = useState('')
   const [submittingAction, setSubmittingAction] = useState(false)
 
   useEffect(() => {
@@ -817,6 +1044,7 @@ function ApplicationDetailDialog({
       setActionMode(null)
       setReasonInput('')
       setReviewNotesInput('')
+      setFormError('')
       const notes = {}
       data.certificates?.forEach((c) => {
         notes[c.id] = cleanVerificationNote(c.verificationNote || '')
@@ -825,11 +1053,24 @@ function ApplicationDetailDialog({
     }
   }, [data])
 
-  const handleVerifyCert = async (certId, status) => {
-    if (!data) return
-    const note = (certNoteMap[certId] || '').trim()
+  const openActionDialog = (mode) => {
+    setActionMode(mode)
+    setReasonInput('')
+    setReviewNotesInput('')
+    setFormError('')
+  }
+
+  const handleVerifyCert = async (cert, status, explicitReason = null) => {
+    if (!data || !cert) return
+    const certId = cert.id
+    const note = (explicitReason !== null ? explicitReason : certNoteMap[certId] || '').trim()
     if (status === 'Rejected' && !note) {
-      showNotice('warning', 'Thiếu lý do', 'Vui lòng nhập ghi chú lý do khi từ chối chứng chỉ.')
+      setCertRejectDialog({
+        open: true,
+        cert,
+        reason: '',
+        error: '',
+      })
       return
     }
     setCertActionLoading(certId)
@@ -838,6 +1079,8 @@ function ApplicationDetailDialog({
         verificationStatus: status,
         verificationNote: note || null,
       })
+      setCertNoteMap((prev) => ({ ...prev, [certId]: note }))
+      setCertRejectDialog({ open: false, cert: null, reason: '', error: '' })
       showNotice('success', 'Đã cập nhật chứng chỉ', 'Trạng thái thẩm định chứng chỉ đã được lưu.')
       await onUpdated()
     } catch (err) {
@@ -847,8 +1090,33 @@ function ApplicationDetailDialog({
     }
   }
 
-  const handleFinalSubmit = async () => {
+  const handleConfirmCertReject = async (e) => {
+    e?.preventDefault()
+    const reason = certRejectDialog.reason.trim()
+    if (reason.length < 5) {
+      setCertRejectDialog((prev) => ({
+        ...prev,
+        error: 'Vui lòng nhập lý do từ chối chứng chỉ tối thiểu 5 ký tự.',
+      }))
+      return
+    }
+    await handleVerifyCert(certRejectDialog.cert, 'Rejected', reason)
+  }
+
+  const handleFinalSubmit = async (e) => {
+    e?.preventDefault()
     if (!data || !actionMode) return
+    setFormError('')
+
+    if (actionMode === 'supplement' && reasonInput.trim().length < 5) {
+      setFormError('Vui lòng nhập nội dung yêu cầu bổ sung tối thiểu 5 ký tự.')
+      return
+    }
+    if (actionMode === 'reject' && reasonInput.trim().length < 5) {
+      setFormError('Vui lòng nhập lý do từ chối hồ sơ tối thiểu 5 ký tự.')
+      return
+    }
+
     setSubmittingAction(true)
     try {
       if (actionMode === 'approve') {
@@ -859,15 +1127,6 @@ function ApplicationDetailDialog({
           `Ứng viên ${data.fullName} đã trở thành chuyên gia.`
         )
       } else if (actionMode === 'supplement') {
-        if (!reasonInput.trim() || reasonInput.trim().length < 5) {
-          showNotice(
-            'warning',
-            'Nội dung quá ngắn',
-            'Vui lòng nhập nội dung yêu cầu bổ sung tối thiểu 5 ký tự.'
-          )
-          setSubmittingAction(false)
-          return
-        }
         await expertService.requestSupplement(data.id, reasonInput.trim())
         showNotice(
           'info',
@@ -875,15 +1134,6 @@ function ApplicationDetailDialog({
           'Ứng viên sẽ nhận được thông báo chỉnh sửa hồ sơ.'
         )
       } else if (actionMode === 'reject') {
-        if (!reasonInput.trim() || reasonInput.trim().length < 5) {
-          showNotice(
-            'warning',
-            'Nội dung quá ngắn',
-            'Vui lòng nhập lý do từ chối tối thiểu 5 ký tự.'
-          )
-          setSubmittingAction(false)
-          return
-        }
         await expertService.rejectApplication(data.id, reasonInput.trim())
         showNotice(
           'info',
@@ -891,9 +1141,11 @@ function ApplicationDetailDialog({
           'Hồ sơ đăng ký đã chuyển sang trạng thái từ chối.'
         )
       }
+      setActionMode(null)
       await onUpdated()
       onOpenChange(false)
     } catch (err) {
+      setFormError(err.message || 'Thao tác không thành công.')
       showNotice('error', 'Thao tác không thành công', err.message)
     } finally {
       setSubmittingAction(false)
@@ -903,6 +1155,14 @@ function ApplicationDetailDialog({
   const stInfo = data
     ? APP_STATUS_MAP[data.status] || { label: data.status, dot: 'bg-stone-400' }
     : null
+
+  const isFinalized = Boolean(
+    data &&
+      (data.status === 'Approved' ||
+        data.status === 'APPROVED' ||
+        data.status === 'Rejected' ||
+        data.status === 'REJECTED')
+  )
 
   const hasBioAndExp = Boolean(data?.bio && data?.experienceDescription)
 
@@ -914,7 +1174,8 @@ function ApplicationDetailDialog({
           <div className="flex items-center justify-between gap-3 pr-8">
             <div>
               <DialogTitle className="text-base font-bold text-on-surface">
-                Thẩm định hồ sơ chuyên gia {data?.applicationNumber ? `#${data.applicationNumber}` : ''}
+                {isFinalized ? 'Chi tiết hồ sơ chuyên gia' : 'Thẩm định hồ sơ chuyên gia'}{' '}
+                {data?.applicationNumber ? `#${data.applicationNumber}` : ''}
               </DialogTitle>
               <DialogDescription className="text-xs mt-0.5 text-on-surface-variant">
                 {data?.submittedAt
@@ -927,10 +1188,7 @@ function ApplicationDetailDialog({
         </DialogHeader>
 
         {loading || !data ? (
-          <div className="py-24 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
-            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs">Đang tải chi tiết hồ sơ...</span>
-          </div>
+          <SectionLoading title="Đang tải chi tiết hồ sơ..." minHeight="min-h-[240px]" />
         ) : (
           <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs">
             {/* 1. Thông tin ứng viên (Bố cục lưới đồng đều) */}
@@ -1108,39 +1366,55 @@ function ApplicationDetailDialog({
                           </div>
                         </div>
 
-                        {/* Dòng xác minh chứng chỉ thẳng hàng */}
-                        <div className="px-4 py-2.5 bg-surface-container-lowest flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                          <Input
-                            placeholder="Ghi chú đối soát hoặc lý do từ chối chứng chỉ..."
-                            value={certNoteMap[cert.id] ?? ''}
-                            onChange={(e) =>
-                              setCertNoteMap((prev) => ({ ...prev, [cert.id]: e.target.value }))
-                            }
-                            className="h-8 text-xs flex-1"
-                          />
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant={cert.verificationStatus === 'Verified' ? 'default' : 'outline'}
-                              disabled={isBusy}
-                              onClick={() => handleVerifyCert(cert.id, 'Verified')}
-                              className="h-8 px-3 text-xs"
-                            >
-                              Xác nhận hợp lệ
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={isBusy}
-                              onClick={() => handleVerifyCert(cert.id, 'Rejected')}
-                              className="h-8 px-3 text-xs text-red-600 hover:text-red-700"
-                            >
-                              Từ chối
-                            </Button>
+                        {/* Dòng xác minh chứng chỉ thẳng hàng (chỉ hiển thị thao tác khi hồ sơ chưa chốt kết quả) */}
+                        {!isFinalized ? (
+                          <div className="px-4 py-2.5 bg-surface-container-lowest flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                            <Input
+                              placeholder="Ghi chú đối soát hoặc lý do từ chối chứng chỉ..."
+                              value={certNoteMap[cert.id] ?? ''}
+                              onChange={(e) =>
+                                setCertNoteMap((prev) => ({ ...prev, [cert.id]: e.target.value }))
+                              }
+                              className="h-8 text-xs flex-1"
+                            />
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={cert.verificationStatus === 'Verified' ? 'default' : 'outline'}
+                                disabled={isBusy}
+                                onClick={() => handleVerifyCert(cert, 'Verified')}
+                                className="h-8 px-3 text-xs"
+                              >
+                                Xác nhận hợp lệ
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={isBusy}
+                                onClick={() =>
+                                  setCertRejectDialog({
+                                    open: true,
+                                    cert,
+                                    reason: certNoteMap[cert.id] || '',
+                                    error: '',
+                                  })
+                                }
+                                className="h-8 px-3 text-xs text-red-600 hover:text-red-700"
+                              >
+                                Từ chối
+                              </Button>
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          certNoteMap[cert.id] && (
+                            <div className="px-4 py-2.5 bg-surface-container-lowest text-xs text-on-surface-variant">
+                              <strong className="text-on-surface">Ghi chú thẩm định:</strong>{' '}
+                              {certNoteMap[cert.id]}
+                            </div>
+                          )
+                        )}
                       </div>
                     )
                   })}
@@ -1196,53 +1470,119 @@ function ApplicationDetailDialog({
                 </p>
               </div>
             )}
+          </div>
+        )}
 
-            {/* 4. Khung nhập thông tin khi chọn thao tác quyết định */}
-            {actionMode && (
-              <div className="p-4 rounded-xl border border-outline-variant/60 bg-surface-container-low/35 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-on-surface">
-                    {actionMode === 'approve' && 'Xác nhận phê duyệt hồ sơ chuyên gia'}
-                    {actionMode === 'supplement' && 'Gửi yêu cầu ứng viên bổ sung hồ sơ'}
-                    {actionMode === 'reject' && 'Xác nhận từ chối hồ sơ đăng ký'}
+        {/* Khung Form Shadcn UI cố định ngay trên Footer khi chọn Từ chối / Yêu cầu bổ sung / Phê duyệt */}
+        {!loading && data && !isFinalized && actionMode && (
+          <form
+            onSubmit={handleFinalSubmit}
+            className="px-6 py-4 border-t border-outline-variant/60 bg-surface-container-low/50 space-y-3 text-xs animate-in fade-in slide-in-from-bottom-2 duration-200"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-on-surface">
+                  {actionMode === 'approve' && 'Xác nhận quyết định phê duyệt hồ sơ chuyên gia'}
+                  {actionMode === 'supplement' && 'Xác nhận yêu cầu ứng viên bổ sung hồ sơ'}
+                  {actionMode === 'reject' && 'Xác nhận quyết định từ chối hồ sơ chuyên gia'}
+                </span>
+                <span className="text-[11px] text-on-surface-variant mt-0.5">
+                  {actionMode === 'approve'
+                    ? `Cấp quyền hoạt động tư vấn cho chuyên gia ${data.fullName}.`
+                    : actionMode === 'supplement'
+                    ? 'Thông tin bên dưới sẽ được gửi trực tiếp để ứng viên bổ sung hồ sơ.'
+                    : 'Vui lòng nhập rõ lý do từ chối để thông báo tới ứng viên và lưu hồ sơ thẩm định.'}
+                </span>
+              </div>
+              <Badge variant={actionMode === 'reject' ? 'destructive' : 'outline'}>
+                {actionMode === 'approve'
+                  ? 'Phê duyệt'
+                  : actionMode === 'supplement'
+                  ? 'Yêu cầu bổ sung'
+                  : 'Từ chối hồ sơ'}
+              </Badge>
+            </div>
+
+            {actionMode === 'approve' ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="approve-review-notes">Ghi chú phê duyệt (tùy chọn)</Label>
+                <Input
+                  id="approve-review-notes"
+                  autoFocus
+                  placeholder="Nhập ghi chú lưu lịch sử xét duyệt..."
+                  value={reviewNotesInput}
+                  onChange={(e) => setReviewNotesInput(e.target.value)}
+                  className="h-9 text-xs bg-surface-container-lowest"
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {/* Gợi ý nhanh lý do */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-medium text-on-surface-variant">
+                    Chọn nhanh lý do:
                   </span>
-                  <Badge variant="outline">
-                    {actionMode === 'approve'
-                      ? 'Phê duyệt'
-                      : actionMode === 'supplement'
-                        ? 'Yêu cầu bổ sung'
-                        : 'Từ chối'}
-                  </Badge>
+                  {(actionMode === 'reject'
+                    ? REJECT_REASON_PRESETS
+                    : SUPPLEMENT_REASON_PRESETS
+                  ).map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setReasonInput((prev) =>
+                          prev.trim() ? `${prev.trim()} ${preset}` : preset
+                        )
+                        setFormError('')
+                      }}
+                      className="px-2 py-1 rounded-md border border-outline-variant/50 bg-surface-container-lowest hover:bg-surface-container text-[11px] text-on-surface transition-colors cursor-pointer text-left"
+                    >
+                      + {preset}
+                    </button>
+                  ))}
                 </div>
 
-                {actionMode === 'approve' ? (
-                  <div className="space-y-1.5">
-                    <Label>Ghi chú phê duyệt (tùy chọn)</Label>
-                    <Input
-                      placeholder="Nhập ghi chú lưu lịch sử xét duyệt..."
-                      value={reviewNotesInput}
-                      onChange={(e) => setReviewNotesInput(e.target.value)}
-                      className="h-9 text-xs"
-                    />
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <Label>
-                      {actionMode === 'supplement'
-                        ? 'Nội dung yêu cầu ứng viên bổ sung *'
-                        : 'Lý do từ chối hồ sơ *'}
-                    </Label>
-                    <Textarea
-                      rows={2}
-                      placeholder="Nhập nội dung rõ ràng để thông báo cho ứng viên (tối thiểu 5 ký tự)..."
-                      value={reasonInput}
-                      onChange={(e) => setReasonInput(e.target.value)}
-                    />
-                  </div>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="decision-reason-textarea" className="font-semibold">
+                    {actionMode === 'supplement'
+                      ? 'Nội dung yêu cầu ứng viên bổ sung'
+                      : 'Lý do từ chối hồ sơ'}{' '}
+                    <span className="text-red-600">*</span>
+                  </Label>
+                  <span
+                    className={`text-[11px] tabular-nums ${
+                      reasonInput.trim().length > 0 && reasonInput.trim().length < 5
+                        ? 'text-red-600 font-semibold'
+                        : 'text-on-surface-variant'
+                    }`}
+                  >
+                    {reasonInput.trim().length}/500 (tối thiểu 5 ký tự)
+                  </span>
+                </div>
+
+                <Textarea
+                  id="decision-reason-textarea"
+                  autoFocus
+                  rows={3}
+                  placeholder={
+                    actionMode === 'reject'
+                      ? 'Nhập rõ lý do từ chối hồ sơ chuyên gia (tối thiểu 5 ký tự)...'
+                      : 'Nhập nội dung cần ứng viên bổ sung hoặc chỉnh sửa (tối thiểu 5 ký tự)...'
+                  }
+                  value={reasonInput}
+                  onChange={(e) => {
+                    setReasonInput(e.target.value)
+                    if (formError) setFormError('')
+                  }}
+                  className="bg-surface-container-lowest text-xs"
+                />
+
+                {formError && (
+                  <p className="text-[11px] font-medium text-red-600">{formError}</p>
                 )}
               </div>
             )}
-          </div>
+          </form>
         )}
 
         {/* Thanh hành động hợp nhất ở chân hộp thoại */}
@@ -1257,7 +1597,7 @@ function ApplicationDetailDialog({
             Đóng
           </Button>
 
-          {!loading && data && (
+          {!loading && data && !isFinalized && (
             <div className="flex items-center gap-2">
               {actionMode ? (
                 <>
@@ -1267,7 +1607,10 @@ function ApplicationDetailDialog({
                     size="sm"
                     className="h-9 px-3.5"
                     disabled={submittingAction}
-                    onClick={() => setActionMode(null)}
+                    onClick={() => {
+                      setActionMode(null)
+                      setFormError('')
+                    }}
                   >
                     Hủy thao tác
                   </Button>
@@ -1276,10 +1619,19 @@ function ApplicationDetailDialog({
                     size="sm"
                     variant={actionMode === 'reject' ? 'destructive' : 'default'}
                     className="h-9 px-4"
-                    disabled={submittingAction}
+                    disabled={
+                      submittingAction ||
+                      (actionMode !== 'approve' && reasonInput.trim().length < 5)
+                    }
                     onClick={handleFinalSubmit}
                   >
-                    {submittingAction ? 'Đang xử lý...' : 'Xác nhận quyết định'}
+                    {submittingAction
+                      ? 'Đang xử lý...'
+                      : actionMode === 'reject'
+                      ? 'Xác nhận quyết định từ chối'
+                      : actionMode === 'supplement'
+                      ? 'Xác nhận gửi yêu cầu'
+                      : 'Xác nhận quyết định'}
                   </Button>
                 </>
               ) : (
@@ -1289,7 +1641,7 @@ function ApplicationDetailDialog({
                     size="sm"
                     variant="outline"
                     className="h-9 px-3.5 text-red-600 hover:text-red-700"
-                    onClick={() => setActionMode('reject')}
+                    onClick={() => openActionDialog('reject')}
                   >
                     Từ chối hồ sơ
                   </Button>
@@ -1298,7 +1650,7 @@ function ApplicationDetailDialog({
                     size="sm"
                     variant="outline"
                     className="h-9 px-3.5"
-                    onClick={() => setActionMode('supplement')}
+                    onClick={() => openActionDialog('supplement')}
                   >
                     Yêu cầu bổ sung
                   </Button>
@@ -1307,7 +1659,7 @@ function ApplicationDetailDialog({
                     size="sm"
                     variant="default"
                     className="h-9 px-4"
-                    onClick={() => setActionMode('approve')}
+                    onClick={() => openActionDialog('approve')}
                   >
                     Phê duyệt hồ sơ
                   </Button>
@@ -1316,6 +1668,104 @@ function ApplicationDetailDialog({
             </div>
           )}
         </DialogFooter>
+
+        {/* Shadcn Dialog xác nhận từ chối chứng chỉ hành nghề */}
+        <Dialog
+          open={certRejectDialog.open}
+          onOpenChange={(v) =>
+            !v && setCertRejectDialog({ open: false, cert: null, reason: '', error: '' })
+          }
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-red-600">
+                Xác nhận quyết định từ chối chứng chỉ
+              </DialogTitle>
+              <DialogDescription>
+                {certRejectDialog.cert
+                  ? `Chứng chỉ: ${certRejectDialog.cert.certificateName} (${certRejectDialog.cert.certificateNumber || 'Không số hiệu'})`
+                  : 'Vui lòng nhập lý do từ chối chứng chỉ hành nghề này.'}
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleConfirmCertReject} className="space-y-3 text-xs">
+              <div className="flex flex-wrap gap-1.5">
+                {CERT_REJECT_PRESETS.map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() =>
+                      setCertRejectDialog((prev) => ({
+                        ...prev,
+                        reason: prev.reason.trim()
+                          ? `${prev.reason.trim()} ${preset}`
+                          : preset,
+                        error: '',
+                      }))
+                    }
+                    className="px-2 py-1 rounded-md border border-outline-variant/50 bg-surface-container-low/50 hover:bg-surface-container text-[11px] text-on-surface transition-colors cursor-pointer text-left"
+                  >
+                    + {preset}
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="cert-reject-reason">
+                    Lý do từ chối chứng chỉ <span className="text-red-600">*</span>
+                  </Label>
+                  <span className="text-[11px] text-on-surface-variant tabular-nums">
+                    {certRejectDialog.reason.trim().length}/300
+                  </span>
+                </div>
+                <Textarea
+                  id="cert-reject-reason"
+                  autoFocus
+                  rows={3}
+                  placeholder="Nhập lý do từ chối chứng chỉ (tối thiểu 5 ký tự)..."
+                  value={certRejectDialog.reason}
+                  onChange={(e) =>
+                    setCertRejectDialog((prev) => ({
+                      ...prev,
+                      reason: e.target.value,
+                      error: '',
+                    }))
+                  }
+                />
+                {certRejectDialog.error && (
+                  <p className="text-[11px] font-medium text-red-600">
+                    {certRejectDialog.error}
+                  </p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setCertRejectDialog({ open: false, cert: null, reason: '', error: '' })
+                  }
+                >
+                  Hủy
+                </Button>
+                <Button
+                  type="submit"
+                  variant="destructive"
+                  size="sm"
+                  disabled={
+                    Boolean(certActionLoading) ||
+                    certRejectDialog.reason.trim().length < 5
+                  }
+                >
+                  {certActionLoading ? 'Đang lưu...' : 'Xác nhận quyết định từ chối'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   )
@@ -1335,6 +1785,8 @@ function WithdrawalsTab({ onBadgeRefresh }) {
   })
   const [statusFilter, setStatusFilter] = useState('__ALL__')
   const [searchQuery, setSearchQuery] = useState('')
+  const debouncedSearchQuery = useDebounce(searchQuery, 300)
+  const debouncedStatusFilter = useDebounce(statusFilter, 120)
   const [loading, setLoading] = useState(true)
 
   const [processModal, setProcessModal] = useState({
@@ -1357,7 +1809,7 @@ function WithdrawalsTab({ onBadgeRefresh }) {
       setLoading(true)
       try {
         const res = await expertService.getAdminWithdrawals({
-          status: statusFilter,
+          status: debouncedStatusFilter,
           page,
           size: 10,
         })
@@ -1369,7 +1821,7 @@ function WithdrawalsTab({ onBadgeRefresh }) {
         setLoading(false)
       }
     },
-    [statusFilter]
+    [debouncedStatusFilter]
   )
 
   useEffect(() => {
@@ -1377,8 +1829,8 @@ function WithdrawalsTab({ onBadgeRefresh }) {
   }, [fetchWithdrawals])
 
   const filteredItems = items.filter((w) => {
-    if (!searchQuery.trim()) return true
-    const q = searchQuery.trim().toLowerCase()
+    if (!debouncedSearchQuery.trim()) return true
+    const q = debouncedSearchQuery.trim().toLowerCase()
     return (
       (w.userFullName || '').toLowerCase().includes(q) ||
       (w.accountName || '').toLowerCase().includes(q) ||
@@ -1458,9 +1910,8 @@ function WithdrawalsTab({ onBadgeRefresh }) {
 
       <Card>
         {loading ? (
-          <CardContent className="py-16 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
-            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs">Đang tải danh sách lệnh rút tiền...</span>
+          <CardContent className="p-0">
+            <SectionLoading title="Đang tải danh sách lệnh rút tiền..." minHeight="min-h-[200px]" />
           </CardContent>
         ) : filteredItems.length === 0 ? (
           <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-1.5">
@@ -1786,9 +2237,8 @@ function DisputesTab({ onBadgeRefresh }) {
 
       <Card>
         {loading ? (
-          <CardContent className="py-16 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
-            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs">Đang tải danh sách khiếu nại...</span>
+          <CardContent className="p-0">
+            <SectionLoading title="Đang tải danh sách khiếu nại..." minHeight="min-h-[200px]" />
           </CardContent>
         ) : items.length === 0 ? (
           <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-1.5">
@@ -1831,8 +2281,8 @@ function DisputesTab({ onBadgeRefresh }) {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {DISPUTE_REASON_MAP[d.reason] || d.reason}
+                    <TableCell className="max-w-xs truncate" title={formatDisputeReason(d.reason)}>
+                      {formatDisputeReason(d.reason)}
                     </TableCell>
                     <TableCell className="text-right font-mono font-semibold tabular-nums">
                       {formatCurrency(d.totalFee ?? d.disputedAmount ?? d.escrowAmount)}
@@ -1851,7 +2301,10 @@ function DisputesTab({ onBadgeRefresh }) {
                         className="h-8 px-3 text-xs"
                         onClick={() => openDisputeDetail(d.id)}
                       >
-                        Xem & Phán quyết
+                        {d.status === 'PENDING_EXPERT_RESPONSE' ||
+                        d.status === 'AWAITING_ADMIN_RESOLUTION'
+                          ? 'Xem & Phán quyết'
+                          : 'Xem chi tiết'}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -1899,7 +2352,7 @@ function DisputesTab({ onBadgeRefresh }) {
                 <div>
                   <span className="text-[11px] text-on-surface-variant">Lý do khiếu nại</span>
                   <p className="font-semibold text-on-surface mt-0.5">
-                    {DISPUTE_REASON_MAP[selectedDispute.reason] || selectedDispute.reason}
+                    {formatDisputeReason(selectedDispute.reason)}
                   </p>
                 </div>
                 <div>
@@ -2016,11 +2469,20 @@ function DisputesTab({ onBadgeRefresh }) {
                   </DialogFooter>
                 </form>
               ) : (
-                <div className="p-3.5 rounded-xl border border-outline-variant/40 bg-surface-container-low/40">
-                  <span className="text-[11px] font-semibold text-on-surface-variant">
-                    Kết luận đã ban hành
-                  </span>
-                  <p className="text-on-surface font-medium mt-1">
+                <div className="p-3.5 rounded-xl border border-outline-variant/40 bg-surface-container-low/40 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-on-surface-variant">
+                      Kết luận đã ban hành
+                    </span>
+                    {selectedDispute.adminDecisionType && (
+                      <span className="text-[11px] font-bold text-primary">
+                        {DISPUTE_DECISION_MAP[
+                          String(selectedDispute.adminDecisionType).toUpperCase()
+                        ] || selectedDispute.adminDecisionType}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-on-surface font-medium">
                     {selectedDispute.adminResolution ||
                       selectedDispute.adminResolutionNotes ||
                       'Đã hoàn tất xử lý.'}
@@ -2073,9 +2535,14 @@ function PlatformWalletTab() {
   const [statusFilter, setStatusFilter] = useState('__ALL__')
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const debouncedEscrowSearch = useDebounce(searchInput, 350)
   const [sortBy, setSortBy] = useState('-createdAt')
   const [loadingEscrow, setLoadingEscrow] = useState(true)
   const [selectedTx, setSelectedTx] = useState(null)
+
+  useEffect(() => {
+    setSearchQuery(debouncedEscrowSearch)
+  }, [debouncedEscrowSearch])
 
   // Modal Admin rút doanh thu sàn
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false)
@@ -2343,8 +2810,8 @@ function PlatformWalletTab() {
         <TabsContent value="platform-tx" className="mt-3">
           <Card>
             {loadingWallet ? (
-              <CardContent className="py-14 flex justify-center">
-                <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <CardContent className="p-0">
+                <SectionLoading title="Đang tải biến động doanh thu..." minHeight="min-h-[180px]" />
               </CardContent>
             ) : !wallet?.recentPlatformTransactions?.length ? (
               <CardContent className="py-12 text-center text-xs text-on-surface-variant">
@@ -2363,10 +2830,7 @@ function PlatformWalletTab() {
                 </TableHeader>
                 <TableBody>
                   {wallet.recentPlatformTransactions.map((tx) => {
-                    const meta = PLATFORM_TX_TYPE_MAP[tx.transactionType] || {
-                      label: tx.transactionType,
-                      isPositive: Number(tx.amount) >= 0,
-                    }
+                    const meta = getPlatformTxTypeMeta(tx.transactionType, tx.amount)
                     const isPos = Number(tx.amount) >= 0
                     return (
                       <TableRow key={tx.id}>
@@ -2379,7 +2843,9 @@ function PlatformWalletTab() {
                             dot={isPos ? 'bg-emerald-600' : 'bg-stone-500'}
                           />
                         </TableCell>
-                        <TableCell className="max-w-md truncate">{tx.description}</TableCell>
+                        <TableCell className="max-w-md truncate" title={formatPlatformTxDescription(tx.description)}>
+                          {formatPlatformTxDescription(tx.description)}
+                        </TableCell>
                         <TableCell
                           className={`text-right font-mono font-bold tabular-nums ${
                             isPos ? 'text-emerald-700' : 'text-on-surface'
@@ -2404,8 +2870,8 @@ function PlatformWalletTab() {
         <TabsContent value="platform-withdrawals" className="mt-3">
           <Card>
             {loadingWd ? (
-              <CardContent className="py-14 flex justify-center">
-                <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <CardContent className="p-0">
+                <SectionLoading title="Đang tải lịch sử rút doanh thu..." minHeight="min-h-[180px]" />
               </CardContent>
             ) : platformWithdrawals.length === 0 ? (
               <CardContent className="py-12 text-center text-xs text-on-surface-variant">
@@ -2492,11 +2958,14 @@ function PlatformWalletTab() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__ALL__">Tất cả trạng thái</SelectItem>
+                    <SelectItem value="PendingPayment">Chờ thanh toán</SelectItem>
                     <SelectItem value="HeldInEscrow">Đang tạm giữ</SelectItem>
                     <SelectItem value="CoolingDown">Chờ đối soát</SelectItem>
                     <SelectItem value="Settled">Đã giải ngân</SelectItem>
                     <SelectItem value="Refunded">Đã hoàn tiền</SelectItem>
                     <SelectItem value="PartiallyRefunded">Hoàn một phần</SelectItem>
+                    <SelectItem value="Disputed">Đang khiếu nại</SelectItem>
+                    <SelectItem value="Cancelled">Đã hủy</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -2517,8 +2986,8 @@ function PlatformWalletTab() {
 
           <Card>
             {loadingEscrow ? (
-              <CardContent className="py-14 flex justify-center">
-                <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <CardContent className="p-0">
+                <SectionLoading title="Đang tải sổ cái giao dịch tạm giữ..." minHeight="min-h-[180px]" />
               </CardContent>
             ) : escrowItems.length === 0 ? (
               <CardContent className="py-12 text-center text-xs text-on-surface-variant">
@@ -2751,12 +3220,27 @@ function PlatformWalletTab() {
                     {formatCurrency(selectedTx.expertReceivable)}
                   </strong>
                 </div>
+                {selectedTx.paymentGateway && (
+                  <div className="flex justify-between">
+                    <span className="text-on-surface-variant">Phương thức thanh toán:</span>
+                    <span className="font-semibold text-on-surface">
+                      {PAYMENT_GATEWAY_MAP[String(selectedTx.paymentGateway).toUpperCase()] ||
+                        selectedTx.paymentGateway}
+                    </span>
+                  </div>
+                )}
                 {selectedTx.refundAmount > 0 && (
                   <div className="flex justify-between pt-1 border-t border-outline-variant/30">
                     <span className="text-on-surface-variant">Số tiền đã hoàn trả:</span>
                     <strong className="font-mono">
                       {formatCurrency(selectedTx.refundAmount)}
                     </strong>
+                  </div>
+                )}
+                {selectedTx.refundReason && (
+                  <div className="flex justify-between gap-3">
+                    <span className="text-on-surface-variant shrink-0">Lý do hoàn tiền:</span>
+                    <span className="text-on-surface text-right">{selectedTx.refundReason}</span>
                   </div>
                 )}
               </div>
@@ -2900,8 +3384,8 @@ function SpecializationsTab() {
 
       <Card>
         {loading ? (
-          <CardContent className="py-14 flex justify-center">
-            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <CardContent className="p-0">
+            <SectionLoading title="Đang tải danh mục lĩnh vực tư vấn..." minHeight="min-h-[180px]" />
           </CardContent>
         ) : items.length === 0 ? (
           <CardContent className="py-12 text-center text-xs text-on-surface-variant">
@@ -3052,6 +3536,8 @@ function SpecializationsTab() {
 
 function FeeConfigsTab() {
   const [items, setItems] = useState([])
+  const [currentCommissionRate, setCurrentCommissionRate] = useState(20)
+  const [policySnapshot, setPolicySnapshot] = useState(null)
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingItem, setEditingItem] = useState(null)
@@ -3075,10 +3561,27 @@ function FeeConfigsTab() {
   const fetchList = async () => {
     setLoading(true)
     try {
-      const data = await expertService.getFeeConfigs()
-      setItems(Array.isArray(data) ? data : [])
+      const [feeRes, policyRes] = await Promise.allSettled([
+        expertService.getFeeConfigs(),
+        expertService.getPlatformPolicy(),
+      ])
+
+      if (feeRes.status === 'fulfilled') {
+        setItems(Array.isArray(feeRes.value) ? feeRes.value : [])
+      } else {
+        throw feeRes.reason
+      }
+
+      if (policyRes.status === 'fulfilled' && policyRes.value) {
+        setPolicySnapshot(policyRes.value)
+        const rate =
+          policyRes.value.platformCommissionRatePercent ??
+          policyRes.value.commissionRatePercent ??
+          20
+        setCurrentCommissionRate(Number(rate))
+      }
     } catch (err) {
-      showNotice('error', 'Không thể tải khung phí', err.message)
+      showNotice('error', 'Không thể tải khung phí', err?.message || 'Lỗi tải dữ liệu khung phí.')
     } finally {
       setLoading(false)
     }
@@ -3095,7 +3598,7 @@ function FeeConfigsTab() {
       durationMinutes: 60,
       minFee: 100000,
       maxFee: 2000000,
-      platformFeePercentage: 20,
+      platformFeePercentage: currentCommissionRate,
       description: '',
       isActive: true,
     })
@@ -3109,7 +3612,10 @@ function FeeConfigsTab() {
       durationMinutes: item.durationMinutes ?? 60,
       minFee: item.minFee ?? 100000,
       maxFee: item.maxFee ?? 2000000,
-      platformFeePercentage: item.platformFeePercentage ?? 20,
+      platformFeePercentage:
+        item.platformFeePercentage ??
+        item.platformCommissionRatePercent ??
+        currentCommissionRate,
       description: item.description || '',
       isActive: item.isActive ?? true,
     })
@@ -3124,26 +3630,48 @@ function FeeConfigsTab() {
     }
     setSaving(true)
     try {
+      const newRate = Number(formData.platformFeePercentage)
       if (editingItem) {
         await expertService.updateFeeConfig(editingItem.id, {
           minFee: Number(formData.minFee),
           maxFee: Number(formData.maxFee),
-          platformFeePercentage: Number(formData.platformFeePercentage),
+          platformFeePercentage: newRate,
           description: formData.description.trim() || null,
           isActive: Boolean(formData.isActive),
         })
-        showNotice('success', 'Đã cập nhật khung phí', 'Thông số khung phí đã được lưu.')
       } else {
         await expertService.createFeeConfig({
           sessionType: formData.sessionType,
           durationMinutes: Number(formData.durationMinutes),
           minFee: Number(formData.minFee),
           maxFee: Number(formData.maxFee),
-          platformFeePercentage: Number(formData.platformFeePercentage),
+          platformFeePercentage: newRate,
           description: formData.description.trim() || null,
         })
-        showNotice('success', 'Đã thêm khung phí', 'Khung phí dịch vụ mới đã được tạo.')
       }
+
+      // Đồng bộ tỷ lệ phí dịch vụ sàn lên ConsultationPlatformPolicy nếu có thay đổi
+      if (
+        !isNaN(newRate) &&
+        newRate >= 0 &&
+        newRate <= 100 &&
+        newRate !== Number(currentCommissionRate) &&
+        policySnapshot
+      ) {
+        await expertService.updatePlatformPolicy({
+          ...policySnapshot,
+          platformCommissionRatePercent: newRate,
+        })
+        setCurrentCommissionRate(newRate)
+      }
+
+      showNotice(
+        'success',
+        editingItem ? 'Đã cập nhật khung phí' : 'Đã thêm khung phí',
+        editingItem
+          ? 'Thông số khung phí và tỷ lệ phí sàn đã được lưu.'
+          : 'Khung phí dịch vụ mới đã được tạo.'
+      )
       setDialogOpen(false)
       fetchList()
     } catch (err) {
@@ -3187,8 +3715,8 @@ function FeeConfigsTab() {
 
       <Card>
         {loading ? (
-          <CardContent className="py-14 flex justify-center">
-            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <CardContent className="p-0">
+            <SectionLoading title="Đang tải cấu hình khung phí..." minHeight="min-h-[180px]" />
           </CardContent>
         ) : items.length === 0 ? (
           <CardContent className="py-12 text-center text-xs text-on-surface-variant">
@@ -3223,7 +3751,12 @@ function FeeConfigsTab() {
                     {formatCurrency(cfg.maxFee)}
                   </TableCell>
                   <TableCell className="text-center tabular-nums">
-                    <Badge variant="outline">{cfg.platformFeePercentage}%</Badge>
+                    <Badge variant="outline">
+                      {cfg.platformFeePercentage ??
+                        cfg.platformCommissionRatePercent ??
+                        currentCommissionRate}
+                      %
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <StatusBadge
@@ -3538,8 +4071,8 @@ function PlatformPolicyTab() {
   if (loading) {
     return (
       <Card>
-        <CardContent className="py-16 flex justify-center">
-          <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <CardContent className="p-0">
+          <SectionLoading title="Đang tải chính sách vận hành sàn..." minHeight="min-h-[220px]" />
         </CardContent>
       </Card>
     )
