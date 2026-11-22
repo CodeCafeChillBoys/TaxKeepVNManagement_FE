@@ -10,8 +10,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { formatAiProvider } from '@/utils/configDataTypeUtils'
 import {
   Select,
   SelectContent,
@@ -138,13 +138,13 @@ export function AiKeyModal({
             <div>
               <DialogTitle className="text-base font-bold text-on-surface">
                 {mode === 'create'
-                  ? 'Thêm API Key AI mới'
-                  : `Cập nhật API Key: ${initialData?.key_name || ''}`}
+                  ? 'Thêm khóa kết nối dịch vụ mới'
+                  : `Cập nhật khóa kết nối: ${initialData?.key_name || ''}`}
               </DialogTitle>
               <DialogDescription className="text-xs text-on-surface-variant mt-0.5">
                 {mode === 'create'
-                  ? 'Khai báo API Key của nhà cung cấp LLM (Gemini, etc.) phục vụ vận hành AI hệ thống.'
-                  : 'Chỉnh sửa tên hiển thị, độ ưu tiên định tuyến, trạng thái và bật/tắt kích hoạt.'}
+                  ? 'Khai báo khóa kết nối của đơn vị cung cấp dịch vụ phục vụ vận hành hệ thống.'
+                  : 'Chỉnh sửa tên hiển thị, thứ tự ưu tiên, trạng thái vận hành và bật/tắt áp dụng.'}
               </DialogDescription>
             </div>
           </div>
@@ -156,21 +156,21 @@ export function AiKeyModal({
           {mode === 'edit' && initialData && (
             <div className="p-3.5 rounded-xl bg-surface-container-low/70 border border-outline-variant/30 flex flex-col gap-2 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-on-surface-variant font-medium">Khóa bảo mật:</span>
+                <span className="text-on-surface-variant font-medium">Mã khóa bảo mật:</span>
                 <span className="font-mono font-bold text-on-surface bg-surface-container-high px-2 py-0.5 rounded">
                   {initialData.masked_api_key || '••••••••••••••••'}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-on-surface-variant font-medium">Nhà cung cấp:</span>
-                <Badge variant="outline" className="font-bold text-[11px]">
-                  {initialData.provider || 'GEMINI'}
-                </Badge>
+                <span className="text-on-surface-variant font-medium">Đơn vị cung cấp:</span>
+                <span className="font-bold text-on-surface">
+                  {formatAiProvider(initialData.provider)}
+                </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-on-surface-variant font-medium">Lượt request đã gọi:</span>
-                <span className="font-semibold text-primary">
-                  {(initialData.request_count || 0).toLocaleString()} lượt
+                <span className="text-on-surface-variant font-medium">Số lượt đã xử lý:</span>
+                <span className="font-semibold text-on-surface">
+                  {(initialData.request_count || 0).toLocaleString('vi-VN')} lượt
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -180,12 +180,12 @@ export function AiKeyModal({
                 </span>
               </div>
               {initialData.cooldown_until && (
-                <div className="flex items-center justify-between text-amber-700 bg-amber-50 p-1.5 rounded-lg border border-amber-200">
+                <div className="flex items-center justify-between text-on-surface-variant bg-surface-container p-1.5 rounded-lg border border-outline-variant/30">
                   <span className="font-medium flex items-center gap-1">
                     <span className="material-symbols-outlined text-[16px]">schedule</span>
-                    Cooldown đến:
+                    Tạm nghỉ đến:
                   </span>
-                  <span className="font-bold">{formatDateTime(initialData.cooldown_until)}</span>
+                  <span className="font-bold text-on-surface">{formatDateTime(initialData.cooldown_until)}</span>
                 </div>
               )}
             </div>
@@ -194,11 +194,11 @@ export function AiKeyModal({
           {/* Tên gợi nhớ */}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="key_name" className="text-xs font-bold text-on-surface">
-              Tên gợi nhớ API Key <span className="text-red-500">*</span>
+              Tên gợi nhớ khóa kết nối <span className="text-red-500">*</span>
             </Label>
             <Input
               id="key_name"
-              placeholder="VD: Google Gemini 2.5 Flash - Key Chính 01"
+              placeholder="VD: Khóa kết nối dịch vụ chính số 01"
               value={formData.key_name}
               onChange={(e) => setFormData((prev) => ({ ...prev, key_name: e.target.value }))}
               className={`h-9 text-xs ${errors.key_name ? 'border-red-500' : ''}`}
@@ -208,32 +208,33 @@ export function AiKeyModal({
             )}
           </div>
 
-          {/* Khi Create: Nhà cung cấp & Mã API Key */}
+          {/* Khi Create: Nhà cung cấp & Mã Khóa */}
           {mode === 'create' && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="provider" className="text-xs font-bold text-on-surface">
-                    Nhà cung cấp (Provider)
+                    Đơn vị cung cấp dịch vụ
                   </Label>
                   <Select
                     value={formData.provider}
                     onValueChange={(val) => setFormData((prev) => ({ ...prev, provider: val }))}
                   >
                     <SelectTrigger id="provider" className="h-9 text-xs">
-                      <SelectValue placeholder="Chọn nhà cung cấp" />
+                      <SelectValue placeholder="Chọn đơn vị cung cấp" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="GEMINI">Google Gemini</SelectItem>
                       <SelectItem value="OPENAI">OpenAI</SelectItem>
-                      <SelectItem value="ANTHROPIC">Anthropic Claude</SelectItem>
+                      <SelectItem value="CLAUDE">Anthropic Claude</SelectItem>
+                      <SelectItem value="DEEPSEEK">DeepSeek</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="priority" className="text-xs font-bold text-on-surface">
-                    Độ ưu tiên định tuyến (Priority) <span className="text-red-500">*</span>
+                    Thứ tự ưu tiên sử dụng <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="priority"
@@ -250,16 +251,16 @@ export function AiKeyModal({
                 </div>
               </div>
 
-              {/* API Key Input */}
+              {/* Khóa bảo mật Input */}
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="api_key" className="text-xs font-bold text-on-surface">
-                  Khóa API Key bí mật <span className="text-red-500">*</span>
+                  Mã khóa bảo mật <span className="text-red-500">*</span>
                 </Label>
                 <div className="relative">
                   <Input
                     id="api_key"
                     type={showRawKey ? 'text' : 'password'}
-                    placeholder="Nhập API Key (ví dụ: AIzaSy...)"
+                    placeholder="Nhập mã khóa bảo mật được cấp..."
                     value={formData.api_key}
                     onChange={(e) => setFormData((prev) => ({ ...prev, api_key: e.target.value }))}
                     className={`h-9 text-xs pr-10 font-mono ${errors.api_key ? 'border-red-500' : ''}`}
@@ -268,7 +269,7 @@ export function AiKeyModal({
                     type="button"
                     onClick={() => setShowRawKey((prev) => !prev)}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface cursor-pointer"
-                    title={showRawKey ? 'Ẩn API Key' : 'Hiện API Key'}
+                    title={showRawKey ? 'Ẩn mã khóa' : 'Hiện mã khóa'}
                   >
                     <span className="material-symbols-outlined text-[18px]">
                       {showRawKey ? 'visibility_off' : 'visibility'}
@@ -278,24 +279,24 @@ export function AiKeyModal({
                 {errors.api_key && (
                   <p className="text-[11px] text-red-500 font-medium">{errors.api_key}</p>
                 )}
-                <div className="p-2.5 rounded-lg bg-blue-50/80 border border-blue-200/60 text-blue-900 text-[11px] flex items-start gap-2 mt-1">
-                  <span className="material-symbols-outlined text-[16px] text-blue-600 shrink-0 mt-0.5">
+                <div className="p-2.5 rounded-lg bg-surface-container-low border border-outline-variant/40 text-on-surface-variant text-[11px] flex items-start gap-2 mt-1">
+                  <span className="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0 mt-0.5">
                     verified_user
                   </span>
                   <span>
-                    Backend sẽ <strong>tự động gọi thử nghiệm tới Google API</strong> để kiểm tra tính hợp lệ trước khi lưu trữ.
+                    Hệ thống sẽ <strong className="text-on-surface">tự động kiểm tra tính hợp lệ của khóa kết nối</strong> trước khi lưu trữ.
                   </span>
                 </div>
               </div>
             </>
           )}
 
-          {/* Khi Edit: Sửa Priority, Status, IsActive */}
+          {/* Khi Edit: Sửa Thứ tự ưu tiên, Trạng thái */}
           {mode === 'edit' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="edit-priority" className="text-xs font-bold text-on-surface">
-                  Độ ưu tiên định tuyến (Priority) <span className="text-red-500">*</span>
+                  Thứ tự ưu tiên sử dụng <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="edit-priority"
@@ -309,13 +310,13 @@ export function AiKeyModal({
                   <p className="text-[11px] text-red-500 font-medium">{errors.priority}</p>
                 )}
                 <span className="text-[10px] text-on-surface-variant">
-                  Số nhỏ hơn (vd: 1) sẽ được gọi trước số lớn hơn.
+                  Số nhỏ hơn (ví dụ: 1) sẽ được ưu tiên sử dụng trước.
                 </span>
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="edit-status" className="text-xs font-bold text-on-surface">
-                  Trạng thái vận hành (Status)
+                  Trạng thái vận hành
                 </Label>
                 <Select
                   value={formData.status}
@@ -325,11 +326,14 @@ export function AiKeyModal({
                     <SelectValue placeholder="Chọn trạng thái" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ACTIVE">ACTIVE (Sẵn sàng hoạt động)</SelectItem>
-                    <SelectItem value="COOLDOWN">COOLDOWN (Đang tạm nghỉ)</SelectItem>
-                    <SelectItem value="EXHAUSTED">EXHAUSTED (Hết hạn mức Quota)</SelectItem>
-                    <SelectItem value="RATE_LIMITED">RATE_LIMITED (Bị giới hạn tần suất)</SelectItem>
-                    <SelectItem value="REVOKED">REVOKED (Đã bị thu hồi / Hủy)</SelectItem>
+                    <SelectItem value="ACTIVE">Đang hoạt động</SelectItem>
+                    <SelectItem value="QUOTA_EXCEEDED">Vượt hạn mức trong ngày</SelectItem>
+                    <SelectItem value="COOLDOWN">Đang tạm nghỉ chờ</SelectItem>
+                    <SelectItem value="EXHAUSTED">Đã hết hạn mức</SelectItem>
+                    <SelectItem value="RATE_LIMITED">Giới hạn tần suất sử dụng</SelectItem>
+                    <SelectItem value="INVALID">Khóa không hợp lệ</SelectItem>
+                    <SelectItem value="REVOKED">Đã thu hồi</SelectItem>
+                    <SelectItem value="DISABLED">Đã tạm dừng</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -346,7 +350,7 @@ export function AiKeyModal({
               }
             />
             <Label htmlFor="is_active" className="text-xs font-medium text-on-surface cursor-pointer">
-              Kích hoạt sử dụng API Key này trong chuỗi xoay vòng (Key Rotation Pool)
+              Kích hoạt sử dụng khóa kết nối này trong danh sách điều phối tự động
             </Label>
           </div>
 
@@ -371,7 +375,7 @@ export function AiKeyModal({
               {isSubmitting && (
                 <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               )}
-              <span>{mode === 'create' ? 'Kiểm tra & Lưu Key' : 'Cập nhật Key'}</span>
+              <span>{mode === 'create' ? 'Kiểm tra & Lưu khóa' : 'Cập nhật khóa'}</span>
             </Button>
           </DialogFooter>
         </form>

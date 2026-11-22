@@ -1,10 +1,10 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
   ConfigDataType,
   detectDataType,
   DATA_TYPE_META,
   getConfigFriendlyInfo,
-  FIELD_LABELS,
+  formatFieldLabel,
 } from '@/utils/configDataTypeUtils'
 
 export function SystemConfigModal({
@@ -168,40 +168,36 @@ export function SystemConfigModal({
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-space-md">
           {/* Mã quy tắc / Tham số */}
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-on-surface">
-                Mã định danh quy tắc <span className="text-error">*</span>
-              </label>
-              {mode === 'create' && (
+          {mode === 'create' ? (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-on-surface">
+                  Mã định danh quy tắc <span className="text-error">*</span>
+                </label>
                 <span className="text-[10px] text-on-surface-variant">
                   Chữ in hoa & gạch dưới (VD: THRESHOLD_VIEN_PHI)
                 </span>
-              )}
+              </div>
+              <input
+                type="text"
+                placeholder="Ví dụ: THRESHOLD_HOA_DON_XANG_DAU"
+                value={formData.config_key}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    config_key: e.target.value.toUpperCase().replace(/\s+/g, '_'),
+                  })
+                }
+                className="h-10 px-3 rounded-lg border font-mono text-xs bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all border-outline-variant/40 focus:border-primary focus:ring-1 focus:ring-primary"
+              />
             </div>
-            <input
-              type="text"
-              placeholder="Ví dụ: THRESHOLD_HOA_DON_XANG_DAU"
-              value={formData.config_key}
-              disabled={mode === 'edit'}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  config_key: e.target.value.toUpperCase().replace(/\s+/g, '_'),
-                })
-              }
-              className={`h-10 px-3 rounded-lg border font-mono text-xs bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all ${
-                mode === 'edit'
-                  ? 'opacity-75 cursor-not-allowed bg-surface-container-high/40 text-on-surface font-bold'
-                  : 'border-outline-variant/40 focus:border-primary focus:ring-1 focus:ring-primary'
-              }`}
-            />
-            {mode === 'edit' && (
-              <span className="text-[11px] text-on-surface-variant">
-                Tên nghiệp vụ: <strong className="text-on-surface">{friendlyInfo.title}</strong>
-              </span>
-            )}
-          </div>
+          ) : (
+            <div className="p-3 rounded-xl bg-surface-container-low border border-outline-variant/30 flex flex-col gap-0.5">
+              <span className="text-[11px] text-on-surface-variant">Tiêu chuẩn đang chỉnh sửa</span>
+              <span className="text-sm font-bold text-on-surface">{friendlyInfo.title}</span>
+              <span className="text-[11px] text-on-surface-variant">{friendlyInfo.category}</span>
+            </div>
+          )}
 
           {/* Giá trị thiết lập */}
           <div className="flex flex-col gap-1.5">
@@ -210,8 +206,10 @@ export function SystemConfigModal({
                 Giá trị thiết lập <span className="text-error">*</span>
               </label>
               {formData.data_type === ConfigDataType.FLOAT && formData.config_value && (
-                <span className="text-xs font-bold text-primary">
-                  Tương đương: {(Number(formData.config_value.replace(',', '.')) * 100).toFixed(0)}% độ chính xác
+                <span className="text-xs font-bold text-on-surface">
+                  {friendlyInfo.isCurrencyAmount || Number(formData.config_value.replace(',', '.')) > 1
+                    ? `${Number(formData.config_value.replace(',', '.')).toLocaleString('vi-VN')} VNĐ`
+                    : `Tương đương: ${(Number(formData.config_value.replace(',', '.')) * 100).toFixed(0)}% độ chính xác`}
                 </span>
               )}
             </div>
@@ -224,7 +222,7 @@ export function SystemConfigModal({
                   onClick={() => handleValueChange('true')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
                     formData.config_value.toLowerCase() === 'true'
-                      ? 'bg-emerald-600 text-white shadow-xs'
+                      ? 'bg-primary text-on-primary shadow-xs'
                       : 'bg-surface-container-high text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
@@ -236,7 +234,7 @@ export function SystemConfigModal({
                   onClick={() => handleValueChange('false')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
                     formData.config_value.toLowerCase() === 'false'
-                      ? 'bg-rose-600 text-white shadow-xs'
+                      ? 'bg-primary text-on-primary shadow-xs'
                       : 'bg-surface-container-high text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
@@ -254,12 +252,12 @@ export function SystemConfigModal({
                     : formData.data_type === ConfigDataType.INT
                     ? 'Ví dụ: 10'
                     : formData.data_type === ConfigDataType.LIST_STRING
-                    ? 'Ví dụ: total_amount, seller_tax_code, invoice_number'
+                    ? 'Nhập các mục cần kiểm tra, phân tách bằng dấu phẩy'
                     : 'Nhập giá trị...'
                 }
                 value={formData.config_value}
                 onChange={(e) => handleValueChange(e.target.value)}
-                className="h-10 px-3 rounded-lg border font-mono text-xs bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary border-outline-variant/40"
+                className="h-10 px-3 rounded-lg border text-xs bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary border-outline-variant/40"
               />
             )}
 
@@ -284,8 +282,7 @@ export function SystemConfigModal({
               </div>
 
               {autoDetect && (
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
-                  <span className="material-symbols-outlined text-[13px]">auto_awesome</span>
+                <span className="text-[10px] text-on-surface-variant flex items-center gap-1 font-medium">
                   Tự động nhận diện định dạng
                 </span>
               )}
@@ -295,27 +292,20 @@ export function SystemConfigModal({
             {formData.data_type === ConfigDataType.LIST_STRING && formData.config_value && (
               <div className="flex flex-wrap gap-1.5 p-2.5 rounded-lg bg-surface-container-low/60 border border-outline-variant/20 mt-1">
                 <span className="text-[10px] text-on-surface-variant font-bold mr-1 self-center">
-                  Các trường kiểm tra:
+                  Các mục thông tin bắt buộc:
                 </span>
                 {formData.config_value
                   .split(',')
                   .map((item) => item.trim())
                   .filter(Boolean)
-                  .map((item, idx) => {
-                    const friendlyName = FIELD_LABELS[item] || item
-                    return (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20 font-medium"
-                      >
-                        <span className="material-symbols-outlined text-[13px]">check</span>
-                        <span>{friendlyName}</span>
-                        {friendlyName !== item && (
-                          <span className="text-[9px] opacity-70 font-mono">({item})</span>
-                        )}
-                      </span>
-                    )
-                  })}
+                  .map((item, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-surface-container text-on-surface border border-outline-variant/40 font-medium"
+                    >
+                      <span>{formatFieldLabel(item)}</span>
+                    </span>
+                  ))}
               </div>
             )}
           </div>

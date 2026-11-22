@@ -7,10 +7,12 @@ import { AdminProfileSettings } from './AdminProfileSettings'
 import { AdminSystemSettingsPage } from './AdminSystemSettingsPage'
 import { AdminDependentRulesPage } from './AdminDependentRulesPage'
 import { AdminApprovalHistoryPage } from './AdminApprovalHistoryPage'
-import { AdminExpertManagementPage } from './AdminExpertManagementPage'
+import { AdminExpertManagementPage, AdminSystemFundPage } from './AdminExpertManagementPage'
 import { AdminSubscriptionPlansPage } from './AdminSubscriptionPlansPage'
+import { AdminRolePermissionsPage } from './AdminRolePermissionsPage'
 import { taxRuleService } from '@/services/taxRuleService'
 import { useAuth } from '@/hooks/useAuth'
+import { SectionLoading } from '@/components/ui/loading'
 
 export function AdminDashboard({ onLogout }) {
   const { section = 'boc-tach-van-ban-ai', id: routeId } = useParams()
@@ -41,27 +43,41 @@ export function AdminDashboard({ onLogout }) {
   const [lastRuleSetId, setLastRuleSetId] = useState(activeRuleSetId || null)
   // Danh sách các bộ quy tắc đã lưu trữ trên cơ sở dữ liệu hệ thống
   const [savedRuleSets, setSavedRuleSets] = useState([])
+  const [isLoadingRuleSets, setIsLoadingRuleSets] = useState(true)
 
   const currentRoute = section
 
-  // Tải danh sách bộ quy tắc từ CSDL để thiết lập mã bộ quy tắc ban đầu
+  // Tải danh sách bộ quy tắc từ CSDL để thiết lập mã bộ quy tắc ban đầu (với kỹ thuật debounce chống gọi trùng)
   useEffect(() => {
-    taxRuleService
-      .getAllRuleSets()
-      .then((res) => {
-        const list = Array.isArray(res) ? res : (res?.data || [])
-        setSavedRuleSets(list)
-        if (!lastRuleSetId && list.length > 0) {
-          const activeSet =
-            list.find((s) => String(s.status).toUpperCase() === 'ACTIVE') || list[0]
-          if (activeSet?.ruleSetId) {
-            setLastRuleSetId(activeSet.ruleSetId)
+    let isMounted = true
+    setIsLoadingRuleSets(true)
+    const timer = setTimeout(() => {
+      taxRuleService
+        .getAllRuleSets()
+        .then((res) => {
+          if (!isMounted) return
+          const list = Array.isArray(res) ? res : (res?.data || [])
+          setSavedRuleSets(list)
+          if (!lastRuleSetId && list.length > 0) {
+            const activeSet =
+              list.find((s) => String(s.status).toUpperCase() === 'ACTIVE') || list[0]
+            if (activeSet?.ruleSetId) {
+              setLastRuleSetId(activeSet.ruleSetId)
+            }
           }
-        }
-      })
-      .catch((err) => {
-        console.warn('Lỗi khi tải danh mục bộ quy tắc:', err)
-      })
+        })
+        .catch(() => {
+          // Bỏ qua lỗi tải danh mục phụ
+        })
+        .finally(() => {
+          if (isMounted) setIsLoadingRuleSets(false)
+        })
+    }, 100)
+
+    return () => {
+      isMounted = false
+      clearTimeout(timer)
+    }
   }, [])
 
   // Đồng bộ ID từ URL hoặc tự động khôi phục URL kèm ?id= khi chuyển lại tab Quy tắc thuế
@@ -148,18 +164,10 @@ export function AdminDashboard({ onLogout }) {
   // Đồng bộ dữ liệu chi tiết khi TaxRuleReviewPage tải từ API GET /api/tax-rules/{id}
   const handleDataLoaded = useCallback((data) => {
     if (!data) return
-    setExtractedData((prev) => {
-      if (!prev) return data
-      return {
-        ...prev,
-        ...data,
-        verification: data.verification || prev.verification || null,
-        warning: data.warning || prev.warning || null,
-      }
-    })
+    setExtractedData((prev) => (prev === data ? prev : data))
     const id = data.ruleSetId || data.taxRuleSet?.ruleSetId || data.id
     if (id) {
-      setLastRuleSetId(id)
+      setLastRuleSetId((prevId) => (prevId === id ? prevId : id))
     }
   }, [])
 
@@ -202,25 +210,29 @@ export function AdminDashboard({ onLogout }) {
       : currentRoute === 'quy-tac-thue'
       ? 'Thẩm định & Phê duyệt'
       : currentRoute === 'van-ban-quy-pham'
-      ? 'Danh mục văn bản quy phạm'
+      ? 'Quy tắc hồ sơ'
       : currentRoute === 'lich-su-phe-duyet' || currentRoute === 'lich-su' || currentRoute === 'lich-su-duyet'
       ? 'Lịch sử phê duyệt'
       : currentRoute === 'cai-dat'
       ? (searchParams.get('tab') === 'ai-keys'
-          ? 'Quản lý API Key AI Hệ thống'
+          ? 'Quản lý khóa kết nối dịch vụ'
           : searchParams.get('tab') === 'ai-prompts'
-          ? 'Quản trị System Prompt AI'
+          ? 'Quản trị mẫu chỉ dẫn nghiệp vụ'
           : 'Cấu hình hệ thống')
       : currentRoute === 'ai-keys'
-      ? 'Quản lý API Key AI Hệ thống'
+      ? 'Quản lý khóa kết nối dịch vụ'
       : currentRoute === 'ai-prompts' || currentRoute === 'prompt-ai' || currentRoute === 'prompt-templates'
-      ? 'Quản trị System Prompt AI'
+      ? 'Quản trị mẫu chỉ dẫn nghiệp vụ'
       : currentRoute === 'ho-so'
       ? 'Hồ sơ cá nhân & Bảo mật'
       : currentRoute === 'quan-ly-chuyen-gia'
       ? 'Quản lý Chuyên gia Tư vấn'
+      : currentRoute === 'quy-he-thong'
+      ? 'Quỹ hệ thống'
       : currentRoute === 'goi-dich-vu'
       ? 'Gói dịch vụ'
+      : currentRoute === 'phan-quyen'
+      ? 'Phân quyền hệ thống'
       : 'Tổng quan hệ thống'
 
   return (
@@ -283,16 +295,26 @@ export function AdminDashboard({ onLogout }) {
         <AdminExpertManagementPage />
       )}
 
+      {/* Route 7b: Quỹ hệ thống (Quỹ & Doanh thu sàn + Lệnh rút tiền) */}
+      {currentRoute === 'quy-he-thong' && (
+        <AdminSystemFundPage />
+      )}
+
       {/* Route 8: Gói dịch vụ (giá, hạn mức, quyền lợi) */}
       {currentRoute === 'goi-dich-vu' && (
         <AdminSubscriptionPlansPage />
       )}
 
+      {/* Route 9: Phân quyền vai trò & danh mục quyền */}
+      {currentRoute === 'phan-quyen' && (
+        <AdminRolePermissionsPage />
+      )}
+
       {/* Route 6: Tổng quan hệ thống */}
       {currentRoute === 'tong-quan' && (
-        <div className="p-space-xl flex flex-col gap-space-lg">
+        <div className="p-4 sm:p-6 lg:p-space-xl flex flex-col gap-space-lg">
           {/* Header Banner */}
-          <div className="rounded-2xl bg-gradient-to-r from-primary to-primary-container p-space-xl text-on-primary flex flex-col md:flex-row md:items-center justify-between gap-space-md shadow-md">
+          <div className="rounded-2xl bg-gradient-to-r from-primary to-primary-container p-5 sm:p-space-xl text-on-primary flex flex-col md:flex-row md:items-center justify-between gap-space-md shadow-md">
             <div className="flex flex-col gap-space-xs">
               <span className="font-label-sm uppercase tracking-widest text-secondary-fixed font-bold">
                 BẢNG ĐIỀU KHIỂN QUẢN TRỊ VIÊN
@@ -379,11 +401,11 @@ export function AdminDashboard({ onLogout }) {
 
             <div className="p-space-lg rounded-xl bg-surface-container-lowest shadow-sm flex items-start gap-space-md border border-outline-variant/30">
               <div className="w-12 h-12 rounded-xl bg-secondary-container/40 flex items-center justify-center text-secondary shrink-0">
-                <span className="material-symbols-outlined text-[26px]">gavel</span>
+                <span className="material-symbols-outlined text-[26px]">rule_folder</span>
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="font-label-sm text-label-sm font-bold text-on-surface uppercase tracking-wider">
-                  Văn bản quy phạm
+                  Quy tắc hồ sơ
                 </span>
                 <span className="font-title-sm text-title-sm font-bold text-primary mt-1">
                   {recentDocs.length} tài liệu lưu trữ
@@ -506,7 +528,12 @@ export function AdminDashboard({ onLogout }) {
                 )}
               </div>
 
-              {recentDocs.length > 0 ? (
+              {isLoadingRuleSets ? (
+                <SectionLoading
+                  title="Đang tải danh sách văn bản..."
+                  minHeight="min-h-[180px]"
+                />
+              ) : recentDocs.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-body-sm">
                     <thead>
@@ -583,8 +610,13 @@ export function AdminDashboard({ onLogout }) {
         currentRoute !== 'cai-dat' &&
         currentRoute !== 'ho-so' &&
         currentRoute !== 'lich-su-phe-duyet' &&
+        currentRoute !== 'lich-su' &&
+        currentRoute !== 'lich-su-duyet' &&
         currentRoute !== 'tong-quan' &&
-        currentRoute !== 'quan-ly-chuyen-gia' && (
+        currentRoute !== 'quan-ly-chuyen-gia' &&
+        currentRoute !== 'quy-he-thong' &&
+        currentRoute !== 'goi-dich-vu' &&
+        currentRoute !== 'phan-quyen' && (
           <div className="p-space-xl flex flex-col items-center justify-center min-h-[60vh] text-center gap-space-md">
             <div className="w-16 h-16 rounded-full bg-secondary-container/40 flex items-center justify-center text-secondary">
               <span className="material-symbols-outlined text-[36px]">construction</span>

@@ -1,9 +1,10 @@
 import { apiClient } from './apiClient'
+import { pickApiErrorMessage } from '@/utils/apiErrorCatalog'
 
 function unwrap(res, fallbackMsg) {
   const body = res?.data !== undefined ? res.data : res
   if (body?.success === false) {
-    throw new Error(body?.message || body?.errorCode || fallbackMsg)
+    throw new Error(pickApiErrorMessage(body?.errorCode, body?.message, fallbackMsg))
   }
   return body?.data !== undefined ? body.data : body
 }

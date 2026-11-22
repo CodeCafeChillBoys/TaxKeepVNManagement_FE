@@ -6,6 +6,10 @@
       "destination": "http://13.236.166.3:5000/api/:match*"
     },
     {
+      "source": "/ai/:match*",
+      "destination": "http://13.236.166.3:5000/ai/:match*"
+    },
+    {
       "source": "/hubs/:match*",
       "destination": "http://13.236.166.3:5000/hubs/:match*"
     },

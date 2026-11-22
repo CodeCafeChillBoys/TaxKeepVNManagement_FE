@@ -40,6 +40,7 @@ export function RegisterPage({ onNavigateToLogin }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
+  const [registeredEmail, setRegisteredEmail] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
 
   const validate = () => {
@@ -96,7 +97,7 @@ export function RegisterPage({ onNavigateToLogin }) {
     setIsSubmitting(true)
 
     try {
-      await register({
+      const res = await register({
         citizenId: citizenId.trim(),
         fullName: fullName.trim(),
         email: email.trim(),
@@ -104,12 +105,10 @@ export function RegisterPage({ onNavigateToLogin }) {
         phoneNumber: phone.trim() || null,
       })
 
-      setSuccessMessage('Đăng ký tài khoản thành công! Đang chuyển đến trang đăng nhập...')
-      setTimeout(() => {
-        handleGoToLogin()
-      }, 2000)
+      const targetEmail = res?.email || res?.data?.email || email.trim()
+      setRegisteredEmail(targetEmail)
+      setSuccessMessage('Đăng ký tài khoản thành công! Vui lòng kiểm tra email để xác minh tài khoản.')
     } catch (err) {
-      console.error('Đăng ký thất bại:', err)
       const beErrors = err.errors || err.data?.errors
       if (beErrors && typeof beErrors === 'object') {
         const mappedErrors = {}
@@ -137,11 +136,11 @@ export function RegisterPage({ onNavigateToLogin }) {
   }
 
   return (
-    <div className="h-screen max-h-screen overflow-hidden flex flex-col justify-between bg-[#FAF8F0]">
-      <main className="flex-1 min-h-0 flex items-center justify-center max-w-[1440px] mx-auto w-full p-2 sm:p-4 lg:p-6 overflow-hidden">
-        <div className="w-full h-full max-h-full grid grid-cols-1 lg:grid-cols-12 rounded-2xl overflow-hidden shadow-2xl border border-cream-300/80 bg-white">
+    <div className="min-h-screen lg:h-screen lg:max-h-screen overflow-y-auto lg:overflow-hidden flex flex-col justify-between bg-[#FAF8F0]">
+      <main className="flex-1 min-h-0 flex items-center justify-center max-w-[1440px] mx-auto w-full p-2 sm:p-4 lg:p-6 lg:overflow-hidden">
+        <div className="w-full lg:h-full lg:max-h-full grid grid-cols-1 lg:grid-cols-12 rounded-2xl overflow-hidden shadow-2xl border border-cream-300/80 bg-white">
           {/* Cột trái */}
-          <section className="lg:col-span-5 relative bg-brand-700 text-white flex flex-col p-6 sm:p-8 lg:p-10 overflow-hidden justify-between h-full">
+          <section className="lg:col-span-5 relative bg-brand-700 text-white flex flex-col p-6 sm:p-8 lg:p-10 overflow-hidden justify-between lg:h-full">
             <div className="absolute inset-0 bg-dong-son opacity-30 pointer-events-none"></div>
             <div className="absolute -right-24 -bottom-24 w-96 h-96 rounded-full border border-gold-500/20 pointer-events-none"></div>
             <div className="absolute -right-12 -bottom-12 w-72 h-72 rounded-full border border-gold-500/30 pointer-events-none"></div>
@@ -207,7 +206,7 @@ export function RegisterPage({ onNavigateToLogin }) {
           </section>
 
           {/* Cột phải: Form Đăng ký */}
-          <section className="lg:col-span-7 bg-[#FCFCFA] p-6 sm:p-8 lg:p-10 flex flex-col justify-between overflow-hidden bg-pattern-subtle h-full">
+          <section className="lg:col-span-7 bg-[#FCFCFA] p-6 sm:p-8 lg:p-10 flex flex-col justify-between lg:overflow-y-auto bg-pattern-subtle lg:h-full">
             <div className="w-full max-w-lg mx-auto my-auto py-2 flex flex-col justify-center">
               <div className="space-y-1 mb-3 text-left">
                 <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-stone-900">
@@ -229,7 +228,29 @@ export function RegisterPage({ onNavigateToLogin }) {
                 </div>
               )}
 
-              {/* Thông báo thành công */}
+              {/* Thông báo thành công / Xác minh email */}
+              {registeredEmail ? (
+                <div className="p-6 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-center space-y-4 animate-in fade-in">
+                  <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 flex items-center justify-center text-2xl">
+                    ✉️
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-bold text-stone-900">
+                    Đăng ký thành công!
+                  </h3>
+                  <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
+                    Chúng tôi đã gửi một liên kết xác minh đến địa chỉ email{' '}
+                    <span className="font-semibold text-stone-900">{registeredEmail}</span>. Vui lòng kiểm tra hộp thư (cả mục Spam) để kích hoạt tài khoản của bạn.
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={handleGoToLogin}
+                    className="w-full h-10 text-xs font-semibold cursor-pointer"
+                  >
+                    Quay lại Đăng nhập
+                  </Button>
+                </div>
+              ) : (
+                <>
               {successMessage && (
                 <div
                   role="status"
@@ -494,6 +515,8 @@ export function RegisterPage({ onNavigateToLogin }) {
                   </p>
                 </div>
               </form>
+                </>
+              )}
             </div>
 
             <div className="pt-3 mt-auto border-t border-stone-200 flex items-center justify-center text-center text-[11px] text-stone-500">

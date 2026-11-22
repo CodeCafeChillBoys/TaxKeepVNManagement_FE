@@ -1,7 +1,9 @@
 import { createContext, useState, useEffect, useCallback } from 'react'
 import { authService } from '@/services/authService'
 
-export const AuthContext = createContext(null)
+export const AuthContext =
+  globalThis.__TAXKEEP_AUTH_CONTEXT__ ||
+  (globalThis.__TAXKEEP_AUTH_CONTEXT__ = createContext(null))
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => authService.getUser())
@@ -14,7 +16,13 @@ export function AuthProvider({ children }) {
       const savedToken = authService.getToken()
       const savedUser = authService.getUser()
 
-      if (savedToken && !authService.isTokenExpired(savedToken) && savedUser) {
+      const savedRole = (savedUser?.userRole || savedUser?.role || '').toLowerCase()
+      if (
+        savedToken &&
+        !authService.isTokenExpired(savedToken) &&
+        savedUser &&
+        savedRole === 'admin'
+      ) {
         setUser(savedUser)
         setToken(savedToken)
       } else {

@@ -7,7 +7,7 @@ export function AdminLayout({
   currentRoute: propCurrentRoute,
   onNavigate,
   breadcrumbTitle = 'Tải lên & Trích xuất AI',
-  onLogout: propOnLogout
+  onLogout: propOnLogout,
 }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -17,9 +17,17 @@ export function AdminLayout({
   const pathSegment = location.pathname.replace(/^\/admin\/?/, '')
   const currentRoute = propCurrentRoute || pathSegment || 'boc-tach-van-ban-ai'
 
+  // Quản lý trạng thái mở sidebar trên thiết bị di động / tablet (< lg)
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
+
   // Quản lý trạng thái mở submenu avatar góc dưới bên trái
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const userMenuRef = useRef(null)
+
+  // Tự động đóng mobile sidebar khi đổi đường dẫn
+  useEffect(() => {
+    setIsMobileSidebarOpen(false)
+  }, [location.pathname, location.search])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -56,6 +64,7 @@ export function AdminLayout({
   })
 
   const handleNavigate = (routeId) => {
+    setIsMobileSidebarOpen(false)
     if (onNavigate) {
       onNavigate(routeId)
     } else {
@@ -64,6 +73,7 @@ export function AdminLayout({
   }
 
   const handleLogout = async () => {
+    setIsMobileSidebarOpen(false)
     if (propOnLogout) {
       propOnLogout()
     } else {
@@ -74,12 +84,14 @@ export function AdminLayout({
 
   const navItems = [
     { id: 'tong-quan', label: 'Tổng quan', icon: 'dashboard' },
-    { id: 'van-ban-quy-pham', label: 'Văn bản quy phạm', icon: 'gavel' },
+    { id: 'van-ban-quy-pham', label: 'Quy tắc hồ sơ', icon: 'rule_folder' },
     { id: 'quy-tac-thue', label: 'Quy tắc thuế', icon: 'account_balance' },
     { id: 'boc-tach-van-ban-ai', label: 'Tải lên văn bản thuế', icon: 'document_scanner' },
     { id: 'lich-su-phe-duyet', label: 'Lịch sử phê duyệt', icon: 'history_edu' },
     { id: 'quan-ly-chuyen-gia', label: 'Quản lý chuyên gia', icon: 'support_agent' },
+    { id: 'quy-he-thong', label: 'Quỹ hệ thống', icon: 'account_balance_wallet' },
     { id: 'goi-dich-vu', label: 'Gói dịch vụ', icon: 'workspace_premium' },
+    { id: 'phan-quyen', label: 'Phân quyền', icon: 'admin_panel_settings' },
     { id: 'cai-dat', label: 'Cấu hình hệ thống', icon: 'tune' },
   ]
 
@@ -93,28 +105,51 @@ export function AdminLayout({
 
   return (
     <div className="bg-surface font-body-md text-on-surface antialiased min-h-screen flex">
+      {/* Mobile Sidebar Backdrop */}
+      {isMobileSidebarOpen && (
+        <div
+          onClick={() => setIsMobileSidebarOpen(false)}
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs z-40 lg:hidden animate-in fade-in duration-200"
+          aria-hidden="true"
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="fixed left-0 top-0 h-full w-72 bg-primary-container text-on-primary z-50 flex flex-col shadow-[0_4px_20px_rgba(45,22,0,0.12)]">
+      <aside
+        className={`fixed left-0 top-0 h-full w-72 max-w-[85vw] bg-primary-container text-on-primary z-50 flex flex-col shadow-[0_4px_20px_rgba(45,22,0,0.12)] transition-transform duration-300 ease-in-out ${
+          isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
         <div className="px-gutter pt-space-lg pb-space-md flex flex-col gap-space-xs bg-primary">
-          <div className="flex items-center gap-space-sm">
-            <img
-              src="/logo.png"
-              alt="TaxKeep VN"
-              className="w-10 h-10 rounded-lg object-contain shadow-sm"
-            />
-            <div className="flex flex-col">
-              <span className="font-headline-md text-headline-md tracking-tight text-on-primary font-bold leading-none">
-                TaxKeep VN
-              </span>
-              <span className="font-label-sm text-label-sm uppercase tracking-widest text-secondary-fixed mt-space-xs">
-                QUẢN LÝ THUẾ THU NHẬP CÁ NHÂN
-              </span>
+          <div className="flex items-center justify-between gap-space-sm">
+            <div className="flex items-center gap-space-sm min-w-0">
+              <img
+                src="/logo.png"
+                alt="TaxKeep VN"
+                className="w-10 h-10 rounded-lg object-contain shadow-sm shrink-0"
+              />
+              <div className="flex flex-col min-w-0">
+                <span className="font-headline-md text-headline-md tracking-tight text-on-primary font-bold leading-none truncate">
+                  TaxKeep VN
+                </span>
+                <span className="font-label-sm text-label-sm uppercase tracking-widest text-secondary-fixed mt-space-xs truncate">
+                  Bảng điều khiển hệ thống
+                </span>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="lg:hidden p-1.5 rounded-lg text-primary-fixed hover:text-on-primary hover:bg-primary-container/50 cursor-pointer"
+              aria-label="Đóng menu"
+            >
+              <span className="material-symbols-outlined text-[22px]">close</span>
+            </button>
           </div>
           <div className="mt-space-sm pt-space-xs"></div>
         </div>
 
-        <div className="px-gutter-sm py-space-sm"></div>
+        <div className="px-gutter-sm py-space-xs"></div>
 
         <nav className="flex-1 px-space-sm flex flex-col gap-space-xs overflow-y-auto">
           {navItems.map((item) => {
@@ -132,8 +167,8 @@ export function AdminLayout({
                     : 'text-primary-fixed hover:bg-primary hover:text-on-primary'
                 }`}
               >
-                <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-                <span className="font-title-sm text-title-sm">{item.label}</span>
+                <span className="material-symbols-outlined text-[20px] shrink-0">{item.icon}</span>
+                <span className="font-title-sm text-title-sm truncate">{item.label}</span>
               </button>
             )
           })}
@@ -235,50 +270,60 @@ export function AdminLayout({
       </aside>
 
       {/* Main Content Area */}
-      <div className="pl-72 flex-1 flex flex-col min-w-0">
+      <div className="pl-0 lg:pl-72 flex-1 flex flex-col min-w-0">
         {/* Top Header */}
-        <header className="fixed top-0 left-72 right-0 h-16 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 flex items-center justify-between px-space-xl">
-          <div className="flex items-center gap-space-sm font-label-md text-label-md text-on-surface-variant">
+        <header className="fixed top-0 left-0 lg:left-72 right-0 h-16 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-30 flex items-center justify-between px-4 sm:px-6 lg:px-space-xl gap-2">
+          <div className="flex items-center gap-2 sm:gap-space-sm font-label-md text-label-md text-on-surface-variant min-w-0">
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="lg:hidden p-2 -ml-1 rounded-lg text-on-surface hover:bg-surface-container transition-colors cursor-pointer shrink-0"
+              aria-label="Mở menu điều hướng"
+            >
+              <span className="material-symbols-outlined text-[22px]">menu</span>
+            </button>
+
             <button
               onClick={() => handleNavigate('tong-quan')}
-              className="hover:text-primary transition-colors flex items-center gap-1 font-medium cursor-pointer"
+              className="hover:text-primary transition-colors flex items-center gap-1 font-medium cursor-pointer shrink-0"
             >
               <span className="material-symbols-outlined text-[18px]">home</span>
-              <span>Trang chủ</span>
+              <span className="hidden sm:inline">Trang chủ</span>
             </button>
-            <span className="material-symbols-outlined text-[14px] text-outline">chevron_right</span>
+            <span className="hidden md:inline material-symbols-outlined text-[14px] text-outline shrink-0">
+              chevron_right
+            </span>
             <button
               onClick={() => handleNavigate('quy-tac-thue')}
-              className="hover:text-primary transition-colors cursor-pointer"
+              className="hidden md:inline hover:text-primary transition-colors cursor-pointer shrink-0"
             >
               Quản lý quy tắc thuế
             </button>
-            <span className="material-symbols-outlined text-[14px] text-outline">chevron_right</span>
-            <span className="text-primary font-semibold truncate max-w-xs">{breadcrumbTitle}</span>
+            <span className="material-symbols-outlined text-[14px] text-outline shrink-0">
+              chevron_right
+            </span>
+            <span className="text-primary font-semibold truncate max-w-[160px] sm:max-w-xs">
+              {breadcrumbTitle}
+            </span>
           </div>
 
-          <div className="flex items-center gap-space-md">
+          <div className="flex items-center gap-2 sm:gap-space-md shrink-0">
             <div className="hidden md:flex items-center gap-1.5 px-space-sm py-1 rounded-full bg-surface-container border border-outline-variant text-[11px] font-mono text-on-surface-variant">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span>Trực tuyến</span>
             </div>
-            <div className="h-4 w-px bg-outline-variant"></div>
-            <span className="hidden lg:flex items-center gap-1.5 text-label-sm text-secondary font-medium font-mono">
+            <div className="hidden md:block h-4 w-px bg-outline-variant"></div>
+            <span className="hidden xl:flex items-center gap-1.5 text-label-sm text-secondary font-medium font-mono">
               <span className="material-symbols-outlined text-[16px]">schedule</span>
-              <span>{formattedLiveTime} • {formattedLiveDate}</span>
+              <span>
+                {formattedLiveTime} • {formattedLiveDate}
+              </span>
             </span>
-            <button
-              className="relative p-2 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
-              title="Thông báo thẩm định"
-            >
-              <span className="material-symbols-outlined text-[20px]">notifications</span>
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full"></span>
-            </button>
           </div>
         </header>
 
         {/* Page View Body */}
-        <main className="w-full pt-16 bg-surface min-h-screen">
+        <main className="w-full pt-16 bg-surface min-h-screen overflow-x-hidden">
           {children}
         </main>
       </div>

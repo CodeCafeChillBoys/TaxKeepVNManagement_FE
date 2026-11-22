@@ -10,6 +10,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { NotificationDialog } from '@/components/ui/notification-dialog'
+import { SectionLoading } from '@/components/ui/loading'
 import {
   canExtend,
   canRefund,
@@ -235,9 +236,8 @@ export function SubscriptionUsersTab({ plans = [] }) {
       {/* Bảng */}
       <Card>
         {isLoading ? (
-          <CardContent className="py-16 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
-            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs font-medium">Đang tải danh sách...</span>
+          <CardContent className="p-0">
+            <SectionLoading title="Đang tải danh sách gói người dùng..." minHeight="min-h-[200px]" />
           </CardContent>
         ) : loadError ? (
           <CardContent className="py-14 flex flex-col items-center justify-center text-center gap-2">
@@ -446,8 +446,6 @@ export function SubscriptionUsersTab({ plans = [] }) {
                         ? 'Vĩnh viễn'
                         : `${detail.snapshotChatHistoryRetentionDays} ngày`,
                     ],
-                    ['Nguồn thu nhập tối đa', formatLimit(detail.snapshotMaxIncomeSources)],
-                    ['Người phụ thuộc tối đa', formatLimit(detail.snapshotMaxDependents)],
                     [
                       'Xuất PDF / ZIP',
                       `${detail.snapshotCanExportPdf ? 'Có' : 'Chỉ xem'} / ${detail.snapshotCanExportZip ? 'Có' : 'Không'}`,

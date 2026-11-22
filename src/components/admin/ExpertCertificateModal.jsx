@@ -111,23 +111,37 @@ export function ExpertCertificateModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2 flex flex-col gap-1.5">
-              <Label>
-                Mã phân loại <span className="text-red-600">*</span>
-              </Label>
-              <Input
-                placeholder="VD: TAX_AGENT, CPA"
-                value={formData.code}
-                disabled={mode === 'edit'}
-                onChange={(e) =>
-                  setFormData({ ...formData, code: e.target.value.toUpperCase() })
-                }
-                className="font-mono uppercase"
-              />
-              {errors.code && <span className="text-[11px] text-red-600">{errors.code}</span>}
-            </div>
+          {mode === 'create' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2 flex flex-col gap-1.5">
+                <Label>
+                  Mã định danh <span className="text-red-600">*</span>
+                </Label>
+                <Input
+                  placeholder="VD: DAI_LY_THUE, KIEM_TOAN_VIEN"
+                  value={formData.code}
+                  onChange={(e) =>
+                    setFormData({ ...formData, code: e.target.value.toUpperCase() })
+                  }
+                  className="font-mono uppercase"
+                />
+                {errors.code && <span className="text-[11px] text-red-600">{errors.code}</span>}
+              </div>
 
+              <div className="flex flex-col gap-1.5">
+                <Label>Thứ tự hiển thị</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={999}
+                  value={formData.displayOrder}
+                  onChange={(e) =>
+                    setFormData({ ...formData, displayOrder: Number(e.target.value) || 0 })
+                  }
+                />
+              </div>
+            </div>
+          ) : (
             <div className="flex flex-col gap-1.5">
               <Label>Thứ tự hiển thị</Label>
               <Input
@@ -140,7 +154,7 @@ export function ExpertCertificateModal({
                 }
               />
             </div>
-          </div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <Label>
