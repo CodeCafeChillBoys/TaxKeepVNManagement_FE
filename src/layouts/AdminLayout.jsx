@@ -80,6 +80,7 @@ export function AdminLayout({
     { id: 'lich-su-phe-duyet', label: 'Lịch sử phê duyệt', icon: 'history_edu' },
     { id: 'quan-ly-chuyen-gia', label: 'Quản lý chuyên gia', icon: 'support_agent' },
     { id: 'goi-dich-vu', label: 'Gói dịch vụ', icon: 'workspace_premium' },
+    { id: 'phan-quyen', label: 'Phân quyền', icon: 'admin_panel_settings' },
     { id: 'cai-dat', label: 'Cấu hình hệ thống', icon: 'tune' },
   ]
 
