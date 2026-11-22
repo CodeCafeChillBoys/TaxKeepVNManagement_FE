@@ -7,18 +7,33 @@ import { cn } from "@/lib/utils"
  * Dialog theo API shadcn (open / onOpenChange), dựng bằng portal thuần
  * để không phát sinh thêm dependency @radix-ui/react-dialog.
  */
+let openDialogCount = 0
+
 function Dialog({ open, onOpenChange, children }) {
+  const onOpenChangeRef = React.useRef(onOpenChange)
+  React.useEffect(() => {
+    onOpenChangeRef.current = onOpenChange
+  }, [onOpenChange])
+
   React.useEffect(() => {
     if (!open) return
-    const onKey = (e) => e.key === "Escape" && onOpenChange?.(false)
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        onOpenChangeRef.current?.(false)
+      }
+    }
     document.addEventListener("keydown", onKey)
-    const prevOverflow = document.body.style.overflow
+    openDialogCount += 1
     document.body.style.overflow = "hidden"
+
     return () => {
       document.removeEventListener("keydown", onKey)
-      document.body.style.overflow = prevOverflow
+      openDialogCount = Math.max(0, openDialogCount - 1)
+      if (openDialogCount === 0) {
+        document.body.style.overflow = ""
+      }
     }
-  }, [open, onOpenChange])
+  }, [open])
 
   if (!open) return null
 

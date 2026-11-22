@@ -1,9 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import {
-  Star,
   IdCard,
-  Zap,
   Lock,
   Eye,
   EyeOff,
@@ -16,11 +14,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useAuth } from '@/hooks/useAuth'
+import { authService } from '@/services/authService'
 
 export function LoginPage({ onNavigateToRegister, onLoginSuccess }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login } = useAuth()
+  const { login, logout } = useAuth()
 
   const [citizenId, setCitizenId] = useState('')
   const [password, setPassword] = useState('')
@@ -29,6 +28,10 @@ export function LoginPage({ onNavigateToRegister, onLoginSuccess }) {
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const [emailNotVerified, setEmailNotVerified] = useState(false)
+  const [resendEmail, setResendEmail] = useState('')
+  const [resending, setResending] = useState(false)
+  const [resendMessage, setResendMessage] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
 
   const validate = () => {
@@ -52,6 +55,8 @@ export function LoginPage({ onNavigateToRegister, onLoginSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setErrorMessage('')
+    setEmailNotVerified(false)
+    setResendMessage('')
 
     if (!validate()) {
       return
@@ -66,20 +71,42 @@ export function LoginPage({ onNavigateToRegister, onLoginSuccess }) {
         rememberMe,
       })
 
+      const role = (authData?.userRole || authData?.role || '').toLowerCase()
+      if (role !== 'admin') {
+        await logout()
+        setErrorMessage(
+          'Cổng thông tin này chỉ dành riêng cho Quản trị viên hệ thống. Tài khoản của bạn không có quyền truy cập.'
+        )
+        return
+      }
+
       if (onLoginSuccess) {
         onLoginSuccess(authData)
       } else {
-        const role = (authData?.userRole || authData?.role || '').toLowerCase()
-        const defaultPath = role === 'expert' ? '/expert' : '/admin'
-        const redirectPath = location.state?.from?.pathname || defaultPath
+        const fromPath = location.state?.from?.pathname
+        const redirectPath =
+          fromPath && fromPath.startsWith('/admin') ? fromPath : '/admin'
         navigate(redirectPath, { replace: true })
       }
     } catch (error) {
-      console.error('Đăng nhập thất bại:', error)
       const beErrors = error.errors || error.data?.errors
+      const errorCode = String(
+        beErrors?.errorCode || error.errorCode || error.data?.errorCode || ''
+      ).toUpperCase()
+
+      if (errorCode === 'EMAIL_NOT_VERIFIED') {
+        setEmailNotVerified(true)
+        setErrorMessage(
+          error.message ||
+            'Tài khoản chưa được xác minh email. Vui lòng kiểm tra hộp thư và nhấn vào liên kết xác minh.'
+        )
+        return
+      }
+
       if (beErrors && typeof beErrors === 'object') {
         const mappedErrors = {}
         for (const [key, val] of Object.entries(beErrors)) {
+          if (key === 'errorCode') continue
           const lowerKey = key.charAt(0).toLowerCase() + key.slice(1)
           mappedErrors[lowerKey] = Array.isArray(val) ? val[0] : String(val)
         }
@@ -93,20 +120,36 @@ export function LoginPage({ onNavigateToRegister, onLoginSuccess }) {
     }
   }
 
-  const handleGoToRegister = () => {
-    if (onNavigateToRegister) {
-      onNavigateToRegister()
-    } else {
-      navigate('/register')
+  const handleResendVerification = async () => {
+    const cleanEmail = resendEmail.trim().toLowerCase()
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setResendMessage('Vui lòng nhập địa chỉ email đã đăng ký.')
+      return
+    }
+    setResending(true)
+    setResendMessage('')
+    try {
+      const res = await authService.resendVerification(cleanEmail)
+      setResendMessage(
+        res?.message ||
+          'Nếu email tồn tại và chưa được xác minh, chúng tôi đã gửi lại email xác minh.'
+      )
+    } catch (err) {
+      setResendMessage(
+        err?.message ||
+          'Nếu email tồn tại và chưa được xác minh, chúng tôi đã gửi lại email xác minh.'
+      )
+    } finally {
+      setResending(false)
     }
   }
 
   return (
-    <div className="h-screen max-h-screen overflow-hidden flex flex-col justify-between bg-[#FAF8F0]">
-      <main className="flex-1 min-h-0 flex items-center justify-center max-w-[1440px] mx-auto w-full p-2 sm:p-4 lg:p-6 overflow-hidden">
-        <div className="w-full h-full max-h-full grid grid-cols-1 lg:grid-cols-12 rounded-2xl overflow-hidden shadow-2xl border border-cream-300/80 bg-white">
-          {/* Cột trái: Giới thiệu hệ thống */}
-          <section className="lg:col-span-5 relative bg-brand-700 text-white flex flex-col p-6 sm:p-8 lg:p-10 overflow-hidden justify-between h-full">
+    <div className="min-h-screen lg:h-screen lg:max-h-screen overflow-y-auto lg:overflow-hidden flex flex-col justify-between bg-[#FAF8F0]">
+      <main className="flex-1 min-h-0 flex items-center justify-center max-w-[1440px] mx-auto w-full p-2 sm:p-4 lg:p-6 lg:overflow-hidden">
+        <div className="w-full lg:h-full lg:max-h-full grid grid-cols-1 lg:grid-cols-12 rounded-2xl overflow-hidden shadow-2xl border border-cream-300/80 bg-white">
+          {/* Cột trái: Giới thiệu Bảng điều khiển quản trị viên */}
+          <section className="lg:col-span-5 relative bg-brand-700 text-white flex flex-col p-6 sm:p-8 lg:p-10 overflow-hidden justify-between lg:h-full">
             <div className="absolute inset-0 bg-dong-son opacity-30 pointer-events-none"></div>
             <div className="absolute -right-24 -bottom-24 w-96 h-96 rounded-full border border-gold-500/20 pointer-events-none"></div>
             <div className="absolute -right-12 -bottom-12 w-72 h-72 rounded-full border border-gold-500/30 pointer-events-none"></div>
@@ -123,63 +166,40 @@ export function LoginPage({ onNavigateToRegister, onLoginSuccess }) {
                     TaxKeep VN
                   </div>
                   <div className="text-[11px] text-stone-200/80 font-medium">
-                    Nền tảng quản lý thuế thu nhập cá nhân
+                    Bảng điều khiển hệ thống
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-2.5 my-auto">
+              <div className="space-y-3 my-auto">
+                <span className="inline-block text-[11px] font-bold uppercase tracking-widest text-gold-400">
+                  CỔNG QUẢN TRỊ NỘI BỘ
+                </span>
                 <h1 className="text-2xl sm:text-3xl lg:text-3xl font-black tracking-tight leading-snug uppercase text-white">
-                  HỆ THỐNG QUẢN LÝ
+                  BẢNG ĐIỀU KHIỂN
                   <br />
-                  THUẾ THU NHẬP CÁ NHÂN
+                  QUẢN TRỊ VIÊN
                 </h1>
                 <p className="text-xs text-cream-200/90 leading-relaxed max-w-sm">
-                  Hệ thống điện tử hỗ trợ người nộp thuế thực hiện kê khai, quyết toán và tra cứu thông tin thuế thu nhập cá nhân minh bạch, bảo mật.
+                  Hệ thống quản trị tập trung phục vụ thẩm định văn bản quy phạm, phê duyệt quy tắc thuế, quản lý hồ sơ chuyên gia và giám sát vận hành toàn hệ thống.
                 </p>
               </div>
 
-              <div className="space-y-3 pt-1">
-                <div className="flex items-start space-x-3 bg-brand-800/60 p-3 rounded-xl border border-white/10 backdrop-blur-xs">
-                  <div className="p-2 rounded-lg bg-gold-500/20 text-gold-400 shrink-0 mt-0.5">
-                    <IdCard className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-gold-400">
-                      XÁC THỰC CCCD GẮN CHIP
-                    </p>
-                    <p className="text-[11px] text-cream-200/80 mt-0.5 leading-relaxed">
-                      Tự động đối soát sinh trắc học với Cơ sở dữ liệu quốc gia về dân cư an toàn, bảo mật.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start space-x-3 bg-brand-800/60 p-3 rounded-xl border border-white/10 backdrop-blur-xs">
-                  <div className="p-2 rounded-lg bg-gold-500/20 text-gold-400 shrink-0 mt-0.5">
-                    <Zap className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-gold-400">
-                      QUY TẮC TỰ ĐỘNG TÍNH THUẾ ĐIỆN TỬ
-                    </p>
-                    <p className="text-[11px] text-cream-200/80 mt-0.5 leading-relaxed">
-                      Tra cứu nghĩa vụ thuế thu nhập cá nhân, đối soát giảm trừ gia cảnh và hóa đơn điện tử tức thời.
-                    </p>
-                  </div>
-                </div>
+              <div className="text-[11px] text-cream-200/70">
+                Chỉ dành cho tài khoản Quản trị viên được cấp quyền.
               </div>
             </div>
           </section>
 
           {/* Cột phải: Form Đăng nhập */}
-          <section className="lg:col-span-7 bg-[#FAF8F0] p-6 sm:p-8 lg:p-10 flex flex-col justify-between overflow-hidden bg-pattern-subtle h-full">
+          <section className="lg:col-span-7 bg-[#FAF8F0] p-6 sm:p-8 lg:p-10 flex flex-col justify-between lg:overflow-hidden bg-pattern-subtle lg:h-full">
             <div className="w-full max-w-md mx-auto my-auto py-2 flex flex-col justify-center">
-              <div className="space-y-1.5 mb-4 text-left">
+              <div className="space-y-1.5 mb-5 text-left">
                 <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-stone-900">
-                  Đăng nhập hệ thống
+                  Đăng nhập Quản trị viên
                 </h2>
                 <p className="text-xs text-stone-600 leading-relaxed">
-                  Vui lòng nhập thông tin định danh Căn cước công dân (12 số) hoặc tài khoản chuyên quản để tiếp tục.
+                  Vui lòng nhập số Căn cước công dân (12 số) và mật khẩu tài khoản quản trị để truy cập Bảng điều khiển hệ thống.
                 </p>
               </div>
 
@@ -187,10 +207,44 @@ export function LoginPage({ onNavigateToRegister, onLoginSuccess }) {
               {errorMessage && (
                 <div
                   role="alert"
-                  className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 flex items-start gap-2.5 text-xs text-red-800 animate-in fade-in duration-200"
+                  className={`mb-4 p-3 rounded-xl border flex flex-col gap-2.5 text-xs animate-in fade-in duration-200 ${
+                    emailNotVerified
+                      ? 'bg-amber-50 border-amber-300 text-amber-900'
+                      : 'bg-red-50 border-red-200 text-red-800'
+                  }`}
                 >
-                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                  <div className="flex-1 font-medium leading-relaxed">{errorMessage}</div>
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle
+                      className={`w-4 h-4 shrink-0 mt-0.5 ${
+                        emailNotVerified ? 'text-amber-600' : 'text-red-600'
+                      }`}
+                    />
+                    <div className="flex-1 font-medium leading-relaxed">{errorMessage}</div>
+                  </div>
+                  {emailNotVerified && (
+                    <div className="pt-2 border-t border-amber-200/80 space-y-2">
+                      <Input
+                        type="email"
+                        placeholder="Nhập email đã đăng ký để nhận lại liên kết..."
+                        value={resendEmail}
+                        onChange={(e) => setResendEmail(e.target.value)}
+                        className="h-8 text-xs bg-white"
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleResendVerification}
+                        disabled={resending}
+                        className="w-full h-8 text-xs font-semibold cursor-pointer"
+                      >
+                        {resending ? 'Đang gửi...' : 'Gửi lại email kích hoạt'}
+                      </Button>
+                      {resendMessage && (
+                        <p className="text-[11px] font-medium text-emerald-700">
+                          {resendMessage}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -231,16 +285,12 @@ export function LoginPage({ onNavigateToRegister, onLoginSuccess }) {
                     <Label htmlFor="password" className="text-[11px]">
                       Mật khẩu <span className="text-brand-700">*</span>
                     </Label>
-                    <a
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        alert('Tính năng khôi phục mật khẩu qua VNeID/SMS đang được cập nhật.')
-                      }}
+                    <Link
+                      to="/forgot-password"
                       className="text-[11px] font-medium text-brand-700 hover:text-brand-800 hover:underline shrink-0 whitespace-nowrap"
                     >
                       Quên mật khẩu?
-                    </a>
+                    </Link>
                   </div>
                   <Input
                     id="password"
@@ -304,23 +354,10 @@ export function LoginPage({ onNavigateToRegister, onLoginSuccess }) {
                     ) : (
                       <>
                         <LogIn className="w-4 h-4 mr-2" />
-                        Đăng nhập hệ thống
+                        Đăng nhập Bảng điều khiển
                       </>
                     )}
                   </Button>
-                </div>
-
-                <div className="text-center pt-1">
-                  <p className="text-xs text-stone-600 font-medium">
-                    Chưa có tài khoản?{' '}
-                    <button
-                      type="button"
-                      onClick={handleGoToRegister}
-                      className="font-semibold text-brand-700 hover:text-brand-800 hover:underline underline-offset-4 transition-colors cursor-pointer"
-                    >
-                      Đăng ký ngay
-                    </button>
-                  </p>
                 </div>
               </form>
             </div>

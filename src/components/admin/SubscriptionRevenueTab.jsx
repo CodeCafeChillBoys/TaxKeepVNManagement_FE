@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { CYCLE_LABELS, formatVnd, labelOf } from '@/utils/subscriptionFormat'
+import { SectionLoading } from '@/components/ui/loading'
+import { useDebounce } from '@/hooks/useDebounce'
 
 // Ngày trong ô date (yyyy-mm-dd, giờ máy) -> đầu ngày / cuối ngày ISO cho BE
 const startOfDayIso = (d) => (d ? new Date(`${d}T00:00:00`).toISOString() : undefined)
@@ -53,10 +55,15 @@ export function SubscriptionRevenueTab() {
   const [loadError, setLoadError] = useState(null)
   const [reloadKey, setReloadKey] = useState(0)
 
+  const debouncedRange = useDebounce(range, 150)
+
   useEffect(() => {
     let alive = true
     adminSubscriptionService
-      .getRevenueAnalytics({ fromDate: startOfDayIso(range.fromDate), toDate: endOfDayIso(range.toDate) })
+      .getRevenueAnalytics({
+        fromDate: startOfDayIso(debouncedRange.fromDate),
+        toDate: endOfDayIso(debouncedRange.toDate),
+      })
       .then((res) => {
         if (!alive) return
         setData(res)
@@ -67,7 +74,7 @@ export function SubscriptionRevenueTab() {
     return () => {
       alive = false
     }
-  }, [range, reloadKey])
+  }, [debouncedRange, reloadKey])
 
   const rangeInvalid = fromDate && toDate && fromDate > toDate
 
@@ -126,9 +133,8 @@ export function SubscriptionRevenueTab() {
 
       {isLoading ? (
         <Card>
-          <CardContent className="py-16 flex flex-col items-center justify-center gap-2.5 text-on-surface-variant">
-            <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs font-medium">Đang tải thống kê...</span>
+          <CardContent className="p-0">
+            <SectionLoading title="Đang tải thống kê doanh thu..." minHeight="min-h-[200px]" />
           </CardContent>
         </Card>
       ) : loadError ? (

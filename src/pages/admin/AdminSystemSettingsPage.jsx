@@ -3,12 +3,11 @@ import { useSearchParams } from 'react-router-dom'
 import { systemConfigService } from '@/services/systemConfigService'
 import { urlRuleService } from '@/services/urlRuleService'
 import { useDebounce } from '@/hooks/useDebounce'
+import { SectionLoading } from '@/components/ui/loading'
 import { SystemConfigModal } from '@/components/admin/SystemConfigModal'
 import { ThresholdTesterModal } from '@/components/admin/ThresholdTesterModal'
 import { taxDocumentTypeService } from '@/services/taxDocumentTypeService'
 import { TaxDocumentTypeModal } from '@/components/admin/TaxDocumentTypeModal'
-import { ExpertSearchConfigTab } from '@/components/admin/ExpertSearchConfigTab'
-import { ExpertCertificateConfigTab } from '@/components/admin/ExpertCertificateConfigTab'
 import { MedicalCategoryTab } from '@/components/admin/MedicalCategoryTab'
 import { AiKeyManagementTab } from '@/components/admin/AiKeyManagementTab'
 import { AiPromptTemplateTab } from '@/components/admin/AiPromptTemplateTab'
@@ -16,7 +15,8 @@ import {
   DATA_TYPE_META,
   CONFIG_SORT_ORDER,
   getConfigFriendlyInfo,
-  FIELD_LABELS,
+  formatFieldLabel,
+  formatDocTypeCode,
 } from '@/utils/configDataTypeUtils'
 import {
   Select,
@@ -95,7 +95,6 @@ export function AdminSystemSettingsPage() {
       const data = await systemConfigService.getConfigs(false)
       setConfigs(Array.isArray(data) ? data : [])
     } catch (err) {
-      console.error('Lỗi khi tải cấu hình hệ thống:', err)
       showToast('Lỗi', err?.message || 'Không thể kết nối máy chủ để tải tiêu chuẩn hệ thống.', 'error')
     } finally {
       setIsLoadingConfigs(false)
@@ -120,7 +119,6 @@ export function AdminSystemSettingsPage() {
       setIsConfigModalOpen(false)
       await fetchConfigs()
     } catch (err) {
-      console.error('Lỗi lưu cấu hình:', err)
       showToast('Lỗi', err?.message || 'Không thể lưu tiêu chuẩn xét duyệt.', 'error')
     } finally {
       setIsConfigSubmitting(false)
@@ -141,7 +139,6 @@ export function AdminSystemSettingsPage() {
         'success'
       )
     } catch (err) {
-      console.error('Lỗi toggle config:', err)
       showToast('Lỗi', err?.message || 'Không thể thay đổi trạng thái áp dụng.', 'error')
     }
   }
@@ -160,7 +157,6 @@ export function AdminSystemSettingsPage() {
       setDeletingConfig(null)
       await fetchConfigs()
     } catch (err) {
-      console.error('Lỗi lưu trữ:', err)
       showToast('Lỗi', err?.message || 'Không thể chuyển vào mục lưu trữ.', 'error')
     } finally {
       setIsDeletingConfig(false)
@@ -177,7 +173,6 @@ export function AdminSystemSettingsPage() {
       setRestoringConfig(null)
       await fetchConfigs()
     } catch (err) {
-      console.error('Lỗi khôi phục:', err)
       showToast('Lỗi', err?.message || 'Không thể khôi phục tiêu chuẩn.', 'error')
     } finally {
       setIsRestoringConfig(false)
@@ -251,8 +246,7 @@ export function AdminSystemSettingsPage() {
       const res = await urlRuleService.getRules(false)
       const list = Array.isArray(res) ? res : (res?.data || [])
       setDomainRules(list)
-    } catch (err) {
-      console.warn('Lỗi khi tải danh mục tên miền nguồn qua API:', err)
+    } catch {
       showToast('Thông báo', 'Không thể kết nối máy chủ để tải danh mục tên miền.', 'error')
     } finally {
       setIsLoadingRules(false)
@@ -293,8 +287,7 @@ export function AdminSystemSettingsPage() {
     try {
       const rule = await urlRuleService.getRuleById(ruleId)
       setViewingRule(rule)
-    } catch (err) {
-      console.error('Lỗi khi xem chi tiết quy tắc URL:', err)
+    } catch {
       showToast('Lỗi', 'Không thể tải chi tiết quy tắc tên miền.', 'error')
     }
   }
@@ -441,7 +434,6 @@ export function AdminSystemSettingsPage() {
       const list = await taxDocumentTypeService.getAll(params)
       setDocTypes(list)
     } catch (err) {
-      console.error('Lỗi khi tải danh mục loại chứng từ:', err)
       showToast('Lỗi tải danh mục', err.message || 'Không thể tải danh sách loại chứng từ.', 'error')
     } finally {
       setIsLoadingDocTypes(false)
@@ -471,7 +463,7 @@ export function AdminSystemSettingsPage() {
         const created = await taxDocumentTypeService.create(payload)
         showToast('Thành công', `Đã thêm loại chứng từ ${created.code || payload.code}.`, 'success')
       } else {
-        const updated = await taxDocumentTypeService.update(payload.code, {
+        await taxDocumentTypeService.update(payload.code, {
           name: payload.name,
           description: payload.description,
           isTaxEligible: payload.isTaxEligible,
@@ -481,7 +473,6 @@ export function AdminSystemSettingsPage() {
       setIsDocTypeModalOpen(false)
       await fetchDocTypes()
     } catch (err) {
-      console.error('Lỗi khi lưu loại chứng từ:', err)
       showToast('Lưu thất bại', err.message || 'Không thể lưu loại chứng từ.', 'error')
     } finally {
       setIsDocTypeSubmitting(false)
@@ -504,7 +495,7 @@ export function AdminSystemSettingsPage() {
   }
 
   return (
-    <div className="p-space-xl flex flex-col gap-space-lg max-w-6xl">
+    <div className="p-4 sm:p-6 lg:p-space-xl flex flex-col gap-space-lg max-w-6xl">
       {/* Toast thông báo */}
       {toast && (
         <div
@@ -598,8 +589,8 @@ export function AdminSystemSettingsPage() {
               : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
           }`}
         >
-          <span className="material-symbols-outlined text-[18px]">psychology</span>
-          <span>Cấu hình AI & Ngưỡng OCR ({totalConfigsCount || 6})</span>
+          <span className="material-symbols-outlined text-[18px]">fact_check</span>
+          <span>Tiêu chuẩn kiểm tra chứng từ ({totalConfigsCount || 6})</span>
         </button>
 
         <button
@@ -611,7 +602,7 @@ export function AdminSystemSettingsPage() {
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">vpn_key</span>
-          <span>API Key AI Hệ thống</span>
+          <span>Khóa kết nối dịch vụ</span>
         </button>
 
         <button
@@ -622,8 +613,8 @@ export function AdminSystemSettingsPage() {
               : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
           }`}
         >
-          <span className="material-symbols-outlined text-[18px]">terminal</span>
-          <span>System Prompt AI</span>
+          <span className="material-symbols-outlined text-[18px]">description</span>
+          <span>Mẫu chỉ dẫn nghiệp vụ</span>
         </button>
 
         <button
@@ -663,30 +654,6 @@ export function AdminSystemSettingsPage() {
         </button>
 
         <button
-          onClick={() => handleTabChange('expert-search')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
-            activeTab === 'expert-search'
-              ? 'bg-primary text-on-primary shadow-xs'
-              : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
-          }`}
-        >
-          <span className="material-symbols-outlined text-[18px]">person_search</span>
-          <span>Đề xuất & Tìm kiếm Chuyên gia</span>
-        </button>
-
-        <button
-          onClick={() => handleTabChange('expert-certificates')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
-            activeTab === 'expert-certificates'
-              ? 'bg-primary text-on-primary shadow-xs'
-              : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
-          }`}
-        >
-          <span className="material-symbols-outlined text-[18px]">workspace_premium</span>
-          <span>Danh mục Chứng chỉ Chuyên gia</span>
-        </button>
-
-        <button
           onClick={() => handleTabChange('system')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
             activeTab === 'system'
@@ -700,7 +667,7 @@ export function AdminSystemSettingsPage() {
       </div>
 
       {/* ========================================================================= */}
-      {/* TAB 1: TIÊU CHUẨN XÉT DUYỆT & NGƯỠNG AI OCR                                 */}
+      {/* TAB 1: TIÊU CHUẨN KIỂM TRA CHỨNG TỪ                                       */}
       {/* ========================================================================= */}
       {activeTab === 'ai-configs' && (
         <div className="flex flex-col gap-space-lg">
@@ -708,8 +675,8 @@ export function AdminSystemSettingsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
             {/* Thẻ 1: Tổng số tiêu chuẩn */}
             <div className="p-space-lg rounded-2xl bg-surface-container-lowest border border-outline-variant/40 shadow-xs flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-[24px]">tune</span>
+              <div className="w-11 h-11 rounded-xl bg-surface-container text-on-surface flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[22px]">tune</span>
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
@@ -724,14 +691,14 @@ export function AdminSystemSettingsPage() {
 
             {/* Thẻ 2: Đang có hiệu lực */}
             <div className="p-space-lg rounded-2xl bg-surface-container-lowest border border-outline-variant/40 shadow-xs flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-[24px]">check_circle</span>
+              <div className="w-11 h-11 rounded-xl bg-surface-container text-on-surface flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[22px]">check_circle</span>
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
                   Đang có hiệu lực
                 </span>
-                <span className="font-headline-sm text-headline-sm font-extrabold text-emerald-600">
+                <span className="font-headline-sm text-headline-sm font-extrabold text-on-surface">
                   {activeConfigsCount}
                 </span>
                 <span className="text-[10px] text-on-surface-variant/80 truncate">Áp dụng khi kiểm tra hóa đơn</span>
@@ -740,14 +707,14 @@ export function AdminSystemSettingsPage() {
 
             {/* Thẻ 3: Độ chính xác chuẩn */}
             <div className="p-space-lg rounded-2xl bg-surface-container-lowest border border-outline-variant/40 shadow-xs flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-[24px]">percent</span>
+              <div className="w-11 h-11 rounded-xl bg-surface-container text-on-surface flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[22px]">percent</span>
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
                   Độ chính xác chuẩn
                 </span>
-                <span className="font-headline-sm text-headline-sm font-extrabold text-secondary">
+                <span className="font-headline-sm text-headline-sm font-extrabold text-on-surface">
                   {currentGlobalThreshold ? `${(Number(currentGlobalThreshold) * 100).toFixed(0)}%` : '80%'}
                 </span>
                 <span className="text-[10px] text-on-surface-variant/80 truncate">Mức tin cậy tối thiểu chung</span>
@@ -756,14 +723,14 @@ export function AdminSystemSettingsPage() {
 
             {/* Thẻ 4: Mục tạm lưu trữ */}
             <div className="p-space-lg rounded-2xl bg-surface-container-lowest border border-outline-variant/40 shadow-xs flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-[24px]">inventory_2</span>
+              <div className="w-11 h-11 rounded-xl bg-surface-container text-on-surface flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[22px]">inventory_2</span>
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
                   Mục tạm lưu trữ
                 </span>
-                <span className="font-headline-sm text-headline-sm font-extrabold text-rose-600">
+                <span className="font-headline-sm text-headline-sm font-extrabold text-on-surface">
                   {deletedConfigsCount}
                 </span>
                 <span className="text-[10px] text-on-surface-variant/80 truncate">Có thể kích hoạt lại bất cứ lúc nào</span>
@@ -815,7 +782,7 @@ export function AdminSystemSettingsPage() {
                   onClick={() => setConfigFilterStatus('active')}
                   className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
                     configFilterStatus === 'active'
-                      ? 'bg-surface-container-lowest text-emerald-600 shadow-xs'
+                      ? 'bg-surface-container-lowest text-on-surface shadow-xs'
                       : 'text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
@@ -826,7 +793,7 @@ export function AdminSystemSettingsPage() {
                   onClick={() => setConfigFilterStatus('deleted')}
                   className={`px-3 py-1.5 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
                     configFilterStatus === 'deleted'
-                      ? 'bg-surface-container-lowest text-rose-600 shadow-xs'
+                      ? 'bg-surface-container-lowest text-on-surface shadow-xs'
                       : 'text-on-surface-variant hover:text-on-surface'
                   }`}
                 >
@@ -849,10 +816,10 @@ export function AdminSystemSettingsPage() {
           {/* Bảng Danh sách Tiêu chuẩn */}
           <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-xs overflow-hidden">
             {isLoadingConfigs ? (
-              <div className="py-20 flex flex-col items-center justify-center gap-3 text-on-surface-variant">
-                <span className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin"></span>
-                <span className="text-xs font-semibold">Đang tải danh sách tiêu chuẩn từ hệ thống...</span>
-              </div>
+              <SectionLoading
+                title="Đang tải danh sách tiêu chuẩn từ hệ thống..."
+                minHeight="min-h-[220px]"
+              />
             ) : sortedConfigs.length === 0 ? (
               <div className="py-16 px-4 flex flex-col items-center justify-center text-center gap-2 text-on-surface-variant">
                 <span className="material-symbols-outlined text-[44px] text-on-surface-variant/40">tune</span>
@@ -902,61 +869,58 @@ export function AdminSystemSettingsPage() {
                       const isDeleted = Boolean(c.is_deleted)
                       const isAct = Boolean(c.is_active)
                       const friendly = getConfigFriendlyInfo(c.config_key)
+                      const numValue = Number(c.config_value)
+                      const isCurrencyVal =
+                        friendly.isCurrencyAmount || (!Number.isNaN(numValue) && numValue > 1)
 
                       return (
                         <tr
                           key={c.config_key}
                           className={`hover:bg-surface-container-low/60 transition-colors ${
-                            isDeleted ? 'bg-rose-500/5 opacity-80' : ''
+                            isDeleted ? 'opacity-65' : ''
                           }`}
                         >
                           {/* Cột 1: Tiêu chuẩn kiểm tra */}
                           <td className="py-4 px-4 align-middle">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-xl ${friendly.badgeClass} flex items-center justify-center shrink-0`}>
-                                <span className="material-symbols-outlined text-[20px]">{friendly.icon}</span>
-                              </div>
-                              <div className="flex flex-col min-w-0">
-                                <span className="font-bold text-xs text-on-surface leading-snug">
-                                  {friendly.title}
-                                </span>
-                                <div className="flex items-center gap-1.5 mt-1">
-                                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-surface-container text-on-surface-variant font-medium">
-                                    {friendly.category}
-                                  </span>
-                                </div>
-                              </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-bold text-xs text-on-surface leading-snug">
+                                {friendly.title}
+                              </span>
+                              <span className="text-[11px] text-on-surface-variant mt-0.5">
+                                {friendly.category}
+                              </span>
                             </div>
                           </td>
 
                           {/* Cột 2: Mức thiết lập / Giá trị */}
                           <td className="py-4 px-4 align-middle">
                             {c.data_type === 'FLOAT' ? (
-                              <div className="flex items-center gap-2.5">
-                                <span className="text-sm font-extrabold text-primary min-w-[36px]">
-                                  {(Number(c.config_value) * 100).toFixed(0)}%
+                              isCurrencyVal ? (
+                                <span className="text-xs font-bold text-on-surface tabular-nums">
+                                  {numValue.toLocaleString('vi-VN')} VNĐ
                                 </span>
-                                <div className="w-24 bg-surface-container-highest h-2 rounded-full overflow-hidden shrink-0">
-                                  <div
-                                    className="bg-primary h-full rounded-full transition-all"
-                                    style={{ width: `${Math.min(100, Math.max(0, Number(c.config_value) * 100))}%` }}
-                                  />
+                              ) : (
+                                <div className="flex items-center gap-2.5">
+                                  <span className="text-xs font-bold text-on-surface min-w-[36px] tabular-nums">
+                                    {(numValue * 100).toFixed(0)}%
+                                  </span>
+                                  <div className="w-24 bg-surface-container-highest h-1.5 rounded-full overflow-hidden shrink-0">
+                                    <div
+                                      className="bg-primary h-full rounded-full transition-all"
+                                      style={{ width: `${Math.min(100, Math.max(0, numValue * 100))}%` }}
+                                    />
+                                  </div>
                                 </div>
-                                <span className="text-[11px] text-on-surface-variant font-medium">
-                                  ({c.config_value})
-                                </span>
-                              </div>
+                              )
                             ) : c.data_type === 'BOOLEAN' ? (
-                              <span
-                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-                                  String(c.config_value).toLowerCase() === 'true'
-                                    ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/20'
-                                    : 'bg-stone-500/10 text-stone-600 border border-stone-500/20'
-                                }`}
-                              >
-                                <span className="material-symbols-outlined text-[15px]">
-                                  {String(c.config_value).toLowerCase() === 'true' ? 'check_circle' : 'cancel'}
-                                </span>
+                              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-on-surface">
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    String(c.config_value).toLowerCase() === 'true'
+                                      ? 'bg-emerald-600'
+                                      : 'bg-stone-400'
+                                  }`}
+                                />
                                 <span>
                                   {String(c.config_value).toLowerCase() === 'true'
                                     ? 'Bật (Tự động duyệt)'
@@ -964,7 +928,7 @@ export function AdminSystemSettingsPage() {
                                 </span>
                               </span>
                             ) : c.data_type === 'LIST_STRING' ? (
-                              <div className="flex flex-wrap gap-1 max-w-[280px]">
+                              <div className="flex flex-wrap gap-1 max-w-[300px]">
                                 {String(c.config_value)
                                   .split(',')
                                   .map((item) => item.trim())
@@ -972,16 +936,14 @@ export function AdminSystemSettingsPage() {
                                   .map((item, idx) => (
                                     <span
                                       key={idx}
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10.5px] bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20 font-medium"
-                                      title={item}
+                                      className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] bg-surface-container text-on-surface border border-outline-variant/40 font-medium"
                                     >
-                                      <span className="material-symbols-outlined text-[12px] text-amber-700">check</span>
-                                      <span>{FIELD_LABELS[item] || item}</span>
+                                      {formatFieldLabel(item)}
                                     </span>
                                   ))}
                               </div>
                             ) : (
-                              <span className="px-2 py-1 rounded bg-surface-container font-mono text-xs font-semibold block truncate max-w-xs">
+                              <span className="text-xs font-semibold text-on-surface block truncate max-w-xs">
                                 {String(c.config_value)}
                               </span>
                             )}
@@ -990,37 +952,32 @@ export function AdminSystemSettingsPage() {
                           {/* Cột 3: Phân loại thiết lập */}
                           <td className="py-4 px-4 text-center align-middle whitespace-nowrap">
                             <span
-                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-medium ${meta.badgeClass}`}
+                              className="text-xs text-on-surface-variant font-medium"
                               title={meta.hint}
                             >
-                              <span className="material-symbols-outlined text-[13px]">{meta.icon}</span>
-                              <span>{meta.label}</span>
+                              {meta.label}
                             </span>
                           </td>
 
                           {/* Cột 4: Trạng thái */}
                           <td className="py-4 px-4 text-center align-middle whitespace-nowrap">
                             {isDeleted ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-500/10 text-rose-600 border border-rose-500/20">
-                                <span className="material-symbols-outlined text-[13px]">archive</span>
+                              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-on-surface-variant">
+                                <span className="w-1.5 h-1.5 rounded-full bg-stone-400" />
                                 <span>Đã lưu trữ</span>
                               </span>
                             ) : (
                               <button
                                 type="button"
                                 onClick={() => handleToggleConfigActive(c)}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold cursor-pointer transition-all ${
-                                  isAct
-                                    ? 'bg-emerald-500/10 text-emerald-800 border border-emerald-500/25 hover:bg-emerald-500/20'
-                                    : 'bg-stone-200 text-stone-600 border border-stone-300 hover:bg-stone-300'
-                                }`}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-outline-variant/40 bg-surface-container-low text-xs font-medium text-on-surface hover:bg-surface-container cursor-pointer transition-colors"
                                 title="Bấm để bật hoặc tạm dừng áp dụng tiêu chuẩn này"
                               >
                                 <span
                                   className={`w-1.5 h-1.5 rounded-full ${
-                                    isAct ? 'bg-emerald-500 animate-pulse' : 'bg-stone-400'
+                                    isAct ? 'bg-emerald-600' : 'bg-stone-400'
                                   }`}
-                                ></span>
+                                />
                                 <span>{isAct ? 'Đang áp dụng' : 'Tạm dừng'}</span>
                               </button>
                             )}
@@ -1126,10 +1083,10 @@ export function AdminSystemSettingsPage() {
           {/* Bảng Danh mục Tên miền */}
           <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-xs overflow-hidden">
             {isLoadingRules ? (
-              <div className="py-20 flex flex-col items-center justify-center gap-3 text-on-surface-variant">
-                <span className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin"></span>
-                <span className="text-xs font-semibold">Đang tải danh mục tên miền nguồn từ máy chủ...</span>
-              </div>
+              <SectionLoading
+                title="Đang tải danh mục tên miền nguồn từ máy chủ..."
+                minHeight="min-h-[220px]"
+              />
             ) : filteredDomainRules.length === 0 ? (
               <div className="py-16 px-4 flex flex-col items-center justify-center text-center gap-2 text-on-surface-variant">
                 <span className="material-symbols-outlined text-[40px] text-on-surface-variant/50">
@@ -1154,7 +1111,7 @@ export function AdminSystemSettingsPage() {
                   <thead>
                     <tr className="border-b border-surface-container-high text-on-surface-variant text-[11px] uppercase tracking-wider font-bold bg-surface-container-low/40">
                       <th className="py-3.5 px-4">Tên cơ quan / Cổng thông tin</th>
-                      <th className="py-3.5 px-4">Tên miền được phép (Domain)</th>
+                      <th className="py-3.5 px-4">Địa chỉ cổng thông tin</th>
                       <th className="py-3.5 px-4">Mô tả chức năng</th>
                       <th className="py-3.5 px-4 text-center">Trạng thái</th>
                       <th className="py-3.5 px-4 text-right">Thao tác</th>
@@ -1166,15 +1123,10 @@ export function AdminSystemSettingsPage() {
                       return (
                         <tr key={r.id} className="hover:bg-surface-container-low/60 transition-colors">
                           <td className="py-3.5 px-4 font-bold text-on-surface">
-                            <div className="flex items-center gap-2">
-                              <span className="material-symbols-outlined text-primary text-[18px]">verified</span>
-                              <span>{r.name}</span>
-                            </div>
+                            {r.name}
                           </td>
-                          <td className="py-3.5 px-4 font-mono font-semibold text-primary">
-                            <span className="px-2 py-0.5 rounded-md bg-surface-container border border-outline-variant/30">
-                              {r.domain}
-                            </span>
+                          <td className="py-3.5 px-4 font-semibold text-on-surface">
+                            {r.domain}
                           </td>
                           <td className="py-3.5 px-4 text-on-surface-variant max-w-xs truncate">
                             {r.description || 'Nguồn văn bản quy chuẩn'}
@@ -1182,12 +1134,13 @@ export function AdminSystemSettingsPage() {
                           <td className="py-3.5 px-4 text-center">
                             <button
                               onClick={() => handleToggleRuleStatus(r)}
-                              className={`px-2.5 py-1 rounded-md text-[11px] font-bold cursor-pointer transition-all ${
-                                isAct
-                                  ? 'bg-emerald-500/10 text-emerald-800 border border-emerald-500/25 hover:bg-emerald-500/20'
-                                  : 'bg-stone-200 text-stone-600 border border-stone-300 hover:bg-stone-300'
-                              }`}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-outline-variant/40 bg-surface-container-low text-xs font-medium text-on-surface hover:bg-surface-container cursor-pointer transition-colors"
                             >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  isAct ? 'bg-emerald-600' : 'bg-stone-400'
+                                }`}
+                              />
                               {isAct ? 'Đang áp dụng' : 'Tạm dừng'}
                             </button>
                           </td>
@@ -1269,10 +1222,10 @@ export function AdminSystemSettingsPage() {
               <div className="flex items-start justify-between gap-4 py-2">
                 <div className="flex flex-col">
                   <span className="text-xs font-bold text-on-surface">
-                    Tự động đưa quy tắc vào hiệu lực (Active)
+                    Tự động đưa quy tắc vào hiệu lực
                   </span>
                   <span className="text-[11px] text-on-surface-variant mt-0.5 leading-relaxed">
-                    Ngay sau khi Admin hoàn tất thẩm định và bấm Phê duyệt, bộ quy tắc sẽ lập tức được áp dụng cho tính thuế.
+                    Ngay sau khi quản trị viên hoàn tất thẩm định và bấm Phê duyệt, bộ quy tắc sẽ lập tức được áp dụng cho kỳ tính thuế.
                   </span>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
@@ -1379,8 +1332,8 @@ export function AdminSystemSettingsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-space-md">
             {/* Tổng số */}
             <div className="p-space-lg rounded-2xl bg-surface-container-lowest border border-outline-variant/40 shadow-xs flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-[24px]">receipt_long</span>
+              <div className="w-11 h-11 rounded-xl bg-surface-container text-on-surface flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[22px]">receipt_long</span>
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-[11px] text-on-surface-variant font-medium">Tổng loại chứng từ</span>
@@ -1390,12 +1343,12 @@ export function AdminSystemSettingsPage() {
 
             {/* Đủ điều kiện */}
             <div className="p-space-lg rounded-2xl bg-surface-container-lowest border border-outline-variant/40 shadow-xs flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-[24px]">verified</span>
+              <div className="w-11 h-11 rounded-xl bg-surface-container text-on-surface flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[22px]">verified</span>
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-[11px] text-on-surface-variant font-medium">Đủ điều kiện giảm trừ thuế</span>
-                <span className="text-xl font-black text-emerald-600 tracking-tight">
+                <span className="text-xl font-black text-on-surface tracking-tight">
                   {docTypes.filter((d) => d.isTaxEligible).length}
                 </span>
               </div>
@@ -1403,12 +1356,12 @@ export function AdminSystemSettingsPage() {
 
             {/* Không tính giảm trừ */}
             <div className="p-space-lg rounded-2xl bg-surface-container-lowest border border-outline-variant/40 shadow-xs flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-stone-500/10 text-stone-600 flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-[24px]">do_not_disturb_on</span>
+              <div className="w-11 h-11 rounded-xl bg-surface-container text-on-surface flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[22px]">do_not_disturb_on</span>
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-[11px] text-on-surface-variant font-medium">Không tính giảm trừ</span>
-                <span className="text-xl font-black text-stone-600 tracking-tight">
+                <span className="text-xl font-black text-on-surface tracking-tight">
                   {docTypes.filter((d) => !d.isTaxEligible).length}
                 </span>
               </div>
@@ -1425,7 +1378,7 @@ export function AdminSystemSettingsPage() {
                 type="text"
                 value={docTypeSearchQuery}
                 onChange={(e) => setDocTypeSearchQuery(e.target.value)}
-                placeholder="Tìm kiếm theo mã chứng từ (VD: MEDICAL_...) hoặc tên loại chứng từ..."
+                placeholder="Tìm kiếm theo tên hoặc mô tả loại chứng từ..."
                 className="w-full h-10 pl-9 pr-3 rounded-xl border border-outline-variant/50 text-xs bg-surface-container-low focus:bg-surface-container-lowest focus:border-primary focus:outline-none transition-all"
               />
               {docTypeSearchQuery && (
@@ -1468,10 +1421,10 @@ export function AdminSystemSettingsPage() {
           {/* Bảng Dữ liệu */}
           <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/40 shadow-xs overflow-hidden">
             {isLoadingDocTypes ? (
-              <div className="p-12 flex flex-col items-center justify-center gap-3">
-                <span className="w-7 h-7 border-3 border-primary/20 border-t-primary rounded-full animate-spin"></span>
-                <p className="text-xs text-on-surface-variant font-medium">Đang tải danh mục loại chứng từ thuế...</p>
-              </div>
+              <SectionLoading
+                title="Đang tải danh mục loại chứng từ thuế..."
+                minHeight="min-h-[200px]"
+              />
             ) : docTypes.length === 0 ? (
               <div className="p-12 flex flex-col items-center justify-center gap-3 text-center">
                 <div className="w-14 h-14 rounded-2xl bg-surface-container flex items-center justify-center text-on-surface-variant">
@@ -1499,45 +1452,36 @@ export function AdminSystemSettingsPage() {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-surface-container-high/60 bg-surface-container/40 text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
-                      <th className="py-3.5 px-4">Mã loại chứng từ (Code)</th>
                       <th className="py-3.5 px-4">Tên loại chứng từ</th>
-                      <th className="py-3.5 px-4 text-center">Tính giảm trừ thuế</th>
+                      <th className="py-3.5 px-4">Mô tả nhận diện</th>
+                      <th className="py-3.5 px-4 text-center">Quy định giảm trừ</th>
                       <th className="py-3.5 px-4 text-right">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-container-high/40 text-xs">
                     {docTypes.map((item) => (
                       <tr key={item.code} className="hover:bg-surface-container-low/60 transition-colors">
-                        <td className="py-3.5 px-4 font-mono font-bold text-primary tracking-wide">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20">
-                            <span className="material-symbols-outlined text-[14px]">receipt</span>
-                            <span>{item.code}</span>
+                        <td className="py-3.5 px-4 font-semibold text-on-surface">
+                          {item.name || formatDocTypeCode(item.code)}
+                        </td>
+
+                        <td className="py-3.5 px-4 text-on-surface-variant max-w-md">
+                          <span className="line-clamp-2" title={item.description || ''}>
+                            {item.description || 'Theo quy định chứng từ thuế thu nhập cá nhân'}
                           </span>
                         </td>
 
-                        <td className="py-3.5 px-4">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-semibold text-on-surface">{item.name}</span>
-                            {item.description && (
-                              <span className="text-[11px] text-on-surface-variant line-clamp-2 max-w-md" title={item.description}>
-                                {item.description}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="py-3.5 px-4 text-center">
-                          {item.isTaxEligible ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
-                              <span className="material-symbols-outlined text-[14px]">verified</span>
-                              <span>Đủ điều kiện giảm trừ</span>
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-on-surface">
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                item.isTaxEligible ? 'bg-emerald-600' : 'bg-stone-400'
+                              }`}
+                            />
+                            <span>
+                              {item.isTaxEligible ? 'Đủ điều kiện giảm trừ' : 'Không tính giảm trừ'}
                             </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-stone-500/10 text-stone-600 border border-stone-500/20">
-                              <span className="material-symbols-outlined text-[14px]">remove_circle</span>
-                              <span>Không tính giảm trừ</span>
-                            </span>
-                          )}
+                          </span>
                         </td>
 
                         <td className="py-3.5 px-4 text-right">
@@ -1562,21 +1506,10 @@ export function AdminSystemSettingsPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 5: ĐỀ XUẤT & TÌM KIẾM CHUYÊN GIA (AdminExpertSearchConfig)            */}
-      {/* ========================================================================= */}
-      {activeTab === 'expert-search' && (
-        <ExpertSearchConfigTab onShowToast={showToast} />
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 6: DANH MỤC CHỨNG CHỈ CHUYÊN GIA (ExpertCertificateConfig)          */}
+      {/* TAB 5: DANH MỤC CHI PHÍ Y TẾ                                              */}
       {/* ========================================================================= */}
       {activeTab === 'medical-categories' && (
         <MedicalCategoryTab onShowToast={showToast} />
-      )}
-
-      {activeTab === 'expert-certificates' && (
-        <ExpertCertificateConfigTab onShowToast={showToast} />
       )}
 
       {/* ========================================================================= */}
@@ -1650,12 +1583,9 @@ export function AdminSystemSettingsPage() {
                 <div className="flex flex-col gap-0.5 p-3 rounded-xl bg-surface-container-low">
                   <span className="text-[11px] text-on-surface-variant font-bold">Tên tiêu chuẩn nghiệp vụ</span>
                   <span className="text-sm font-bold text-on-surface">{friendly.title}</span>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-surface-container text-on-surface-variant font-medium">
-                      {friendly.category}
-                    </span>
-                    <span className="text-[10px] font-mono text-on-surface-variant/70">
-                      Mã: {viewingConfig.config_key}
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[11px] text-on-surface-variant">
+                      Nhóm: {friendly.category}
                     </span>
                   </div>
                 </div>
@@ -1665,16 +1595,17 @@ export function AdminSystemSettingsPage() {
                   <div className="flex flex-col gap-1 p-3 rounded-xl bg-surface-container-low">
                     <span className="text-[11px] text-on-surface-variant font-bold">Mức thiết lập / Giá trị</span>
                     {viewingConfig.data_type === 'FLOAT' ? (
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-base font-extrabold text-primary">
+                      friendly.isCurrencyAmount || Number(viewingConfig.config_value) > 1 ? (
+                        <span className="text-base font-extrabold text-on-surface tabular-nums">
+                          {Number(viewingConfig.config_value).toLocaleString('vi-VN')} VNĐ
+                        </span>
+                      ) : (
+                        <span className="text-base font-extrabold text-on-surface tabular-nums">
                           {(Number(viewingConfig.config_value) * 100).toFixed(0)}%
                         </span>
-                        <span className="text-[11px] text-on-surface-variant font-mono">
-                          ({viewingConfig.config_value})
-                        </span>
-                      </div>
+                      )
                     ) : viewingConfig.data_type === 'BOOLEAN' ? (
-                      <span className="font-bold text-emerald-600 text-xs">
+                      <span className="font-bold text-on-surface text-xs">
                         {String(viewingConfig.config_value).toLowerCase() === 'true'
                           ? 'Bật (Tự động duyệt)'
                           : 'Tắt (Duyệt thủ công)'}
@@ -1688,14 +1619,14 @@ export function AdminSystemSettingsPage() {
                           .map((item, idx) => (
                             <span
                               key={idx}
-                              className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-800 border border-amber-500/20 font-medium"
+                              className="px-2 py-0.5 rounded text-[11px] bg-surface-container text-on-surface border border-outline-variant/40 font-medium"
                             >
-                              {FIELD_LABELS[item] || item}
+                              {formatFieldLabel(item)}
                             </span>
                           ))}
                       </div>
                     ) : (
-                      <span className="font-mono font-bold text-on-surface">{viewingConfig.config_value}</span>
+                      <span className="font-bold text-on-surface">{viewingConfig.config_value}</span>
                     )}
                   </div>
 
@@ -1926,7 +1857,7 @@ export function AdminSystemSettingsPage() {
                   {formMode === 'create' ? 'add_link' : 'edit_document'}
                 </span>
                 <h3 className="font-title-md text-title-md font-bold text-on-surface">
-                  {formMode === 'create' ? 'Thêm tên miền nguồn kiểm tra URL' : 'Cập nhật tên miền nguồn kiểm tra URL'}
+                  {formMode === 'create' ? 'Thêm cổng thông tin nguồn hợp lệ' : 'Cập nhật cổng thông tin nguồn'}
                 </h3>
               </div>
               <button
@@ -1958,14 +1889,14 @@ export function AdminSystemSettingsPage() {
               {/* Tên miền */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-on-surface">
-                  Tên miền nguồn được phép (Domain) <span className="text-error">*</span>
+                  Địa chỉ cổng thông tin được phép <span className="text-error">*</span>
                 </label>
                 <input
                   type="text"
                   placeholder="thuvienphapluat.vn"
                   value={ruleFormData.domain}
                   onChange={(e) => setRuleFormData({ ...ruleFormData, domain: e.target.value })}
-                  className={`h-10 px-3 rounded-lg border font-mono text-xs bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none ${
+                  className={`h-10 px-3 rounded-lg border text-xs bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none ${
                     formErrors.domain ? 'border-error ring-1 ring-error' : 'border-outline-variant/40'
                   }`}
                 />
@@ -1973,7 +1904,7 @@ export function AdminSystemSettingsPage() {
                   <span className="text-[11px] text-error">{formErrors.domain}</span>
                 )}
                 <span className="text-[10px] text-on-surface-variant">
-                  Chỉ nhập tên miền gốc (không cần https:// hoặc đường dẫn phía sau).
+                  Chỉ nhập địa chỉ tên miền gốc (ví dụ: thuvienphapluat.vn).
                 </span>
               </div>
 
@@ -1999,7 +1930,7 @@ export function AdminSystemSettingsPage() {
                   className="w-4 h-4 rounded text-primary cursor-pointer"
                 />
                 <label htmlFor="form-domain-active-chk" className="text-xs font-semibold text-on-surface cursor-pointer">
-                  Kích hoạt quy tắc kiểm tra URL này
+                  Đưa nguồn văn bản này vào áp dụng ngay
                 </label>
               </div>
 

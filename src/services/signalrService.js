@@ -1,6 +1,8 @@
 import * as signalR from '@microsoft/signalr'
+import { MANAGEMENT_API_URL } from './apiClient'
 
 const GATEWAY_URL =
+  MANAGEMENT_API_URL ||
   import.meta.env.VITE_API_GATEWAY_URL ||
   import.meta.env.VITE_MANAGEMENT_API_URL ||
   'http://localhost:5000'
@@ -30,8 +32,8 @@ class SignalRService {
           cbs.forEach((cb) => {
             try {
               cb(...args)
-            } catch (e) {
-              console.error(`[SignalR] Callback error for ${eventName}:`, e)
+            } catch {
+              // Bỏ qua lỗi callback để bảo vệ luồng sự kiện
             }
           })
         }
@@ -89,7 +91,7 @@ class SignalRService {
           skipNegotiation: false,
         })
         .withAutomaticReconnect([0, 2000, 5000, 10000, 20000])
-        .configureLogging(signalR.LogLevel.Information)
+        .configureLogging(signalR.LogLevel.None)
         .build()
 
       this._bindHandlers(this.connection)
@@ -103,8 +105,12 @@ class SignalRService {
       await this.connection.start()
       return this.connection
     } catch {
-      // Fallback: kết nối trực tiếp Gateway với withCredentials: false và WebSockets
-      const fallbackUrl = `${GATEWAY_URL}/hubs/tax-ai`
+      // Fallback: trên HTTPS (Vercel) bắt buộc giữ đường dẫn tương đối để tránh lỗi Mixed Content
+      const isHttps = typeof window !== 'undefined' && window.location?.protocol === 'https:'
+      const fallbackUrl =
+        isHttps && !GATEWAY_URL.startsWith('https://')
+          ? '/hubs/tax-ai'
+          : `${GATEWAY_URL}/hubs/tax-ai`
       this.connection = new signalR.HubConnectionBuilder()
         .withUrl(fallbackUrl, {
           accessTokenFactory: () => {
@@ -116,8 +122,10 @@ class SignalRService {
           },
           withCredentials: false,
           transport:
-            signalR.HttpTransportType.WebSockets |
-            signalR.HttpTransportType.LongPolling,
+            isHttps && !GATEWAY_URL.startsWith('https://')
+              ? signalR.HttpTransportType.LongPolling
+              : signalR.HttpTransportType.WebSockets |
+                signalR.HttpTransportType.LongPolling,
         })
         .withAutomaticReconnect([0, 2000, 5000, 10000])
         .configureLogging(signalR.LogLevel.None)

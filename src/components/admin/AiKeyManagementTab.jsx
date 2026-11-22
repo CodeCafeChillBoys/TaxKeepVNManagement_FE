@@ -2,10 +2,14 @@ import { useState, useEffect, useMemo } from 'react'
 import { adminAiKeyService } from '@/services/adminAiKeyService'
 import { AiKeyModal } from './AiKeyModal'
 import { useDebounce } from '@/hooks/useDebounce'
+import { TableLoadingRow } from '@/components/ui/loading'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
+import {
+  formatAiProvider,
+  getAiKeyStatusInfo,
+} from '@/utils/configDataTypeUtils'
 import {
   Table,
   TableHeader,
@@ -100,7 +104,11 @@ export function AiKeyManagementTab({ onShowToast }) {
   const totalKeysCount = keys.length
   const activeCount = keys.filter((k) => k.is_active && k.status === 'ACTIVE').length
   const issueCount = keys.filter(
-    (k) => !k.is_active || ['COOLDOWN', 'EXHAUSTED', 'RATE_LIMITED', 'REVOKED'].includes(k.status)
+    (k) =>
+      !k.is_active ||
+      ['QUOTA_EXCEEDED', 'COOLDOWN', 'EXHAUSTED', 'RATE_LIMITED', 'INVALID', 'REVOKED', 'DISABLED'].includes(
+        (k.status || '').toUpperCase()
+      )
   ).length
   const totalRequests = keys.reduce((sum, k) => sum + (Number(k.request_count) || 0), 0)
 
@@ -122,15 +130,15 @@ export function AiKeyManagementTab({ onShowToast }) {
     try {
       if (modalMode === 'create') {
         const result = await adminAiKeyService.createKey(payload)
-        notify('Thêm mới thành công', `API Key "${result?.key_name || payload.key_name}" đã được xác thực và lưu vào hệ thống.`)
+        notify('Thêm mới thành công', `Khóa kết nối "${result?.key_name || payload.key_name}" đã được xác thực và lưu vào hệ thống.`)
       } else if (editingKey) {
         await adminAiKeyService.updateKey(editingKey.id, payload)
-        notify('Cập nhật thành công', `Đã cập nhật cấu hình API Key "${payload.key_name || editingKey.key_name}".`)
+        notify('Cập nhật thành công', `Đã cập nhật cấu hình khóa kết nối "${payload.key_name || editingKey.key_name}".`)
       }
       setIsModalOpen(false)
       await fetchKeys()
     } catch (err) {
-      notify('Lỗi thao tác', err?.message || 'Không thể lưu thông tin API Key.', 'error')
+      notify('Lỗi thao tác', err?.message || 'Không thể lưu thông tin khóa kết nối.', 'error')
     } finally {
       setIsSubmitting(false)
     }
@@ -142,7 +150,7 @@ export function AiKeyManagementTab({ onShowToast }) {
       await adminAiKeyService.toggleActive(keyItem.id, keyItem.is_active)
       notify(
         'Đổi trạng thái thành công',
-        `API Key "${keyItem.key_name}" đã ${!keyItem.is_active ? 'được kích hoạt' : 'tạm dừng sử dụng'}.`
+        `Khóa kết nối "${keyItem.key_name}" đã ${!keyItem.is_active ? 'được kích hoạt' : 'tạm dừng sử dụng'}.`
       )
       await fetchKeys()
     } catch (err) {
@@ -157,11 +165,11 @@ export function AiKeyManagementTab({ onShowToast }) {
     setIsDeleting(true)
     try {
       await adminAiKeyService.deleteKey(deletingKey.id)
-      notify('Đã xóa', `Đã xóa vĩnh viễn API Key "${deletingKey.key_name}".`)
+      notify('Đã xóa', `Đã xóa khóa kết nối "${deletingKey.key_name}".`)
       setDeletingKey(null)
       await fetchKeys()
     } catch (err) {
-      notify('Không thể xóa', err?.message || 'Đã có lỗi xảy ra khi xóa API Key.', 'error')
+      notify('Không thể xóa', err?.message || 'Đã có lỗi xảy ra khi xóa khóa kết nối.', 'error')
     } finally {
       setIsDeleting(false)
     }
@@ -193,58 +201,13 @@ export function AiKeyManagementTab({ onShowToast }) {
   }
 
   const getStatusBadge = (status, isActive) => {
-    if (!isActive) {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-neutral-100 text-neutral-600 border border-neutral-300">
-          <span className="w-1.5 h-1.5 rounded-full bg-neutral-400" />
-          Tạm dừng (Disabled)
-        </span>
-      )
-    }
-
-    switch ((status || '').toUpperCase()) {
-      case 'ACTIVE':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Đang hoạt động (Active)
-          </span>
-        )
-      case 'COOLDOWN':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-            Tạm nghỉ (Cooldown)
-          </span>
-        )
-      case 'EXHAUSTED':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-orange-50 text-orange-800 border border-orange-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-            Hết hạn ngạch (Exhausted)
-          </span>
-        )
-      case 'RATE_LIMITED':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-50 text-purple-800 border border-purple-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-            Bị giới hạn tốc độ (Rate Limited)
-          </span>
-        )
-      case 'REVOKED':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-50 text-red-700 border border-red-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-            Đã thu hồi (Revoked)
-          </span>
-        )
-      default:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
-            {status || 'Unknown'}
-          </span>
-        )
-    }
+    const info = getAiKeyStatusInfo(status, isActive)
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-on-surface">
+        <span className={`w-1.5 h-1.5 rounded-full ${info.dotClass}`} />
+        {info.label}
+      </span>
+    )
   }
 
   return (
@@ -254,10 +217,10 @@ export function AiKeyManagementTab({ onShowToast }) {
         <Card className="border border-outline-variant/40 shadow-xs">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-medium text-on-surface-variant">Tổng số API Key</p>
+              <p className="text-[11px] font-medium text-on-surface-variant">Tổng số khóa kết nối</p>
               <p className="text-2xl font-bold text-on-surface tabular-nums mt-0.5">{totalKeysCount}</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-surface-container text-on-surface flex items-center justify-center">
               <span className="material-symbols-outlined text-[22px]">vpn_key</span>
             </div>
           </CardContent>
@@ -266,10 +229,10 @@ export function AiKeyManagementTab({ onShowToast }) {
         <Card className="border border-outline-variant/40 shadow-xs">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-medium text-on-surface-variant">Sẵn sàng điều phối</p>
-              <p className="text-2xl font-bold text-emerald-700 tabular-nums mt-0.5">{activeCount}</p>
+              <p className="text-[11px] font-medium text-on-surface-variant">Đang hoạt động</p>
+              <p className="text-2xl font-bold text-on-surface tabular-nums mt-0.5">{activeCount}</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-surface-container text-on-surface flex items-center justify-center">
               <span className="material-symbols-outlined text-[22px]">check_circle</span>
             </div>
           </CardContent>
@@ -278,11 +241,11 @@ export function AiKeyManagementTab({ onShowToast }) {
         <Card className="border border-outline-variant/40 shadow-xs">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-medium text-on-surface-variant">Cần kiểm tra / Giới hạn</p>
-              <p className="text-2xl font-bold text-amber-700 tabular-nums mt-0.5">{issueCount}</p>
+              <p className="text-[11px] font-medium text-on-surface-variant">Tạm nghỉ / Giới hạn</p>
+              <p className="text-2xl font-bold text-on-surface tabular-nums mt-0.5">{issueCount}</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[22px]">warning</span>
+            <div className="w-10 h-10 rounded-xl bg-surface-container text-on-surface flex items-center justify-center">
+              <span className="material-symbols-outlined text-[22px]">schedule</span>
             </div>
           </CardContent>
         </Card>
@@ -290,12 +253,12 @@ export function AiKeyManagementTab({ onShowToast }) {
         <Card className="border border-outline-variant/40 shadow-xs">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-medium text-on-surface-variant">Tổng Request đã phục vụ</p>
-              <p className="text-2xl font-bold text-primary tabular-nums mt-0.5">
-                {totalRequests.toLocaleString()}
+              <p className="text-[11px] font-medium text-on-surface-variant">Tổng lượt xử lý</p>
+              <p className="text-2xl font-bold text-on-surface tabular-nums mt-0.5">
+                {totalRequests.toLocaleString('vi-VN')}
               </p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-surface-container text-on-surface flex items-center justify-center">
               <span className="material-symbols-outlined text-[22px]">data_thresholding</span>
             </div>
           </CardContent>
@@ -303,13 +266,11 @@ export function AiKeyManagementTab({ onShowToast }) {
       </div>
 
       {/* Banner lưu ý bảo mật */}
-      <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50/70 border border-blue-200/60 flex items-center justify-between gap-3 text-xs text-blue-900">
+      <div className="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/40 flex items-center justify-between gap-3 text-xs text-on-surface-variant">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-[20px]">shield</span>
-          </div>
+          <span className="material-symbols-outlined text-on-surface-variant text-[18px] shrink-0">shield</span>
           <div>
-            <span className="font-bold">Bảo mật API Key:</span> Tất cả API Key đều được mã hóa lưu trữ và mask trên giao diện (chỉ hiển thị 6 ký tự đầu & 4 ký tự cuối). Quá trình xoay vòng (Key Rotation) tự động chuyển sang key kế tiếp khi một key chạm ngưỡng Quota hoặc bị Cooldown.
+            <span className="font-bold text-on-surface">Bảo mật khóa kết nối:</span> Tất cả khóa kết nối đều được mã hóa lưu trữ và che giấu trên giao diện (chỉ hiển thị 6 ký tự đầu & 4 ký tự cuối). Hệ thống tự động luân chuyển sang khóa dự phòng kế tiếp theo thứ tự ưu tiên khi một khóa chạm hạn mức trong ngày.
           </div>
         </div>
       </div>
@@ -323,7 +284,7 @@ export function AiKeyManagementTab({ onShowToast }) {
                 search
               </span>
               <Input
-                placeholder="Tìm theo tên key, provider, masked..."
+                placeholder="Tìm theo tên khóa, đơn vị cung cấp..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 h-9 text-xs"
@@ -331,16 +292,19 @@ export function AiKeyManagementTab({ onShowToast }) {
             </div>
 
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-full sm:w-44 h-9 text-xs">
+              <SelectTrigger className="w-full sm:w-48 h-9 text-xs">
                 <SelectValue placeholder="Trạng thái" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tất cả trạng thái</SelectItem>
-                <SelectItem value="ACTIVE">ACTIVE (Hoạt động)</SelectItem>
-                <SelectItem value="COOLDOWN">COOLDOWN (Tạm nghỉ)</SelectItem>
-                <SelectItem value="EXHAUSTED">EXHAUSTED (Hết hạn mức)</SelectItem>
-                <SelectItem value="RATE_LIMITED">RATE_LIMITED (Giới hạn tốc độ)</SelectItem>
-                <SelectItem value="REVOKED">REVOKED (Thu hồi)</SelectItem>
+                <SelectItem value="ACTIVE">Đang hoạt động</SelectItem>
+                <SelectItem value="QUOTA_EXCEEDED">Vượt hạn mức trong ngày</SelectItem>
+                <SelectItem value="COOLDOWN">Đang tạm nghỉ chờ</SelectItem>
+                <SelectItem value="EXHAUSTED">Đã hết hạn mức</SelectItem>
+                <SelectItem value="RATE_LIMITED">Giới hạn tần suất sử dụng</SelectItem>
+                <SelectItem value="INVALID">Khóa không hợp lệ</SelectItem>
+                <SelectItem value="REVOKED">Đã thu hồi</SelectItem>
+                <SelectItem value="DISABLED">Đã tạm dừng</SelectItem>
               </SelectContent>
             </Select>
 
@@ -392,23 +356,23 @@ export function AiKeyManagementTab({ onShowToast }) {
               className="text-xs h-9 font-bold bg-primary text-on-primary shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[18px]">add_circle</span>
-              <span>Thêm API Key mới</span>
+              <span>Thêm khóa kết nối mới</span>
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Bảng danh sách API Key */}
+      {/* Bảng danh sách Khóa kết nối */}
       <Card className="border border-outline-variant/40 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-surface-container-low/70">
               <TableRow className="border-b border-outline-variant/40 text-[11px] uppercase tracking-wider text-on-surface-variant font-bold">
-                <TableHead className="py-3 px-4">Tên gợi nhớ & Nhà cung cấp</TableHead>
-                <TableHead className="py-3 px-4">Khóa bảo mật (Masked Key)</TableHead>
-                <TableHead className="py-3 px-4 text-center">Độ ưu tiên</TableHead>
-                <TableHead className="py-3 px-4 text-center">Lượt gọi (Requests)</TableHead>
-                <TableHead className="py-3 px-4">Lần dùng cuối / Cooldown</TableHead>
+                <TableHead className="py-3 px-4">Tên gợi nhớ & Đơn vị cung cấp</TableHead>
+                <TableHead className="py-3 px-4">Mã khóa bảo mật</TableHead>
+                <TableHead className="py-3 px-4 text-center">Thứ tự ưu tiên</TableHead>
+                <TableHead className="py-3 px-4 text-center">Lượt sử dụng</TableHead>
+                <TableHead className="py-3 px-4">Lần dùng gần nhất</TableHead>
                 <TableHead className="py-3 px-4 text-center">Trạng thái vận hành</TableHead>
                 <TableHead className="py-3 px-4 text-center">Áp dụng</TableHead>
                 <TableHead className="py-3 px-4 text-right">Thao tác</TableHead>
@@ -416,14 +380,10 @@ export function AiKeyManagementTab({ onShowToast }) {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="py-12 text-center text-xs text-on-surface-variant">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                      <span>Đang tải danh sách API Key AI từ hệ thống...</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                <TableLoadingRow
+                  colSpan={8}
+                  title="Đang tải danh sách khóa kết nối dịch vụ..."
+                />
               ) : filteredKeys.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="py-12 text-center text-xs text-on-surface-variant">
@@ -431,9 +391,9 @@ export function AiKeyManagementTab({ onShowToast }) {
                       <span className="material-symbols-outlined text-4xl text-on-surface-variant/40">
                         key_off
                       </span>
-                      <p className="font-medium text-sm text-on-surface">Không tìm thấy API Key nào phù hợp</p>
+                      <p className="font-medium text-sm text-on-surface">Không tìm thấy khóa kết nối nào phù hợp</p>
                       <p className="text-xs text-on-surface-variant">
-                        Thử điều chỉnh từ khóa tìm kiếm hoặc nhấn "Thêm API Key mới" để khai báo.
+                        Thử điều chỉnh từ khóa tìm kiếm hoặc nhấn "Thêm khóa kết nối mới" để khai báo.
                       </p>
                     </div>
                   </TableCell>
@@ -448,37 +408,29 @@ export function AiKeyManagementTab({ onShowToast }) {
                       key={keyItem.id}
                       className="border-b border-outline-variant/20 hover:bg-surface-container-low/40 transition-colors"
                     >
-                      {/* Tên & Provider */}
+                      {/* Tên & Đơn vị cung cấp */}
                       <TableCell className="py-3 px-4">
                         <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-xs text-on-surface">
-                              {keyItem.key_name}
-                            </span>
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] font-bold px-1.5 py-0 border-primary/30 text-primary bg-primary/5"
-                            >
-                              {keyItem.provider || 'GEMINI'}
-                            </Badge>
-                          </div>
+                          <span className="font-bold text-xs text-on-surface">
+                            {keyItem.key_name}
+                          </span>
                           <span className="text-[11px] text-on-surface-variant">
-                            Tạo: {formatDateTime(keyItem.created_at)}
+                            {formatAiProvider(keyItem.provider)} · Tạo: {formatDateTime(keyItem.created_at)}
                           </span>
                         </div>
                       </TableCell>
 
-                      {/* Masked Key */}
+                      {/* Mã khóa bảo mật */}
                       <TableCell className="py-3 px-4">
                         <div className="flex items-center gap-1.5">
-                          <code className="text-xs font-mono font-bold bg-surface-container-high px-2 py-0.5 rounded text-on-surface">
+                          <span className="text-xs font-mono font-semibold bg-surface-container px-2 py-0.5 rounded text-on-surface">
                             {keyItem.masked_api_key || '••••••••••••••••'}
-                          </code>
+                          </span>
                           <button
                             type="button"
                             onClick={() => handleCopyMaskedKey(keyItem)}
                             className="text-on-surface-variant hover:text-primary transition-colors p-1 rounded hover:bg-surface-container-high cursor-pointer"
-                            title="Sao chép masked key"
+                            title="Sao chép mã khóa đã ẩn"
                           >
                             <span className="material-symbols-outlined text-[16px]">
                               {isCopied ? 'check' : 'content_copy'}
@@ -487,30 +439,29 @@ export function AiKeyManagementTab({ onShowToast }) {
                         </div>
                       </TableCell>
 
-                      {/* Độ ưu tiên Priority */}
+                      {/* Thứ tự ưu tiên */}
                       <TableCell className="py-3 px-4 text-center">
-                        <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-surface-container-high font-bold text-xs text-on-surface border border-outline-variant/40">
+                        <span className="font-bold text-xs text-on-surface tabular-nums">
                           {keyItem.priority}
                         </span>
                       </TableCell>
 
-                      {/* Lượt gọi Requests */}
+                      {/* Lượt sử dụng */}
                       <TableCell className="py-3 px-4 text-center">
                         <span className="font-semibold text-xs text-on-surface tabular-nums">
-                          {(keyItem.request_count || 0).toLocaleString()}
+                          {(keyItem.request_count || 0).toLocaleString('vi-VN')}
                         </span>
                       </TableCell>
 
-                      {/* Lần dùng cuối / Cooldown */}
+                      {/* Lần dùng cuối */}
                       <TableCell className="py-3 px-4">
                         <div className="flex flex-col gap-0.5 text-xs">
                           <span className="text-on-surface">
                             {formatDateTime(keyItem.last_used_at)}
                           </span>
                           {keyItem.cooldown_until && (
-                            <span className="text-[11px] font-semibold text-amber-700 flex items-center gap-1">
-                              <span className="material-symbols-outlined text-[14px]">timer</span>
-                              Cooldown đến: {formatDateTime(keyItem.cooldown_until)}
+                            <span className="text-[11px] text-on-surface-variant">
+                              Tạm nghỉ đến: {formatDateTime(keyItem.cooldown_until)}
                             </span>
                           )}
                         </div>
@@ -521,7 +472,7 @@ export function AiKeyManagementTab({ onShowToast }) {
                         {getStatusBadge(keyItem.status, keyItem.is_active)}
                       </TableCell>
 
-                      {/* Bật/Tắt Is Active */}
+                      {/* Bật/Tắt */}
                       <TableCell className="py-3 px-4 text-center">
                         <button
                           type="button"
@@ -530,7 +481,7 @@ export function AiKeyManagementTab({ onShowToast }) {
                           className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                             keyItem.is_active ? 'bg-primary' : 'bg-surface-container-highest'
                           }`}
-                          title={keyItem.is_active ? 'Nhấn để tạm dừng key' : 'Nhấn để kích hoạt key'}
+                          title={keyItem.is_active ? 'Nhấn để tạm dừng khóa' : 'Nhấn để kích hoạt khóa'}
                         >
                           <span
                             className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
@@ -543,25 +494,23 @@ export function AiKeyManagementTab({ onShowToast }) {
                       {/* Thao tác Sửa / Xóa */}
                       <TableCell className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Nút Sửa */}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleOpenEdit(keyItem)}
-                            className="h-8 px-2 text-xs text-primary hover:bg-primary/10 font-bold flex items-center gap-1"
-                            title="Sửa cấu hình API Key"
+                            className="h-8 px-2 text-xs text-on-surface hover:text-primary hover:bg-surface-container font-semibold flex items-center gap-1"
+                            title="Sửa cấu hình khóa kết nối"
                           >
                             <span className="material-symbols-outlined text-[16px]">edit</span>
                             <span>Sửa</span>
                           </Button>
 
-                          {/* Nút Xóa */}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => setDeletingKey(keyItem)}
-                            className="h-8 px-2 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-1"
-                            title="Xóa API Key"
+                            className="h-8 px-2 text-xs text-on-surface-variant hover:text-error hover:bg-error/10 flex items-center gap-1"
+                            title="Xóa khóa kết nối"
                           >
                             <span className="material-symbols-outlined text-[16px]">delete</span>
                           </Button>
@@ -576,7 +525,7 @@ export function AiKeyManagementTab({ onShowToast }) {
         </div>
       </Card>
 
-      {/* Modal Thêm mới / Sửa API Key */}
+      {/* Modal Thêm mới / Sửa Khóa kết nối */}
       {isModalOpen && (
         <AiKeyModal
           isOpen={isModalOpen}
@@ -588,12 +537,12 @@ export function AiKeyManagementTab({ onShowToast }) {
         />
       )}
 
-      {/* Modal Xác nhận Xóa Key */}
+      {/* Modal Xác nhận Xóa Khóa */}
       <ConfirmDialog
         open={Boolean(deletingKey)}
         onOpenChange={(open) => !open && setDeletingKey(null)}
-        title="Xác nhận xóa API Key"
-        description={`Bạn có chắc chắn muốn xóa API Key "${deletingKey?.key_name || ''}" (${deletingKey?.masked_api_key || ''})? Thao tác này sẽ gỡ bỏ key khỏi danh sách điều phối của hệ thống AI.`}
+        title="Xác nhận xóa khóa kết nối"
+        description={`Bạn có chắc chắn muốn xóa khóa kết nối "${deletingKey?.key_name || ''}"? Thao tác này sẽ gỡ bỏ khóa khỏi danh sách điều phối của hệ thống.`}
         confirmText="Xác nhận xóa"
         confirmVariant="danger"
         isLoading={isDeleting}

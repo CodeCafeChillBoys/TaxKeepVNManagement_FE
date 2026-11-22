@@ -5,6 +5,7 @@ import { signalrService } from '@/services/signalrService'
 import { urlRuleService } from '@/services/urlRuleService'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
+import { SectionLoading } from '@/components/ui/loading'
 
 export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
   const { user } = useAuth()
@@ -64,8 +65,8 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
       const res = await urlRuleService.getRules(false)
       const data = res?.data || res || []
       setUrlRules(Array.isArray(data) ? data : (data.data || []))
-    } catch (err) {
-      console.error('Lỗi khi tải danh sách tên miền:', err)
+    } catch {
+      // Bỏ qua lỗi tải danh mục tên miền
     } finally {
       setIsLoadingRules(false)
     }
@@ -90,8 +91,8 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
         isPersisted: true,
       }))
       setSavedRuleSets(formatted)
-    } catch (err) {
-      console.warn('Lỗi khi tải danh sách văn bản quy phạm từ máy chủ:', err)
+    } catch {
+      // Bỏ qua lỗi tải danh sách văn bản từ máy chủ
     } finally {
       setIsLoadingSavedDocs(false)
     }
@@ -590,7 +591,7 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
   }
 
   return (
-    <div className="relative w-full px-space-xl py-space-lg">
+    <div className="relative w-full px-4 sm:px-6 lg:px-space-xl py-4 sm:py-space-lg">
       {/* Subtle Dong Son Watermark in background */}
       <div className="pointer-events-none absolute right-4 top-8 w-96 h-96 opacity-[0.035] select-none text-primary">
         <svg fill="currentColor" viewBox="0 0 800 800">
@@ -620,10 +621,10 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-gutter">
         {/* Main Form Column (8/12) */}
         <section className="lg:col-span-8 flex flex-col gap-space-lg">
-          <div className="bg-surface-container-lowest p-space-xl rounded-xl shadow-sm flex flex-col gap-space-lg">
+          <div className="bg-surface-container-lowest p-4 sm:p-6 lg:p-space-xl rounded-xl shadow-sm flex flex-col gap-space-lg">
             
             {/* Header section in card */}
-            <div className="flex items-center justify-between pb-space-sm bg-surface-container-low -mx-space-xl -mt-space-xl p-space-lg rounded-t-xl">
+            <div className="flex items-center justify-between pb-space-sm bg-surface-container-low -mx-4 sm:-mx-6 lg:-mx-space-xl -mt-4 sm:-mt-6 lg:-mt-space-xl p-4 sm:p-space-lg rounded-t-xl">
               <div className="flex items-center gap-space-sm">
                 <span className="material-symbols-outlined text-primary text-[22px]">description</span>
                 <div>
@@ -965,11 +966,11 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
 
 
             {/* Action buttons */}
-            <div className="flex items-center justify-between pt-space-lg">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-space-lg">
               <button
                 type="button"
                 onClick={handleCancelClick}
-                className="px-space-lg py-2.5 rounded-lg bg-surface-container text-on-surface font-title-sm text-title-sm hover:bg-surface-container-high transition-all flex items-center gap-space-xs cursor-pointer"
+                className="px-space-lg py-2.5 rounded-lg bg-surface-container text-on-surface font-title-sm text-title-sm hover:bg-surface-container-high transition-all flex items-center justify-center gap-space-xs cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">close</span>
                 <span>Hủy bỏ</span>
@@ -979,7 +980,7 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
                 type="button"
                 onClick={handleSubmit}
                 disabled={isProcessing || !selectedFile}
-                className="px-space-xl py-3 rounded-lg bg-primary-container text-on-primary font-title-sm text-title-sm font-semibold hover:bg-primary shadow-md hover:shadow-lg transition-all flex items-center gap-space-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-space-xl py-3 rounded-lg bg-primary-container text-on-primary font-title-sm text-title-sm font-semibold hover:bg-primary shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-space-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isProcessing ? (
                   <span className="w-4 h-4 border-2 border-on-primary border-t-transparent rounded-full animate-spin"></span>
@@ -1036,7 +1037,13 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
             </div>
 
             {/* List or Empty State */}
-            {allDocs.length === 0 ? (
+            {isLoadingSavedDocs && allDocs.length === 0 ? (
+              <SectionLoading
+                title="Đang tải danh sách văn bản đã lưu..."
+                minHeight="min-h-[180px]"
+                size="sm"
+              />
+            ) : allDocs.length === 0 ? (
               <div className="py-8 px-4 flex flex-col items-center justify-center text-center gap-2 text-on-surface-variant bg-surface-container-low/40 rounded-lg border border-dashed border-outline-variant/60">
                 <div className="w-12 h-12 rounded-full bg-surface-container-high/60 flex items-center justify-center text-on-surface-variant/70 mb-1">
                   <span className="material-symbols-outlined text-[26px]">folder_off</span>

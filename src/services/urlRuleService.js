@@ -26,6 +26,9 @@ const makeRequest = async (method, path, data = null, params = null) => {
       data,
       params,
     })
+    if (typeof res === 'string' && res.trim().startsWith('<')) {
+      throw { status: 404 }
+    }
     return res?.data || res
   } catch (err) {
     // Nếu ApiGateway chưa cấu hình prefix /ai hoặc đã map trực tiếp /api/url-rules

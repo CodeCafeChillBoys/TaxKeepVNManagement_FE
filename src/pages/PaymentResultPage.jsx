@@ -14,6 +14,8 @@ import {
   Copy,
 } from 'lucide-react'
 import { expertPortalService } from '@/services/expertPortalService'
+import { SectionLoading } from '@/components/ui/loading'
+import { useDebounce } from '@/hooks/useDebounce'
 
 function formatVnd(amount) {
   if (amount == null || isNaN(amount)) return '0 đ'
@@ -126,16 +128,17 @@ export function PaymentResultPage() {
         }
       }
     } catch (err) {
-      console.warn('VnPay return verification error:', err)
       setErrorMessage(err?.message || 'Không thể kết nối máy chủ để xác thực kết quả thanh toán.')
     } finally {
       setLoading(false)
     }
   }
 
+  const debouncedVnpParams = useDebounce(vnpParams, 150)
+
   useEffect(() => {
     processVnPayReturn()
-  }, [vnpParams])
+  }, [debouncedVnpParams])
 
   const handleCopyOrder = () => {
     const code = escrow?.bookingCode || orderCode || ''
@@ -192,15 +195,12 @@ export function PaymentResultPage() {
           <div className="p-6 sm:p-8">
             {/* Loading State */}
             {loading ? (
-              <div className="text-center py-10 space-y-3">
-                <RefreshCw className="w-9 h-9 text-emerald-600 dark:text-emerald-400 animate-spin mx-auto" />
-                <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                  Đang kiểm tra kết quả...
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Vui lòng chờ giây lát
-                </p>
-              </div>
+              <SectionLoading
+                title="Đang kiểm tra kết quả thanh toán..."
+                description="Vui lòng chờ giây lát khi hệ thống đối soát giao dịch."
+                variant="emerald"
+                minHeight="min-h-[180px]"
+              />
             ) : isSuccess ? (
               /* Success State */
               <div className="space-y-5">

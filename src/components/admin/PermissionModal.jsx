@@ -61,21 +61,8 @@ export function PermissionModal({ mode = 'create', initialData = null, groupSugg
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-space-md pt-1">
-          {isCreate ? (
-            field('code', 'Mã quyền', 'VD: document.create', { autoFocus: true })
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-on-surface flex items-center gap-1">
-                Mã quyền
-                <span className="material-symbols-outlined text-[14px] text-on-surface-variant">lock</span>
-              </label>
-              <div className={`${inputClass} border-outline-variant/40 flex items-center font-mono text-on-surface-variant`}>
-                {form.code}
-              </div>
-              <p className="text-[11px] text-on-surface-variant">Mã quyền được dùng trong mã nguồn nên không đổi được.</p>
-            </div>
-          )}
-          {field('name', 'Tên quyền', 'VD: Tạo chứng từ')}
+          {isCreate && field('code', 'Mã quyền', 'VD: document.create', { autoFocus: true })}
+          {field('name', 'Tên quyền', 'VD: Tạo chứng từ', isCreate ? {} : { autoFocus: true })}
           {field('groupName', 'Nhóm quyền', 'VD: Chứng từ', { list: 'permission-group-options' })}
           <datalist id="permission-group-options">
             {groupSuggestions.map((g) => <option key={g} value={g} />)}

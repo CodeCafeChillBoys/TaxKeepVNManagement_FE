@@ -3,6 +3,8 @@ import { useSearchParams, useParams, useNavigate } from 'react-router-dom'
 import { taxRuleService } from '@/services/taxRuleService'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
+import { SectionLoading } from '@/components/ui/loading'
+import { formatTargetGroup, formatDocType } from './AdminDependentRulesPage'
 
 /**
  * Trích xuất năm văn bản từ ngày hiệu lực hoặc tên văn bản quy phạm
@@ -39,16 +41,25 @@ export function TaxRuleReviewPage({
   const [searchParams, setSearchParams] = useSearchParams()
   const { id: paramId } = useParams()
 
-  const currentRuleSetId =
-    propRuleSetId ||
+  const urlId =
     paramId ||
     searchParams.get('id') ||
     searchParams.get('ruleSetId') ||
-    extractedData?.ruleSetId ||
+    ''
+
+  const currentRuleSetId =
+    urlId ||
+    propRuleSetId ||
     extractedData?.taxRuleSet?.ruleSetId ||
+    extractedData?.ruleSetId ||
     ''
 
   const [currentData, setCurrentData] = useState(() => extractedData || null)
+  const currentDataRef = useRef(currentData)
+  useEffect(() => {
+    currentDataRef.current = currentData
+  }, [currentData])
+
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
   const [availableRuleSets, setAvailableRuleSets] = useState([])
   const [activeTab, setActiveTab] = useState('bracketTab')
@@ -75,29 +86,29 @@ export function TaxRuleReviewPage({
   // Trạng thái modal và form chỉnh sửa từng quy tắc riêng lẻ
   const [editingRule, setEditingRule] = useState(null)
 
-  // 1. Đồng bộ prop extractedData khi component cha cập nhật
+  // 1. Đồng bộ prop extractedData từ trang Upload chỉ khi khớp với bộ quy tắc đang xem
   useEffect(() => {
-    if (extractedData && extractedData !== currentData) {
+    if (!extractedData) return
+    const exId =
+      extractedData?.taxRuleSet?.ruleSetId ||
+      extractedData?.ruleSetId ||
+      extractedData?.id ||
+      ''
+    const loadedId =
+      currentDataRef.current?.taxRuleSet?.ruleSetId ||
+      currentDataRef.current?.ruleSetId ||
+      currentDataRef.current?.id ||
+      ''
+
+    if (exId && (!urlId || urlId === exId) && loadedId !== exId) {
       setCurrentData(extractedData)
     }
-    const exId =
-      extractedData?.ruleSetId ||
-      extractedData?.taxRuleSet?.ruleSetId ||
-      extractedData?.id ||
-      currentRuleSetId
-    if (exId && !searchParams.get('id') && !paramId) {
+    if (exId && !urlId) {
       setSearchParams({ id: exId }, { replace: true })
     }
-  }, [extractedData, currentRuleSetId, searchParams, paramId, setSearchParams])
+  }, [extractedData, urlId, setSearchParams])
 
-  // 2. Đồng bộ ngược dữ liệu hiện tại lên AdminDashboard (In-Memory React state)
-  useEffect(() => {
-    if (currentData && currentData !== extractedData) {
-      onDataLoaded?.(currentData)
-    }
-  }, [currentData, extractedData, onDataLoaded])
-
-  // 3. Tải danh mục tất cả bộ quy tắc thuế có sẵn từ CSDL để hiển thị trên thanh chọn bộ quy tắc
+  // 2. Tải danh mục tất cả bộ quy tắc thuế có sẵn từ CSDL để hiển thị trên thanh chọn bộ quy tắc
   useEffect(() => {
     let isMounted = true
     taxRuleService
@@ -107,66 +118,70 @@ export function TaxRuleReviewPage({
         const list = Array.isArray(res) ? res : (res?.data || [])
         setAvailableRuleSets(list)
       })
-      .catch((err) => {
-        console.warn('Lỗi khi tải danh mục bộ quy tắc thuế:', err)
+      .catch(() => {
+        // Bỏ qua lỗi tải danh mục bộ quy tắc thuế
       })
     return () => {
       isMounted = false
     }
   }, [])
 
-  // 4. Tải chi tiết bộ quy tắc theo explicitId hoặc explicitYear từ URL / props
-  const explicitId =
-    currentRuleSetId ||
-    paramId ||
-    searchParams.get('id') ||
-    searchParams.get('ruleSetId') ||
-    ''
+  // 3. Tải chi tiết bộ quy tắc theo explicitId hoặc explicitYear từ URL / props (có debounce chống gọi lặp)
+  const explicitId = currentRuleSetId
 
   const explicitYear =
     searchParams.get('year') ||
     searchParams.get('taxYear') ||
     ''
 
+  const debouncedExplicitId = useDebounce(explicitId, 80)
+  const debouncedExplicitYear = useDebounce(explicitYear, 80)
+
+  // Tự động chọn bộ quy tắc đang áp dụng nếu trên URL chưa có ID
+  useEffect(() => {
+    if (!debouncedExplicitId && !debouncedExplicitYear && availableRuleSets.length > 0) {
+      const activeSet =
+        availableRuleSets.find((s) => String(s.status).toUpperCase() === 'ACTIVE') || availableRuleSets[0]
+      if (activeSet?.ruleSetId) {
+        setSearchParams({ id: activeSet.ruleSetId }, { replace: true })
+      }
+    }
+  }, [debouncedExplicitId, debouncedExplicitYear, availableRuleSets, setSearchParams])
+
   useEffect(() => {
     let isMounted = true
 
-    // Nếu không có ID và không có Year:
-    if (!explicitId && !explicitYear) {
-      if (!currentData && !extractedData && availableRuleSets.length > 0) {
-        const activeSet =
-          availableRuleSets.find((s) => String(s.status).toUpperCase() === 'ACTIVE') || availableRuleSets[0]
-        if (activeSet?.ruleSetId) {
-          setSearchParams({ id: activeSet.ruleSetId }, { replace: true })
-        }
-      }
+    if (!debouncedExplicitId && !debouncedExplicitYear) {
       setIsLoadingDetail(false)
       return
     }
 
-    // Nếu dữ liệu hiện tại đã khớp với ID hoặc Year cần xem, không cần tải lại
+    const loaded = currentDataRef.current
     const currentLoadedId =
-      currentData?.taxRuleSet?.ruleSetId ||
-      currentData?.ruleSetId ||
-      currentData?.id
+      loaded?.taxRuleSet?.ruleSetId ||
+      loaded?.ruleSetId ||
+      loaded?.id ||
+      ''
     const currentLoadedYear =
-      currentData?.taxRuleSet?.taxYear ||
-      currentData?.taxYear
+      loaded?.taxRuleSet?.taxYear ||
+      loaded?.taxYear ||
+      ''
 
-    if (explicitId && currentLoadedId === explicitId) {
+    if (debouncedExplicitId && String(currentLoadedId) === String(debouncedExplicitId)) {
       setIsLoadingDetail(false)
       return
     }
-    if (explicitYear && !explicitId && String(currentLoadedYear) === String(explicitYear)) {
+    if (debouncedExplicitYear && !debouncedExplicitId && String(currentLoadedYear) === String(debouncedExplicitYear)) {
       setIsLoadingDetail(false)
       return
     }
 
     setIsLoadingDetail(true)
+    setIsApproved(false)
 
-    const apiCall = explicitId
-      ? taxRuleService.getRuleSetDetail(explicitId)
-      : taxRuleService.getRuleSetByYear(explicitYear)
+    const apiCall = debouncedExplicitId
+      ? taxRuleService.getRuleSetDetail(debouncedExplicitId)
+      : taxRuleService.getRuleSetByYear(debouncedExplicitYear)
 
     apiCall
       .then((res) => {
@@ -180,17 +195,8 @@ export function TaxRuleReviewPage({
           const rules = actual.taxRules || []
           const registeredYear = parseInt(ruleSet.taxYear, 10)
 
-          let mergedVerification =
-            actual.verification ||
-            currentData?.verification ||
-            extractedData?.verification ||
-            null
-
-          let mergedWarning =
-            actual.warning ||
-            currentData?.warning ||
-            extractedData?.warning ||
-            null
+          let mergedVerification = actual.verification || null
+          let mergedWarning = actual.warning || null
 
           if (!mergedVerification && registeredYear) {
             const docYear = extractYearFromTextOrDate(
@@ -233,15 +239,6 @@ export function TaxRuleReviewPage({
       .catch((err) => {
         if (!isMounted) return
         setCurrentData(null)
-        // Nếu ID trên URL bị 404 hoặc không tìm thấy, tự động chuyển sang bộ quy tắc hiện có
-        if (availableRuleSets.length > 0) {
-          const fallbackSet =
-            availableRuleSets.find((s) => String(s.status).toUpperCase() === 'ACTIVE') || availableRuleSets[0]
-          if (fallbackSet?.ruleSetId && fallbackSet.ruleSetId !== explicitId) {
-            setSearchParams({ id: fallbackSet.ruleSetId }, { replace: true })
-            return
-          }
-        }
         showToast(
           'Không thể tải dữ liệu',
           err.message || 'Lỗi khi kết nối máy chủ.',
@@ -255,7 +252,7 @@ export function TaxRuleReviewPage({
     return () => {
       isMounted = false
     }
-  }, [explicitId, explicitYear, availableRuleSets, currentData, extractedData, onDataLoaded, setSearchParams])
+  }, [debouncedExplicitId, debouncedExplicitYear, onDataLoaded])
 
   const showToast = (title, message, type = 'success') => {
     setToast({ title, message, type })
@@ -302,15 +299,12 @@ export function TaxRuleReviewPage({
   // Đang tải chi tiết bộ quy tắc
   if (isLoadingDetail) {
     return (
-      <div className="p-space-xl flex flex-col items-center justify-center min-h-[60vh] text-center gap-space-md animate-in fade-in duration-200">
-        <div className="w-14 h-14 rounded-full border-4 border-primary/20 border-t-primary animate-spin"></div>
-        <h3 className="font-title-md text-title-md font-bold text-on-surface">
-          Đang tải dữ liệu bộ quy tắc thuế...
-        </h3>
-        <p className="font-body-sm text-on-surface-variant max-w-sm">
-          Hệ thống đang chuẩn hóa và tải dữ liệu quy tắc thuế từ văn bản.
-        </p>
-      </div>
+      <SectionLoading
+        title="Đang tải dữ liệu bộ quy tắc thuế..."
+        description="Hệ thống đang chuẩn hóa và tải dữ liệu quy tắc thuế từ văn bản."
+        size="xl"
+        minHeight="min-h-[60vh]"
+      />
     )
   }
 
@@ -884,7 +878,10 @@ export function TaxRuleReviewPage({
   }
 
   const handleSwitchRuleSet = (targetId) => {
-    if (!targetId || targetId === ruleSetId) return
+    if (!targetId) return
+    setIsApproved(false)
+    setSelectedDetail(null)
+    setEditingRule(null)
     setSearchParams({ id: targetId })
   }
 
@@ -952,15 +949,11 @@ export function TaxRuleReviewPage({
   }
 
   const mapDependentType = (type) => {
-    if (!type) return 'Người phụ thuộc'
-    const map = {
-      CHILD: 'Con dưới 18 tuổi',
-      ADULT_CHILD: 'Con từ 18 tuổi trở lên đang đi học',
-      SPOUSE: 'Vợ / Chồng',
-      PARENT: 'Cha mẹ',
-      OTHER: 'Người phụ thuộc khác',
-    }
-    return map[type] || type
+    return formatTargetGroup(type)
+  }
+
+  const mapDocType = (docType) => {
+    return formatDocType(docType)
   }
 
   const mapSubject = (subject) => {
@@ -1115,7 +1108,7 @@ export function TaxRuleReviewPage({
   }
 
   return (
-    <div className="relative w-full p-space-xl flex flex-col gap-space-lg overflow-hidden">
+    <div className="relative w-full p-4 sm:p-6 lg:p-space-xl flex flex-col gap-space-lg overflow-hidden">
       {/* Subtle Sunburst Watermark */}
       <div className="absolute -right-20 -top-20 w-96 h-96 opacity-[0.035] pointer-events-none text-secondary">
         <svg
@@ -1136,31 +1129,21 @@ export function TaxRuleReviewPage({
         </svg>
       </div>
 
-      {/* Header & Status Badge */}
+      {/* Header & Rule Set Selector */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-md">
         <div className="flex flex-col gap-space-xs">
           <div className="flex flex-wrap items-center gap-space-md mt-space-xs">
             <h1 className="font-headline-lg text-headline-lg text-on-surface font-bold tracking-tight">
               KIỂM TRA DỮ LIỆU TRÍCH XUẤT VĂN BẢN
             </h1>
-            <div
-              className={`flex items-center gap-1.5 px-space-md py-1 rounded-lg font-label-sm uppercase tracking-widest font-bold shadow-sm ${
-                isSetApproved
-                  ? 'bg-surface-container-high text-secondary border border-secondary-container'
-                  : 'bg-secondary-container/30 text-secondary border border-secondary-container'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full bg-secondary ${!isSetApproved && 'animate-pulse'}`}></span>
-              <span>{isSetApproved ? 'ĐÃ HIỆU LỰC' : 'BẢN NHÁP'}</span>
-            </div>
 
             {/* Bộ chọn văn bản quy tắc thuế từ CSDL */}
             {availableRuleSets && availableRuleSets.length > 0 && (
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface-container border border-outline-variant/50 shadow-2xs">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container border border-outline-variant/50 shadow-2xs">
                 <span className="material-symbols-outlined text-[18px] text-primary">folder_managed</span>
                 <span className="text-xs font-bold text-on-surface whitespace-nowrap">Bộ quy tắc:</span>
                 <select
-                  value={ruleSetId || ''}
+                  value={explicitId || ruleSetId || ''}
                   onChange={(e) => handleSwitchRuleSet(e.target.value)}
                   className="bg-transparent text-xs font-semibold text-primary outline-none cursor-pointer pr-1 max-w-[260px] truncate"
                   title="Chuyển đổi bộ quy tắc thuế"
@@ -1194,18 +1177,6 @@ export function TaxRuleReviewPage({
           </button>
 
           <button
-            onClick={() => {
-              const yr = taxRuleSet?.taxYear || currentData?.taxYear || ''
-              navigate(yr ? `/admin/lich-su-phe-duyet?year=${yr}` : '/admin/lich-su-phe-duyet')
-            }}
-            className="flex items-center gap-space-xs px-space-md py-space-sm rounded-lg bg-surface-container-lowest text-on-surface hover:bg-surface-container shadow-sm transition-all text-label-md font-label-md font-semibold cursor-pointer border border-outline-variant/30"
-            title="Tra cứu lịch sử phê duyệt văn bản theo năm"
-          >
-            <span className="material-symbols-outlined text-[18px] text-primary">history_edu</span>
-            <span>Lịch sử phê duyệt</span>
-          </button>
-
-          <button
             disabled={isSetApproved}
             onClick={() => setShowApproveModal(true)}
             className={`flex items-center gap-space-xs px-space-lg py-space-sm rounded-lg font-label-md text-label-md font-bold shadow-md transition-all cursor-pointer ${
@@ -1233,9 +1204,6 @@ export function TaxRuleReviewPage({
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-title-sm text-title-sm font-bold text-amber-900">
                   Cảnh báo đối soát năm áp dụng văn bản quy phạm
-                </span>
-                <span className="px-2 py-0.5 text-[11px] font-bold rounded bg-amber-500/20 text-amber-800">
-                  {hasMismatch ? 'Lệch năm tính thuế' : 'Lưu ý từ văn bản'}
                 </span>
               </div>
               <p className="font-body-md text-body-md text-on-surface font-medium leading-relaxed">
@@ -1288,7 +1256,6 @@ export function TaxRuleReviewPage({
                 <span className="font-label-sm text-label-sm text-secondary uppercase font-bold tracking-wider">
                   Căn cứ pháp quy hành chính
                 </span>
-                <span className="w-1.5 h-1.5 rounded-full bg-outline-variant"></span>
               </div>
               <h2 className="font-headline-md text-headline-md text-primary font-bold mt-0.5">
                 {taxRuleSet.name || 'Bộ quy tắc thuế'}
@@ -1296,70 +1263,34 @@ export function TaxRuleReviewPage({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-space-sm bg-surface-container-low/60 p-space-sm rounded-lg self-start">
-            <span className="px-2 py-1 rounded bg-secondary-container/30 text-secondary text-label-sm font-bold">
-              {isSetApproved ? 'Đã hiệu lực' : 'Bản nháp'}
-            </span>
-            {verification && (
-              <span
-                className={`flex items-center gap-1 px-2 py-1 rounded text-label-sm font-semibold ${
-                  verification.isTaxYearMatched
-                    ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/20'
-                    : 'bg-amber-500/15 text-amber-800 border border-amber-500/30'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[14px]">
-                  {verification.isTaxYearMatched ? 'verified' : 'warning'}
-                </span>
-                <span>
-                  {verification.isTaxYearMatched
-                    ? `Khớp năm văn bản (${verification.extractedTaxYear})`
-                    : `Lệch năm văn bản (${verification.extractedTaxYear || '—'})`}
-                </span>
-              </span>
-            )}
-            {taxRuleSet.adminId && (
-              <span
-                className="flex items-center gap-1 px-2 py-1 rounded bg-surface-container text-on-surface-variant text-[11px]"
-              >
-                <span className="material-symbols-outlined text-[14px]">shield_person</span>
-                <span>Quản trị viên</span>
-              </span>
-            )}
-            {taxRuleSet.sourceUrl && (
-              <a
-                href={taxRuleSet.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 px-space-sm py-1 rounded bg-surface-container hover:bg-surface-container-high text-primary font-label-sm text-label-sm font-semibold transition-colors"
-              >
-                <span className="material-symbols-outlined text-[16px]">link</span>
-                <span>Nguồn văn bản gốc</span>
-                <span className="material-symbols-outlined text-[14px]">open_in_new</span>
-              </a>
-            )}
+          {(taxRuleSet.sourceUrl || !isSetApproved) && (
+            <div className="flex flex-wrap items-center gap-space-sm self-start lg:self-center">
+              {taxRuleSet.sourceUrl && (
+                <a
+                  href={taxRuleSet.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-primary font-label-sm text-label-sm font-semibold transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[16px]">link</span>
+                  <span>Nguồn văn bản gốc</span>
+                  <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+                </a>
+              )}
 
-            {/* Nút Chỉnh sửa thông tin chuyển xuống Căn cứ pháp quy hành chính */}
-            {!isSetApproved ? (
-              <button
-                type="button"
-                onClick={handleOpenEditModal}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface-container-lowest hover:bg-surface-container text-primary font-label-sm text-label-sm font-bold transition-all border border-outline-variant/40 shadow-xs cursor-pointer"
-                title="Chỉnh sửa tên văn bản, năm tính thuế hoặc thời hạn áp dụng"
-              >
-                <span className="material-symbols-outlined text-[16px]">edit_note</span>
-                <span>Chỉnh sửa thông tin</span>
-              </button>
-            ) : (
-              <span
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-surface-container/60 text-on-surface-variant font-label-sm text-label-sm font-medium border border-outline-variant/30 select-none cursor-not-allowed"
-                title="Bộ quy tắc đã được phê duyệt chính thức — Đã khóa chỉnh sửa"
-              >
-                <span className="material-symbols-outlined text-[16px] text-secondary">lock</span>
-                <span>Đã khóa chỉnh sửa</span>
-              </span>
-            )}
-          </div>
+              {!isSetApproved && (
+                <button
+                  type="button"
+                  onClick={handleOpenEditModal}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container text-primary font-label-sm text-label-sm font-bold transition-all border border-outline-variant/40 shadow-xs cursor-pointer"
+                  title="Chỉnh sửa tên văn bản, năm tính thuế hoặc thời hạn áp dụng"
+                >
+                  <span className="material-symbols-outlined text-[16px]">edit_note</span>
+                  <span>Chỉnh sửa thông tin</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 4 Metric Cards */}
@@ -1427,10 +1358,7 @@ export function TaxRuleReviewPage({
             }`}
           >
             <span className="material-symbols-outlined text-[20px]">stacked_bar_chart</span>
-            <span>Biểu thuế lũy tiến</span>
-            <span className="px-space-xs py-0.5 rounded text-label-sm bg-surface-container-high text-on-surface-variant font-bold">
-              {brackets.length}
-            </span>
+            <span>Biểu thuế lũy tiến ({brackets.length})</span>
           </button>
 
           <button
@@ -1442,10 +1370,7 @@ export function TaxRuleReviewPage({
             }`}
           >
             <span className="material-symbols-outlined text-[20px]">savings</span>
-            <span>Giảm trừ gia cảnh</span>
-            <span className="px-space-xs py-0.5 rounded text-label-sm bg-surface-container-high text-on-surface-variant font-bold">
-              {deductions.length}
-            </span>
+            <span>Giảm trừ gia cảnh ({deductions.length})</span>
           </button>
 
           <button
@@ -1457,10 +1382,7 @@ export function TaxRuleReviewPage({
             }`}
           >
             <span className="material-symbols-outlined text-[20px]">family_restroom</span>
-            <span>Tiêu chí Người phụ thuộc</span>
-            <span className="px-space-xs py-0.5 rounded text-label-sm bg-surface-container-high text-on-surface-variant font-bold">
-              {dependents.length}
-            </span>
+            <span>Tiêu chí Người phụ thuộc ({dependents.length})</span>
           </button>
 
           <button
@@ -1472,16 +1394,13 @@ export function TaxRuleReviewPage({
             }`}
           >
             <span className="material-symbols-outlined text-[20px]">percent</span>
-            <span>Thuế suất khác &amp; Miễn thuế</span>
-            <span className="px-space-xs py-0.5 rounded text-label-sm bg-surface-container-high text-on-surface-variant font-bold">
-              {rateExemptions.length}
-            </span>
+            <span>Thuế suất khác &amp; Miễn thuế ({rateExemptions.length})</span>
           </button>
         </div>
 
         {/* Search bar */}
-        <div className="flex items-center gap-space-sm px-space-sm">
-          <div className="relative flex items-center">
+        <div className="flex items-center gap-space-sm px-space-sm w-full md:w-auto">
+          <div className="relative flex items-center w-full md:w-auto">
             <span className="material-symbols-outlined absolute left-2.5 text-on-surface-variant text-[18px]">
               search
             </span>
@@ -1490,7 +1409,7 @@ export function TaxRuleReviewPage({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Tìm theo mã, tên quy tắc..."
-              className="pl-8 pr-3 py-1.5 rounded bg-surface-container-low text-on-surface font-body-sm text-body-sm placeholder:text-outline focus:outline-none focus:bg-surface-container-lowest transition-all w-52 focus:w-64 shadow-inner"
+              className="pl-8 pr-3 py-1.5 rounded bg-surface-container-low text-on-surface font-body-sm text-body-sm placeholder:text-outline focus:outline-none focus:bg-surface-container-lowest transition-all w-full md:w-56 md:focus:w-64 shadow-inner"
             />
           </div>
         </div>
@@ -1509,7 +1428,7 @@ export function TaxRuleReviewPage({
                 Các bậc thuế lũy tiến áp dụng đối với thu nhập tính thuế từ tiền lương, tiền công.
               </p>
             </div>
-            {!isSetApproved ? (
+            {!isSetApproved && (
               <button
                 type="button"
                 onClick={() => handleOpenAddRule('Biểu thuế lũy tiến', 'BRACKET')}
@@ -1519,11 +1438,6 @@ export function TaxRuleReviewPage({
                 <span className="material-symbols-outlined text-[16px]">add</span>
                 <span>Thêm bậc thuế mới</span>
               </button>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-xs text-secondary italic">
-                <span className="material-symbols-outlined text-[14px]">lock</span>
-                Đã khóa thao tác (đã duyệt)
-              </span>
             )}
           </div>
 
@@ -1635,7 +1549,7 @@ export function TaxRuleReviewPage({
                 Quy định mức giảm trừ cho bản thân người nộp thuế và người phụ thuộc.
               </p>
             </div>
-            {!isSetApproved ? (
+            {!isSetApproved && (
               <button
                 type="button"
                 onClick={() => handleOpenAddRule('Giảm trừ gia cảnh', 'DEDUCTION')}
@@ -1645,11 +1559,6 @@ export function TaxRuleReviewPage({
                 <span className="material-symbols-outlined text-[16px]">add</span>
                 <span>Thêm mức giảm trừ mới</span>
               </button>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-xs text-secondary italic">
-                <span className="material-symbols-outlined text-[14px]">lock</span>
-                Đã khóa thao tác (đã duyệt)
-              </span>
             )}
           </div>
 
@@ -1757,7 +1666,7 @@ export function TaxRuleReviewPage({
                   Tiêu chuẩn áp dụng đối với các nhóm đối tượng người phụ thuộc được giảm trừ gia cảnh.
                 </p>
               </div>
-              {!isSetApproved ? (
+              {!isSetApproved && (
                 <button
                   type="button"
                   onClick={() => handleOpenAddRule('Tiêu chí Người phụ thuộc', 'DEPENDENT_RULE')}
@@ -1767,11 +1676,6 @@ export function TaxRuleReviewPage({
                   <span className="material-symbols-outlined text-[16px]">add</span>
                   <span>Thêm tiêu chí người phụ thuộc</span>
                 </button>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-xs text-secondary italic shrink-0">
-                  <span className="material-symbols-outlined text-[14px]">lock</span>
-                  Đã khóa thao tác (đã duyệt)
-                </span>
               )}
             </div>
 
@@ -1782,17 +1686,22 @@ export function TaxRuleReviewPage({
                   className="p-space-md rounded-xl bg-surface-container-low/40 flex flex-col justify-between gap-space-md hover:bg-surface-container-low transition-colors"
                 >
                   <div className="flex flex-col gap-space-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="material-symbols-outlined text-secondary text-[20px]">
-                        {dep.dependentType === 'CHILD' ? 'child_care' : dep.dependentType === 'ADULT_CHILD' ? 'school' : dep.dependentType === 'SPOUSE' ? 'favorite' : dep.dependentType === 'PARENT' ? 'elderly' : 'group'}
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-primary text-[20px]">
+                        {String(dep.dependentType).includes('STUDYING') || dep.dependentType === 'ADULT_CHILD'
+                          ? 'school'
+                          : String(dep.dependentType).includes('CHILD')
+                          ? 'child_care'
+                          : String(dep.dependentType).includes('SPOUSE')
+                          ? 'favorite'
+                          : String(dep.dependentType).includes('PARENT')
+                          ? 'elderly'
+                          : 'group'}
                       </span>
-                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-surface-container text-secondary">
-                        {mapDependentType(dep.dependentType)}
-                      </span>
+                      <h4 className="font-title-sm text-title-sm font-bold text-on-surface">
+                        {formatTargetGroup(dep.name || dep.dependentType || dep.targetGroup)}
+                      </h4>
                     </div>
-                    <h4 className="font-title-sm text-title-sm font-bold text-on-surface mt-1">
-                      {dep.name}
-                    </h4>
                     <p className="font-body-sm text-body-sm text-on-surface-variant">
                       {parseConditionsList(dep.conditions).join(', ') || 'Theo quy định pháp luật'}
                     </p>
@@ -1831,31 +1740,26 @@ export function TaxRuleReviewPage({
                             <span>Giấy tờ cần nộp ({reqDocs.length}):</span>
                           </span>
                         </div>
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-col gap-1">
                           {reqDocs.map((doc, dIdx) => (
-                            <span
+                            <div
                               key={dIdx}
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
-                                doc.isMandatory
-                                  ? 'bg-primary/5 text-primary border-primary/25'
-                                  : 'bg-surface-container text-on-surface-variant border-outline-variant/30'
-                              }`}
+                              className="flex items-center justify-between gap-2 text-xs py-0.5"
                               title={doc.description || doc.name}
                             >
-                              <span className="material-symbols-outlined text-[12px]">
-                                {doc.isMandatory ? 'check_circle' : 'help_outline'}
+                              <span className="text-on-surface truncate">
+                                • {doc.name}
                               </span>
-                              <span className="truncate max-w-[140px]">{doc.name}</span>
-                              {doc.isMandatory ? (
-                                <span className="text-[9px] font-bold uppercase text-primary/90 bg-primary/10 px-1 py-0.2 rounded">
-                                  Bắt buộc
-                                </span>
-                              ) : (
-                                <span className="text-[9px] font-medium text-on-surface-variant bg-surface-container-high px-1 py-0.2 rounded">
-                                  Tùy chọn
-                                </span>
-                              )}
-                            </span>
+                              <span
+                                className={`text-[11px] shrink-0 ${
+                                  doc.isMandatory
+                                    ? 'font-semibold text-on-surface'
+                                    : 'text-on-surface-variant'
+                                }`}
+                              >
+                                {doc.isMandatory ? 'Bắt buộc' : 'Tùy chọn'}
+                              </span>
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -1911,7 +1815,7 @@ export function TaxRuleReviewPage({
                 Các mức thuế suất toàn phần và các trường hợp được miễn, giảm trừ đặc thù.
               </p>
             </div>
-            {!isSetApproved ? (
+            {!isSetApproved && (
               <button
                 type="button"
                 onClick={() => handleOpenAddRule('Thuế suất khác & Miễn thuế', 'RATE')}
@@ -1921,11 +1825,6 @@ export function TaxRuleReviewPage({
                 <span className="material-symbols-outlined text-[16px]">add</span>
                 <span>Thêm quy tắc mới</span>
               </button>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-xs text-secondary italic">
-                <span className="material-symbols-outlined text-[14px]">lock</span>
-                Đã khóa thao tác (đã duyệt)
-              </span>
             )}
           </div>
 
@@ -2349,10 +2248,17 @@ export function TaxRuleReviewPage({
                       className="w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border border-outline-variant/30 cursor-pointer"
                     >
                       <option value="CHILD">Con dưới 18 tuổi</option>
+                      <option value="CHILD_UNDER_18">Con dưới 18 tuổi (Chi tiết)</option>
                       <option value="ADULT_CHILD">Con từ 18 tuổi trở lên đang đi học</option>
-                      <option value="SPOUSE">Vợ / Chồng</option>
-                      <option value="PARENT">Cha mẹ</option>
+                      <option value="CHILD_OVER_18_STUDYING">Con từ 18 tuổi trở lên đang đi học (Chi tiết)</option>
+                      <option value="CHILD_OVER_18_DISABLED">Con từ 18 tuổi trở lên bị khuyết tật, mất khả năng lao động</option>
+                      <option value="SPOUSE">Vợ hoặc chồng</option>
+                      <option value="SPOUSE_DISABLED">Vợ hoặc chồng không có khả năng lao động</option>
+                      <option value="PARENT">Cha đẻ, mẹ đẻ, cha mẹ vợ/chồng, cha dượng, mẹ kế</option>
+                      <option value="PARENT_RETIRED">Cha mẹ đã hết tuổi lao động</option>
+                      <option value="PARENT_DISABLED">Cha mẹ trong độ tuổi lao động bị khuyết tật</option>
                       <option value="OTHER">Người phụ thuộc khác</option>
+                      <option value="OTHER_HELPLESS">Cá nhân khác không nơi nương tựa</option>
                     </select>
                   </div>
                 </div>
@@ -2520,7 +2426,7 @@ export function TaxRuleReviewPage({
                           </div>
 
                           <div className="sm:col-span-4 flex flex-col gap-0.5">
-                            <span className="text-[11px] font-semibold text-on-surface-variant">Mã chứng từ (docType)</span>
+                            <span className="text-[11px] font-semibold text-on-surface-variant">Loại chứng từ</span>
                             <select
                               value={docItem.docType}
                               onChange={(e) => {
@@ -2533,16 +2439,16 @@ export function TaxRuleReviewPage({
                               }}
                               className="w-full h-8 px-2 rounded text-xs bg-surface-container-low border border-outline-variant/30 focus:outline-none cursor-pointer"
                             >
-                              <option value="BIRTH_CERTIFICATE">BIRTH_CERTIFICATE (Giấy khai sinh)</option>
-                              <option value="CITIZEN_ID">CITIZEN_ID (CCCD/CMND)</option>
-                              <option value="STUDENT_CARD">STUDENT_CARD (Thẻ SV/Giấy trường)</option>
-                              <option value="DISABILITY_CERTIFICATE">DISABILITY_CERTIFICATE (Khuyết tật/Y tế)</option>
-                              <option value="MARRIAGE_CERTIFICATE">MARRIAGE_CERTIFICATE (Kết hôn)</option>
-                              <option value="RELATIONSHIP_CERTIFICATE">RELATIONSHIP_CERTIFICATE (Quan hệ)</option>
-                              <option value="SUPPORT_COMMITMENT_FORM">SUPPORT_COMMITMENT_FORM (Cam kết)</option>
-                              <option value="RESIDENCE_CT07">RESIDENCE_CT07 (Cư trú CT07)</option>
-                              <option value="INCOME_DECLARATION">INCOME_DECLARATION (Tờ khai thu nhập)</option>
-                              <option value="OTHER">OTHER (Giấy tờ khác)</option>
+                              <option value="BIRTH_CERTIFICATE">Giấy khai sinh</option>
+                              <option value="CITIZEN_ID">Căn cước công dân / CMND</option>
+                              <option value="STUDENT_CARD">Thẻ sinh viên / Giấy xác nhận nhà trường</option>
+                              <option value="DISABILITY_CERTIFICATE">Giấy xác nhận khuyết tật / Y tế</option>
+                              <option value="MARRIAGE_CERTIFICATE">Giấy chứng nhận kết hôn</option>
+                              <option value="RELATIONSHIP_CERTIFICATE">Giấy tờ xác nhận quan hệ gia đình</option>
+                              <option value="SUPPORT_COMMITMENT_FORM">Bản kê khai cam kết nuôi dưỡng</option>
+                              <option value="RESIDENCE_CT07">Giấy xác nhận thông tin cư trú (Mẫu CT07)</option>
+                              <option value="INCOME_DECLARATION">Tờ khai xác nhận thu nhập</option>
+                              <option value="OTHER">Giấy tờ chứng minh khác</option>
                             </select>
                           </div>
 
@@ -2917,16 +2823,17 @@ export function TaxRuleReviewPage({
                                   {doc.name}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-surface-container text-on-surface-variant">
-                                  {doc.docType}
+                              <div className="flex items-center gap-2 shrink-0 text-xs">
+                                <span className="text-on-surface-variant">
+                                  {mapDocType(doc.docType)}
                                 </span>
+                                <span className="text-outline-variant">•</span>
                                 <span
-                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                  className={
                                     doc.isMandatory
-                                      ? 'bg-primary/10 text-primary border border-primary/20'
-                                      : 'bg-surface-container text-on-surface-variant border border-outline-variant/30'
-                                  }`}
+                                      ? 'font-semibold text-primary'
+                                      : 'text-on-surface-variant'
+                                  }
                                 >
                                   {doc.isMandatory ? 'Bắt buộc nộp' : 'Tùy chọn'}
                                 </span>

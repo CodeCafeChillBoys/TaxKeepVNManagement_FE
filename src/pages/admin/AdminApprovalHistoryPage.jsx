@@ -5,6 +5,8 @@ import { profileService } from '@/services/profileService'
 import { authService } from '@/services/authService'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
+import { SectionLoading } from '@/components/ui/loading'
+import { formatTargetGroup } from './AdminDependentRulesPage'
 import {
   Select,
   SelectContent,
@@ -60,8 +62,8 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
           setUserProfile(data)
         }
       })
-      .catch((err) => {
-        console.warn('Lỗi khi tải thông tin chuyên viên phê duyệt:', err)
+      .catch(() => {
+        // Bỏ qua lỗi tải thông tin phụ
       })
     return () => {
       mounted = false
@@ -71,6 +73,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
   // Năm tính thuế lọc: ưu tiên từ query param, props, hoặc mặc định là năm 2026
   const queryYear = searchParams.get('year') || searchParams.get('taxYear') || initialYear || '2026'
   const [selectedYear, setSelectedYear] = useState(queryYear)
+  const debouncedSelectedYear = useDebounce(selectedYear, 200)
 
   // Danh mục tất cả bộ quy tắc thuế từ hồ sơ lưu trữ
   const [allRuleSets, setAllRuleSets] = useState([])
@@ -99,8 +102,8 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
         const list = Array.isArray(res) ? res : (res?.data || [])
         setAllRuleSets(list)
       })
-      .catch((err) => {
-        console.warn('Lỗi khi tải danh mục lịch sử phê duyệt:', err)
+      .catch(() => {
+        // Bỏ qua lỗi khi không tải được danh mục
       })
       .finally(() => {
         if (mounted) setIsLoadingList(false)
@@ -111,9 +114,9 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
     }
   }, [])
 
-  // 2. Tải toàn bộ thông tin quy tắc thuế theo năm tính thuế từ GET /api/tax-rules/year/{taxYear}
+  // 2. Tải toàn bộ thông tin quy tắc thuế theo năm tính thuế từ GET /api/tax-rules/year/{taxYear} (đã debounce)
   useEffect(() => {
-    if (!selectedYear || selectedYear === 'ALL') {
+    if (!debouncedSelectedYear || debouncedSelectedYear === 'ALL') {
       setYearDetailData(null)
       setDetailError(null)
       return
@@ -124,7 +127,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
     setDetailError(null)
 
     taxRuleService
-      .getRuleSetByYear(selectedYear)
+      .getRuleSetByYear(debouncedSelectedYear)
       .then((res) => {
         if (!mounted) return
         const resData = res?.data || res || {}
@@ -137,14 +140,14 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
           setDetailError(null)
         } else {
           setYearDetailData(null)
-          setDetailError(`Chưa có dữ liệu quy tắc thuế cho năm ${selectedYear}.`)
+          setDetailError(`Chưa có dữ liệu quy tắc thuế cho năm ${debouncedSelectedYear}.`)
         }
       })
       .catch(async (err) => {
         if (!mounted) return
         // Fallback: Tìm theo ruleSetId trong allRuleSets nếu API theo năm gặp sự cố
         const matchingSet = allRuleSets.find(
-          (s) => Number(s.taxYear) === Number(selectedYear)
+          (s) => Number(s.taxYear) === Number(debouncedSelectedYear)
         )
         if (matchingSet?.ruleSetId) {
           try {
@@ -166,9 +169,9 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
 
         setYearDetailData(null)
         if (err.status === 404 || err.message?.includes('404')) {
-          setDetailError(`Chưa tìm thấy bộ quy tắc thuế nào cho năm ${selectedYear}.`)
+          setDetailError(`Chưa tìm thấy bộ quy tắc thuế nào cho năm ${debouncedSelectedYear}.`)
         } else {
-          setDetailError(`Chưa thể tải dữ liệu quy tắc thuế cho năm ${selectedYear}.`)
+          setDetailError(`Chưa thể tải dữ liệu quy tắc thuế cho năm ${debouncedSelectedYear}.`)
         }
       })
       .finally(() => {
@@ -178,7 +181,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
     return () => {
       mounted = false
     }
-  }, [selectedYear, allRuleSets])
+  }, [debouncedSelectedYear, allRuleSets])
 
   // Cập nhật URL khi đổi năm lọc
   const handleYearChange = (year) => {
@@ -322,7 +325,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
   }
 
   return (
-    <div className="relative w-full p-space-xl flex flex-col gap-space-lg overflow-hidden">
+    <div className="relative w-full p-4 sm:p-6 lg:p-space-xl flex flex-col gap-space-lg overflow-hidden">
       {/* Background Watermark */}
       <div className="pointer-events-none absolute right-4 top-8 w-96 h-96 opacity-[0.035] select-none text-primary">
         <svg fill="currentColor" viewBox="0 0 800 800">
@@ -442,11 +445,11 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
       {selectedYear !== 'ALL' && (
         <div className="flex flex-col gap-space-md">
           {isLoadingDetail ? (
-            <div className="p-space-xl rounded-2xl bg-surface-container-lowest border border-outline-variant/40 shadow-xs flex flex-col items-center justify-center min-h-[220px] text-center gap-3">
-              <div className="w-10 h-10 rounded-full border-3 border-primary/20 border-t-primary animate-spin"></div>
-              <p className="text-sm font-bold text-on-surface">
-                Đang truy xuất dữ liệu quy tắc thuế cho năm {selectedYear}...
-              </p>
+            <div className="rounded-2xl bg-surface-container-lowest border border-outline-variant/40 shadow-xs">
+              <SectionLoading
+                title={`Đang truy xuất dữ liệu quy tắc thuế cho năm ${selectedYear}...`}
+                minHeight="min-h-[220px]"
+              />
             </div>
           ) : detailError ? (
             <div className="p-space-lg rounded-2xl bg-amber-50/70 border border-amber-200/80 text-amber-900 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xs">
@@ -600,7 +603,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                   <div className="p-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant/40 flex flex-col gap-2 shadow-2xs">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-on-surface">Biểu thuế lũy tiến</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary">
+                      <span className="text-[11px] font-medium text-on-surface-variant">
                         {brackets.length} bậc
                       </span>
                     </div>
@@ -623,7 +626,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                   <div className="p-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant/40 flex flex-col gap-2 shadow-2xs">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-on-surface">Giảm trừ gia cảnh</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-secondary/10 text-secondary">
+                      <span className="text-[11px] font-medium text-on-surface-variant">
                         {deductions.length} mức
                       </span>
                     </div>
@@ -642,26 +645,27 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                   <div className="p-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant/40 flex flex-col gap-2 shadow-2xs">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-on-surface">Người phụ thuộc</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-800">
+                      <span className="text-[11px] font-medium text-on-surface-variant">
                         {currentDependents.length} nhóm
                       </span>
                     </div>
                     <div className="flex flex-col gap-1 text-[11px] text-on-surface-variant">
                       {currentDependents.slice(0, 3).map((dep, i) => {
                         const docCount = (dep.requiredDocuments || dep.required_documents || []).length
+                        const depLabel = formatTargetGroup(dep.name || dep.dependentType || dep.targetGroup)
                         return (
                           <div key={dep.id || i} className="flex items-center justify-between">
-                            <span className="truncate max-w-[130px]" title={dep.name || dep.dependentType}>
-                              {dep.name || dep.dependentType}
+                            <span className="truncate max-w-[130px]" title={depLabel}>
+                              {depLabel}
                             </span>
-                            <span className="text-[10px] font-semibold text-emerald-700">
+                            <span className="text-[10px] font-medium text-on-surface-variant">
                               {docCount > 0 ? `${docCount} giấy tờ` : 'Đạt chuẩn'}
                             </span>
                           </div>
                         )
                       })}
                       {currentDependents.length > 3 && (
-                        <span className="text-[10px] text-emerald-800 cursor-pointer hover:underline" onClick={() => handleOpenReview(currentSet.ruleSetId)}>
+                        <span className="text-[10px] text-primary cursor-pointer hover:underline" onClick={() => handleOpenReview(currentSet.ruleSetId)}>
                           + {currentDependents.length - 3} nhóm đối tượng khác...
                         </span>
                       )}
@@ -672,7 +676,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                   <div className="p-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant/40 flex flex-col gap-2 shadow-2xs">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-on-surface">Miễn & Tỷ lệ khác</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-800">
+                      <span className="text-[11px] font-medium text-on-surface-variant">
                         {ratesExemptions.length} quy định
                       </span>
                     </div>
@@ -704,16 +708,16 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
               Tất cả các bộ quy tắc đã ban hành và lưu trữ trong hồ sơ.
             </p>
           </div>
-          <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary">
+          <span className="text-xs font-medium text-on-surface-variant">
             {filteredRuleSets.length} văn bản
           </span>
         </div>
 
         {isLoadingList ? (
-          <div className="py-12 flex flex-col items-center justify-center gap-2 text-on-surface-variant">
-            <div className="w-8 h-8 rounded-full border-3 border-primary/20 border-t-primary animate-spin"></div>
-            <span className="text-xs">Đang tải hồ sơ lưu trữ...</span>
-          </div>
+          <SectionLoading
+            title="Đang tải hồ sơ lưu trữ..."
+            minHeight="min-h-[180px]"
+          />
         ) : filteredRuleSets.length === 0 ? (
           <div className="py-12 px-4 flex flex-col items-center justify-center text-center gap-2 text-on-surface-variant bg-surface-container-low/30 rounded-xl border border-dashed border-outline-variant/50">
             <span className="material-symbols-outlined text-[36px] text-on-surface-variant/60">
@@ -759,12 +763,15 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                       </td>
                       <td className="py-3.5 px-3 text-center">
                         <span
-                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider ${
-                            isAct
-                              ? 'bg-emerald-500/10 text-emerald-800 border border-emerald-500/25'
-                              : 'bg-amber-500/10 text-amber-800 border border-amber-500/25'
+                          className={`inline-flex items-center justify-center gap-1.5 text-xs font-medium ${
+                            isAct ? 'text-emerald-700' : 'text-amber-700'
                           }`}
                         >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              isAct ? 'bg-emerald-600' : 'bg-amber-500'
+                            }`}
+                          />
                           {isAct ? 'Đã hiệu lực' : 'Bản lưu nháp'}
                         </span>
                       </td>
@@ -783,7 +790,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                             onClick={() => handleOpenReview(doc.ruleSetId)}
                             className="px-3 py-1 rounded-lg bg-primary text-on-primary text-xs font-bold hover:bg-primary-container cursor-pointer shadow-2xs transition-all flex items-center gap-1"
                           >
-                            <span>Thẩm tra</span>
+                            <span>{isAct ? 'Xem chi tiết' : 'Thẩm tra'}</span>
                             <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
                           </button>
                         </div>

@@ -8,7 +8,10 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import {
+  formatPromptKeyLabel,
+  formatPromptVariableLabel,
+} from '@/utils/configDataTypeUtils'
 
 export function PromptDetailModal({
   isOpen,
@@ -58,22 +61,21 @@ export function PromptDetailModal({
               </div>
               <div>
                 <DialogTitle className="text-base font-bold text-on-surface flex items-center gap-2">
-                  <span>{prompt.prompt_key}</span>
-                  <Badge variant="outline" className="text-[11px] font-bold bg-amber-50 text-amber-800 border-amber-300">
-                    Version {prompt.version || 1}
-                  </Badge>
-                  {prompt.is_active ? (
-                    <Badge variant="secondary" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                      Đang áp dụng
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-[10px] text-neutral-500">
-                      Tạm ngưng
-                    </Badge>
-                  )}
+                  <span>{formatPromptKeyLabel(prompt.prompt_key)}</span>
+                  <span className="text-xs font-normal text-on-surface-variant">
+                    · Phiên bản {prompt.version || 1}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-on-surface ml-1">
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        prompt.is_active ? 'bg-emerald-600' : 'bg-stone-400'
+                      }`}
+                    />
+                    {prompt.is_active ? 'Đang áp dụng' : 'Tạm ngưng'}
+                  </span>
                 </DialogTitle>
                 <DialogDescription className="text-xs text-on-surface-variant mt-0.5">
-                  {prompt.description || 'Không có mô tả chi tiết.'}
+                  {(prompt.description || 'Không có mô tả chi tiết.').replace(/System prompt/gi, 'Mẫu chỉ dẫn')}
                 </DialogDescription>
               </div>
             </div>
@@ -88,7 +90,7 @@ export function PromptDetailModal({
               <span className="material-symbols-outlined text-[16px]">
                 {copied ? 'check' : 'content_copy'}
               </span>
-              <span>{copied ? 'Đã sao chép' : 'Sao chép Prompt'}</span>
+              <span>{copied ? 'Đã sao chép' : 'Sao chép nội dung'}</span>
             </Button>
           </div>
         </DialogHeader>
@@ -110,33 +112,32 @@ export function PromptDetailModal({
           {/* Variables defined */}
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-bold text-on-surface uppercase tracking-wider">
-              Danh sách biến tham số động ({prompt.variables?.length || 0})
+              Thông tin chèn tự động ({prompt.variables?.length || 0})
             </span>
             <div className="flex flex-wrap items-center gap-1.5">
               {prompt.variables && prompt.variables.length > 0 ? (
                 prompt.variables.map((v) => (
-                  <Badge
+                  <span
                     key={v}
-                    variant="outline"
-                    className="font-mono text-xs text-primary bg-primary/5 border-primary/20 px-2.5 py-1"
+                    className="text-xs font-medium text-on-surface bg-surface-container border border-outline-variant/40 rounded-md px-2.5 py-1"
                   >
-                    {`{${v}}`}
-                  </Badge>
+                    {formatPromptVariableLabel(v)}
+                  </span>
                 ))
               ) : (
                 <span className="text-xs text-on-surface-variant italic">
-                  Không khai báo biến tham số động nào.
+                  Không sử dụng mục thông tin chèn tự động.
                 </span>
               )}
             </div>
           </div>
 
-          {/* Full System Prompt View */}
+          {/* Full Prompt View */}
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-bold text-on-surface uppercase tracking-wider">
-              Nội dung System Prompt chi tiết
+              Nội dung mẫu chỉ dẫn chi tiết
             </span>
-            <div className="p-4 rounded-xl bg-surface-container-high border border-outline-variant/40 font-mono text-xs text-on-surface whitespace-pre-wrap leading-relaxed select-text">
+            <div className="p-4 rounded-xl bg-surface-container-high border border-outline-variant/40 text-xs text-on-surface whitespace-pre-wrap leading-relaxed select-text">
               {prompt.system_prompt}
             </div>
           </div>
@@ -163,10 +164,10 @@ export function PromptDetailModal({
                 onClose()
                 onTestRender?.(prompt)
               }}
-              className="text-xs text-purple-700 border-purple-300 hover:bg-purple-50 flex items-center gap-1.5"
+              className="text-xs flex items-center gap-1.5"
             >
-              <span className="material-symbols-outlined text-[16px]">terminal</span>
-              <span>Test Render</span>
+              <span className="material-symbols-outlined text-[16px]">play_arrow</span>
+              <span>Kiểm tra mẫu</span>
             </Button>
 
             <Button
@@ -179,7 +180,7 @@ export function PromptDetailModal({
               className="text-xs font-bold bg-primary text-on-primary flex items-center gap-1.5"
             >
               <span className="material-symbols-outlined text-[16px]">edit</span>
-              <span>Chỉnh sửa Prompt</span>
+              <span>Chỉnh sửa mẫu chỉ dẫn</span>
             </Button>
           </div>
         </DialogFooter>

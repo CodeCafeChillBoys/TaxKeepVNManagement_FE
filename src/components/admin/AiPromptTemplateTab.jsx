@@ -4,10 +4,14 @@ import { AiPromptTemplateModal } from './AiPromptTemplateModal'
 import { PromptTestRenderModal } from './PromptTestRenderModal'
 import { PromptDetailModal } from './PromptDetailModal'
 import { useDebounce } from '@/hooks/useDebounce'
+import { TableLoadingRow } from '@/components/ui/loading'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
+import {
+  formatPromptKeyLabel,
+  formatPromptVariableLabel,
+} from '@/utils/configDataTypeUtils'
 import {
   Table,
   TableHeader,
@@ -208,11 +212,11 @@ export function AiPromptTemplateTab({ onShowToast }) {
         <Card className="border border-outline-variant/40 shadow-xs">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-medium text-on-surface-variant">Tổng số System Prompts</p>
+              <p className="text-[11px] font-medium text-on-surface-variant">Tổng số mẫu chỉ dẫn</p>
               <p className="text-2xl font-bold text-on-surface tabular-nums mt-0.5">{totalPromptsCount}</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-              <span className="material-symbols-outlined text-[22px]">psychology</span>
+            <div className="w-10 h-10 rounded-xl bg-surface-container text-on-surface flex items-center justify-center">
+              <span className="material-symbols-outlined text-[22px]">description</span>
             </div>
           </CardContent>
         </Card>
@@ -221,9 +225,9 @@ export function AiPromptTemplateTab({ onShowToast }) {
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-[11px] font-medium text-on-surface-variant">Đang áp dụng thực tế</p>
-              <p className="text-2xl font-bold text-emerald-700 tabular-nums mt-0.5">{activePromptsCount}</p>
+              <p className="text-2xl font-bold text-on-surface tabular-nums mt-0.5">{activePromptsCount}</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-surface-container text-on-surface flex items-center justify-center">
               <span className="material-symbols-outlined text-[22px]">check_circle</span>
             </div>
           </CardContent>
@@ -232,26 +236,24 @@ export function AiPromptTemplateTab({ onShowToast }) {
         <Card className="border border-outline-variant/40 shadow-xs">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-medium text-on-surface-variant">Biến tham số động tổng hợp</p>
-              <p className="text-2xl font-bold text-purple-700 tabular-nums mt-0.5">
+              <p className="text-[11px] font-medium text-on-surface-variant">Thông tin chèn tự động</p>
+              <p className="text-2xl font-bold text-on-surface tabular-nums mt-0.5">
                 {allUniqueVariables.length}
               </p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[22px]">data_object</span>
+            <div className="w-10 h-10 rounded-xl bg-surface-container text-on-surface flex items-center justify-center">
+              <span className="material-symbols-outlined text-[22px]">tune</span>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Banner giới thiệu cơ chế Prompt Động */}
-      <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-50 to-pink-50/60 border border-purple-200/60 flex items-center justify-between gap-3 text-xs text-purple-950">
+      {/* Banner giới thiệu */}
+      <div className="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/40 flex items-center justify-between gap-3 text-xs text-on-surface-variant">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-            <span className="material-symbols-outlined text-[20px]">magic_button</span>
-          </div>
+          <span className="material-symbols-outlined text-on-surface-variant text-[18px] shrink-0">info</span>
           <div>
-            <span className="font-bold">Quản lý Prompt Động (Dynamic Prompt Templates):</span> Định nghĩa ngữ cảnh, vai trò và quy tắc hành xử cho AI Chatbot, OCR văn bản thuế, bóc tách hóa đơn. Hỗ trợ tự động tăng phiên bản (Version Tracking), xóa Cache thời gian thực và công cụ <strong>Test Render giả lập biến</strong> trước khi ban hành.
+            <span className="font-bold text-on-surface">Quản lý mẫu chỉ dẫn nghiệp vụ:</span> Thiết lập nội dung quy định, căn cứ pháp lý và quy trình xử lý tự động cho tư vấn thuế, phân loại hóa đơn và thẩm định hồ sơ. Hệ thống tự động lưu lịch sử phiên bản và hỗ trợ <strong className="text-on-surface">Kiểm tra mẫu</strong> trước khi áp dụng.
           </div>
         </div>
       </div>
@@ -265,7 +267,7 @@ export function AiPromptTemplateTab({ onShowToast }) {
                 search
               </span>
               <Input
-                placeholder="Tìm mã prompt, mô tả, nội dung, biến..."
+                placeholder="Tìm tên mẫu chỉ dẫn, mô tả, nội dung..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 h-9 text-xs"
@@ -319,21 +321,21 @@ export function AiPromptTemplateTab({ onShowToast }) {
               className="text-xs h-9 font-bold bg-primary text-on-primary shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[18px]">add_circle</span>
-              <span>Tạo Prompt Mới</span>
+              <span>Tạo mẫu chỉ dẫn mới</span>
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Bảng danh sách Prompt Templates */}
+      {/* Bảng danh sách Mẫu chỉ dẫn */}
       <Card className="border border-outline-variant/40 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-surface-container-low/70">
               <TableRow className="border-b border-outline-variant/40 text-[11px] uppercase tracking-wider text-on-surface-variant font-bold">
-                <TableHead className="py-3 px-4">Mã khóa Prompt & Phiên bản</TableHead>
+                <TableHead className="py-3 px-4">Tên mẫu chỉ dẫn & Phiên bản</TableHead>
                 <TableHead className="py-3 px-4">Mô tả công dụng</TableHead>
-                <TableHead className="py-3 px-4">Các biến tham số động (Variables)</TableHead>
+                <TableHead className="py-3 px-4">Thông tin chèn tự động</TableHead>
                 <TableHead className="py-3 px-4">Cập nhật lần cuối</TableHead>
                 <TableHead className="py-3 px-4 text-center">Áp dụng</TableHead>
                 <TableHead className="py-3 px-4 text-right">Thao tác</TableHead>
@@ -341,14 +343,10 @@ export function AiPromptTemplateTab({ onShowToast }) {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-12 text-center text-xs text-on-surface-variant">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                      <span>Đang tải danh sách System Prompt Templates từ AI Service...</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                <TableLoadingRow
+                  colSpan={6}
+                  title="Đang tải danh sách mẫu chỉ dẫn nghiệp vụ..."
+                />
               ) : filteredPrompts.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="py-12 text-center text-xs text-on-surface-variant">
@@ -356,9 +354,9 @@ export function AiPromptTemplateTab({ onShowToast }) {
                       <span className="material-symbols-outlined text-4xl text-on-surface-variant/40">
                         find_in_page
                       </span>
-                      <p className="font-medium text-sm text-on-surface">Không tìm thấy System Prompt nào phù hợp</p>
+                      <p className="font-medium text-sm text-on-surface">Không tìm thấy mẫu chỉ dẫn nào phù hợp</p>
                       <p className="text-xs text-on-surface-variant">
-                        Nhấn "Tạo Prompt Mới" để khai báo chỉ dẫn hệ thống đầu tiên.
+                        Nhấn "Tạo mẫu chỉ dẫn mới" để khai báo quy định hướng dẫn đầu tiên.
                       </p>
                     </div>
                   </TableCell>
@@ -372,22 +370,14 @@ export function AiPromptTemplateTab({ onShowToast }) {
                       key={promptItem.prompt_key}
                       className="border-b border-outline-variant/20 hover:bg-surface-container-low/40 transition-colors"
                     >
-                      {/* Mã Prompt & Version */}
+                      {/* Tên mẫu chỉ dẫn & Phiên bản */}
                       <TableCell className="py-3.5 px-4">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2">
-                            <code className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
-                              {promptItem.prompt_key}
-                            </code>
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] font-bold px-1.5 py-0 border-amber-300 text-amber-800 bg-amber-50"
-                            >
-                              v{promptItem.version || 1}
-                            </Badge>
-                          </div>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-xs font-bold text-on-surface">
+                            {formatPromptKeyLabel(promptItem.prompt_key)}
+                          </span>
                           <span className="text-[11px] text-on-surface-variant">
-                            Khởi tạo: {formatDateTime(promptItem.created_at)}
+                            Phiên bản {promptItem.version || 1} · Khởi tạo: {formatDateTime(promptItem.created_at)}
                           </span>
                         </div>
                       </TableCell>
@@ -395,24 +385,24 @@ export function AiPromptTemplateTab({ onShowToast }) {
                       {/* Mô tả */}
                       <TableCell className="py-3.5 px-4 max-w-xs">
                         <p className="text-xs text-on-surface line-clamp-2" title={promptItem.description || ''}>
-                          {promptItem.description || '—'}
+                          {(promptItem.description || '—').replace(/System prompt/gi, 'Mẫu chỉ dẫn')}
                         </p>
                       </TableCell>
 
-                      {/* Biến tham số */}
+                      {/* Thông tin chèn tự động */}
                       <TableCell className="py-3.5 px-4 max-w-sm">
                         <div className="flex flex-wrap items-center gap-1">
                           {promptItem.variables && promptItem.variables.length > 0 ? (
                             promptItem.variables.map((v) => (
                               <span
                                 key={v}
-                                className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-surface-container-high border border-outline-variant/30 text-primary"
+                                className="text-[11px] font-medium px-2 py-0.5 rounded bg-surface-container border border-outline-variant/40 text-on-surface"
                               >
-                                {`{${v}}`}
+                                {formatPromptVariableLabel(v)}
                               </span>
                             ))
                           ) : (
-                            <span className="text-[11px] text-on-surface-variant italic">Không có biến</span>
+                            <span className="text-[11px] text-on-surface-variant">Cố định</span>
                           )}
                         </div>
                       </TableCell>
@@ -431,7 +421,7 @@ export function AiPromptTemplateTab({ onShowToast }) {
                           className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                             promptItem.is_active ? 'bg-primary' : 'bg-surface-container-highest'
                           }`}
-                          title={promptItem.is_active ? 'Nhấn để tạm dừng prompt' : 'Nhấn để kích hoạt prompt'}
+                          title={promptItem.is_active ? 'Nhấn để tạm dừng mẫu chỉ dẫn' : 'Nhấn để kích hoạt mẫu chỉ dẫn'}
                         >
                           <span
                             className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
@@ -444,48 +434,44 @@ export function AiPromptTemplateTab({ onShowToast }) {
                       {/* Thao tác */}
                       <TableCell className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          {/* Nút Xem chi tiết */}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => setViewingPrompt(promptItem)}
                             className="h-8 px-2 text-xs text-on-surface hover:bg-surface-container-high"
-                            title="Xem chi tiết nội dung prompt"
+                            title="Xem chi tiết nội dung chỉ dẫn"
                           >
                             <span className="material-symbols-outlined text-[16px]">visibility</span>
                           </Button>
 
-                          {/* Nút Test Render */}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => setTestingPrompt(promptItem)}
-                            className="h-8 px-2 text-xs text-purple-700 hover:bg-purple-50 font-bold flex items-center gap-1"
-                            title="Thử nghiệm render giả lập tham số"
+                            className="h-8 px-2 text-xs text-on-surface hover:bg-surface-container font-semibold flex items-center gap-1"
+                            title="Kiểm tra ghép dữ liệu mẫu"
                           >
-                            <span className="material-symbols-outlined text-[16px]">terminal</span>
-                            <span>Test</span>
+                            <span className="material-symbols-outlined text-[16px]">play_arrow</span>
+                            <span>Kiểm tra</span>
                           </Button>
 
-                          {/* Nút Sửa */}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleOpenEdit(promptItem)}
-                            className="h-8 px-2 text-xs text-primary hover:bg-primary/10 font-bold flex items-center gap-1"
-                            title="Sửa nội dung System Prompt"
+                            className="h-8 px-2 text-xs text-on-surface hover:text-primary hover:bg-surface-container font-semibold flex items-center gap-1"
+                            title="Sửa nội dung mẫu chỉ dẫn"
                           >
                             <span className="material-symbols-outlined text-[16px]">edit</span>
                             <span>Sửa</span>
                           </Button>
 
-                          {/* Nút Xóa */}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => setDeletingPrompt(promptItem)}
-                            className="h-8 px-2 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
-                            title="Xóa System Prompt"
+                            className="h-8 px-2 text-xs text-on-surface-variant hover:text-error hover:bg-error/10"
+                            title="Xóa mẫu chỉ dẫn"
                           >
                             <span className="material-symbols-outlined text-[16px]">delete</span>
                           </Button>
@@ -500,7 +486,7 @@ export function AiPromptTemplateTab({ onShowToast }) {
         </div>
       </Card>
 
-      {/* Modal Tạo mới / Sửa Prompt */}
+      {/* Modal Tạo mới / Sửa Mẫu chỉ dẫn */}
       {isModalOpen && (
         <AiPromptTemplateModal
           isOpen={isModalOpen}
@@ -512,7 +498,7 @@ export function AiPromptTemplateTab({ onShowToast }) {
         />
       )}
 
-      {/* Modal Thử nghiệm Render Prompt */}
+      {/* Modal Kiểm tra Mẫu chỉ dẫn */}
       {Boolean(testingPrompt) && (
         <PromptTestRenderModal
           isOpen={Boolean(testingPrompt)}
@@ -521,7 +507,7 @@ export function AiPromptTemplateTab({ onShowToast }) {
         />
       )}
 
-      {/* Modal Xem chi tiết Prompt */}
+      {/* Modal Xem chi tiết Mẫu chỉ dẫn */}
       {Boolean(viewingPrompt) && (
         <PromptDetailModal
           isOpen={Boolean(viewingPrompt)}
@@ -532,12 +518,12 @@ export function AiPromptTemplateTab({ onShowToast }) {
         />
       )}
 
-      {/* Modal Xác nhận Xóa Prompt */}
+      {/* Modal Xác nhận Xóa Mẫu chỉ dẫn */}
       <ConfirmDialog
         open={Boolean(deletingPrompt)}
         onOpenChange={(open) => !open && setDeletingPrompt(null)}
-        title="Xác nhận xóa System Prompt"
-        description={`Bạn có chắc chắn muốn xóa System Prompt "${deletingPrompt?.prompt_key || ''}"? Hành động này sẽ gỡ bỏ chỉ dẫn khỏi hệ thống AI và không thể khôi phục.`}
+        title="Xác nhận xóa mẫu chỉ dẫn"
+        description={`Bạn có chắc chắn muốn xóa mẫu chỉ dẫn "${formatPromptKeyLabel(deletingPrompt?.prompt_key)}"? Hành động này sẽ gỡ bỏ chỉ dẫn khỏi hệ thống và không thể khôi phục.`}
         confirmText="Xác nhận xóa"
         confirmVariant="danger"
         isLoading={isDeleting}
