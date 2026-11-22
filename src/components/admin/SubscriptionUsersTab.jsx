@@ -446,8 +446,6 @@ export function SubscriptionUsersTab({ plans = [] }) {
                         ? 'Vĩnh viễn'
                         : `${detail.snapshotChatHistoryRetentionDays} ngày`,
                     ],
-                    ['Nguồn thu nhập tối đa', formatLimit(detail.snapshotMaxIncomeSources)],
-                    ['Người phụ thuộc tối đa', formatLimit(detail.snapshotMaxDependents)],
                     [
                       'Xuất PDF / ZIP',
                       `${detail.snapshotCanExportPdf ? 'Có' : 'Chỉ xem'} / ${detail.snapshotCanExportZip ? 'Có' : 'Không'}`,

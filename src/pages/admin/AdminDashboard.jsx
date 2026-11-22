@@ -9,6 +9,7 @@ import { AdminDependentRulesPage } from './AdminDependentRulesPage'
 import { AdminApprovalHistoryPage } from './AdminApprovalHistoryPage'
 import { AdminExpertManagementPage } from './AdminExpertManagementPage'
 import { AdminSubscriptionPlansPage } from './AdminSubscriptionPlansPage'
+import { AdminRolePermissionsPage } from './AdminRolePermissionsPage'
 import { taxRuleService } from '@/services/taxRuleService'
 import { useAuth } from '@/hooks/useAuth'
 
@@ -221,6 +222,8 @@ export function AdminDashboard({ onLogout }) {
       ? 'Quản lý Chuyên gia Tư vấn'
       : currentRoute === 'goi-dich-vu'
       ? 'Gói dịch vụ'
+      : currentRoute === 'phan-quyen'
+      ? 'Phân quyền hệ thống'
       : 'Tổng quan hệ thống'
 
   return (
@@ -286,6 +289,11 @@ export function AdminDashboard({ onLogout }) {
       {/* Route 8: Gói dịch vụ (giá, hạn mức, quyền lợi) */}
       {currentRoute === 'goi-dich-vu' && (
         <AdminSubscriptionPlansPage />
+      )}
+
+      {/* Route 9: Phân quyền vai trò & danh mục quyền */}
+      {currentRoute === 'phan-quyen' && (
+        <AdminRolePermissionsPage />
       )}
 
       {/* Route 6: Tổng quan hệ thống */}
@@ -584,7 +592,9 @@ export function AdminDashboard({ onLogout }) {
         currentRoute !== 'ho-so' &&
         currentRoute !== 'lich-su-phe-duyet' &&
         currentRoute !== 'tong-quan' &&
-        currentRoute !== 'quan-ly-chuyen-gia' && (
+        currentRoute !== 'quan-ly-chuyen-gia' &&
+        currentRoute !== 'goi-dich-vu' &&
+        currentRoute !== 'phan-quyen' && (
           <div className="p-space-xl flex flex-col items-center justify-center min-h-[60vh] text-center gap-space-md">
             <div className="w-16 h-16 rounded-full bg-secondary-container/40 flex items-center justify-center text-secondary">
               <span className="material-symbols-outlined text-[36px]">construction</span>

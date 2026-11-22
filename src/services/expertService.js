@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient'
+import { pickApiErrorMessage } from '@/utils/apiErrorCatalog'
 
 /**
  * Service quản trị chuyên gia tư vấn thuế — Admin Expert Management
@@ -29,7 +30,7 @@ import { apiClient } from './apiClient'
 function unwrap(res, fallbackMsg) {
   const body = res?.data !== undefined ? res : res
   if (body?.success === false) {
-    throw new Error(body?.message || body?.errorCode || fallbackMsg)
+    throw new Error(pickApiErrorMessage(body?.errorCode, body?.message, fallbackMsg))
   }
   return body?.data !== undefined ? body.data : body
 }

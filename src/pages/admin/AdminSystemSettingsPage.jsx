@@ -9,6 +9,7 @@ import { taxDocumentTypeService } from '@/services/taxDocumentTypeService'
 import { TaxDocumentTypeModal } from '@/components/admin/TaxDocumentTypeModal'
 import { ExpertSearchConfigTab } from '@/components/admin/ExpertSearchConfigTab'
 import { ExpertCertificateConfigTab } from '@/components/admin/ExpertCertificateConfigTab'
+import { MedicalCategoryTab } from '@/components/admin/MedicalCategoryTab'
 import { AiKeyManagementTab } from '@/components/admin/AiKeyManagementTab'
 import { AiPromptTemplateTab } from '@/components/admin/AiPromptTemplateTab'
 import {
@@ -27,7 +28,7 @@ import {
 
 export function AdminSystemSettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  // Tabs: 'ai-configs' | 'ai-keys' | 'ai-prompts' | 'domains' | 'document-types' | 'expert-search' | 'expert-certificates' | 'system'
+  // Tabs: 'ai-configs' | 'ai-keys' | 'ai-prompts' | 'domains' | 'document-types' | 'medical-categories' | 'expert-search' | 'expert-certificates' | 'system'
   const activeTab = searchParams.get('tab') || 'ai-configs'
 
   const handleTabChange = (tab) => {
@@ -647,6 +648,18 @@ export function AdminSystemSettingsPage() {
         >
           <span className="material-symbols-outlined text-[18px]">receipt_long</span>
           <span>Loại chứng từ thuế ({docTypes.length})</span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange('medical-categories')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'medical-categories'
+              ? 'bg-primary text-on-primary shadow-xs'
+              : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">medical_services</span>
+          <span>Danh mục chi phí y tế</span>
         </button>
 
         <button
@@ -1558,6 +1571,10 @@ export function AdminSystemSettingsPage() {
       {/* ========================================================================= */}
       {/* TAB 6: DANH MỤC CHỨNG CHỈ CHUYÊN GIA (ExpertCertificateConfig)          */}
       {/* ========================================================================= */}
+      {activeTab === 'medical-categories' && (
+        <MedicalCategoryTab onShowToast={showToast} />
+      )}
+
       {activeTab === 'expert-certificates' && (
         <ExpertCertificateConfigTab onShowToast={showToast} />
       )}
