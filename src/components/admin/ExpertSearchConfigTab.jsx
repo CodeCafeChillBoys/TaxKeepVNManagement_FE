@@ -23,164 +23,212 @@ import {
 import { ConfirmDialog, NotificationDialog } from '@/components/ui/notification-dialog'
 import { SectionLoading } from '@/components/ui/loading'
 
+// Khớp 100% enum ExpertSortBy và nhãn trong ExpertController.GetSortOptions (BE)
 const SORT_OPTIONS = [
-  { value: 'Recommended', label: 'Đề xuất tốt nhất' },
-  { value: 'RatingDesc', label: 'Điểm đánh giá cao nhất' },
-  { value: 'ExperienceDesc', label: 'Kinh nghiệm lâu năm nhất' },
-  { value: 'FeeAsc', label: 'Mức phí thấp đến cao' },
-  { value: 'FeeDesc', label: 'Mức phí cao đến thấp' },
-  { value: 'CompletedSessionsDesc', label: 'Số ca tư vấn hoàn thành nhiều nhất' },
+  { value: 'Recommended', code: 0, label: 'Đề xuất ưu tiên' },
+  { value: 'RatingDesc', code: 1, label: 'Đánh giá sao cao nhất' },
+  { value: 'CompletedSessionsDesc', code: 5, label: 'Nhiều ca tư vấn hoàn thành nhất' },
+  { value: 'FeeAsc', code: 2, label: 'Mức phí thấp nhất' },
+  { value: 'FeeDesc', code: 3, label: 'Mức phí cao nhất' },
+  { value: 'ExperienceDesc', code: 4, label: 'Nhiều năm kinh nghiệm nhất' },
 ]
 
-const SEARCHABLE_FIELD_OPTIONS = [
-  { key: 'fullName', beKey: 'searchInFullName', label: 'Họ và tên chuyên gia', desc: 'Tìm theo tên hiển thị' },
-  { key: 'jobTitle', beKey: 'searchInJobTitle', label: 'Chức danh nghề nghiệp', desc: 'Ví dụ: Kế toán trưởng, Đại lý thuế' },
-  { key: 'companyName', beKey: 'searchInCompanyName', label: 'Đơn vị công tác', desc: 'Tên công ty hoặc tổ chức hành nghề' },
-  { key: 'specialization', beKey: 'searchInSpecializations', label: 'Lĩnh vực tư vấn', desc: 'Tìm theo tên chuyên ngành thuế' },
-  { key: 'bio', beKey: 'searchInBio', label: 'Giới thiệu & Kinh nghiệm', desc: 'Tìm từ khóa trong tóm tắt chuyên môn' },
-  { key: 'certificates', beKey: 'searchInCertificates', label: 'Chứng chỉ hành nghề', desc: 'Tìm theo tên văn bằng, chứng chỉ đã cấp' },
-]
+const SORT_BY_CODE_MAP = SORT_OPTIONS.reduce((acc, opt) => {
+  acc[opt.code] = opt.value
+  return acc
+}, {})
 
-const DEFAULT_CRITERIA_VALUES = {
-  ratingWeight: 4.5,
-  totalSessionsWeight: 20,
-  totalReviewsWeight: 10,
-  experienceWeight: 5,
-  availabilityWeight: 7,
-  verifiedCertWeight: 1,
+const SORT_BY_LOWER_MAP = {
+  recommended: 'Recommended',
+  ratingdesc: 'RatingDesc',
+  feeasc: 'FeeAsc',
+  feedesc: 'FeeDesc',
+  experiencedesc: 'ExperienceDesc',
+  completedsessionsdesc: 'CompletedSessionsDesc',
+  sessionsdesc: 'CompletedSessionsDesc',
 }
 
-const LOCAL_STORAGE_KEY = 'taxkeep_expert_search_unit_config_v1'
+// Khớp 100% SearchableFieldsConfig trên BE
+const SEARCHABLE_FIELD_OPTIONS = [
+  { key: 'searchInFullName', label: 'Họ và tên chuyên gia', desc: 'Tìm theo tên hiển thị' },
+  { key: 'searchInJobTitle', label: 'Chức danh nghề nghiệp', desc: 'Ví dụ: Kế toán trưởng, Đại lý thuế' },
+  { key: 'searchInCompanyName', label: 'Đơn vị công tác', desc: 'Tên công ty hoặc tổ chức hành nghề' },
+  { key: 'searchInSpecializations', label: 'Lĩnh vực tư vấn', desc: 'Tìm theo tên chuyên ngành thuế' },
+  { key: 'searchInBio', label: 'Giới thiệu & Kinh nghiệm', desc: 'Tìm từ khóa trong tóm tắt chuyên môn' },
+  { key: 'searchInCertificates', label: 'Tên chứng chỉ hành nghề', desc: 'Tìm theo văn bằng, chứng chỉ đã xác thực' },
+]
 
+// Khớp 100% RankingWeightsConfig (5 trọng số, thang 0..1 trên BE <-> 0..100% trên UI)
 const WEIGHT_FIELDS = [
   {
     key: 'ratingWeight',
     label: 'Điểm đánh giá trung bình',
     desc: 'Mức độ hài lòng từ khách hàng (thang 5 sao)',
-    unit: 'sao',
-    min: 0,
-    max: 5,
-    step: 0.5,
+    defaultPercent: 35,
   },
   {
-    key: 'totalSessionsWeight',
+    key: 'completedConsultationsWeight',
     label: 'Số ca tư vấn hoàn thành',
-    desc: 'Kinh nghiệm giải quyết hồ sơ thực tế trên hệ thống (mốc chuẩn 50 ca)',
-    unit: 'ca',
-    min: 0,
-    max: 50,
-    step: 1,
+    desc: 'Kinh nghiệm giải quyết hồ sơ thực tế trên hệ thống',
+    defaultPercent: 25,
   },
   {
-    key: 'totalReviewsWeight',
+    key: 'reviewsCountWeight',
     label: 'Số lượt nhận xét',
-    desc: 'Độ phủ phản hồi từ người nộp thuế (mốc chuẩn 50 lượt)',
-    unit: 'lượt',
-    min: 0,
-    max: 50,
-    step: 1,
+    desc: 'Độ phủ phản hồi từ người nộp thuế',
+    defaultPercent: 15,
   },
   {
-    key: 'experienceWeight',
-    label: 'Số năm hành nghề',
-    desc: 'Thâm niên công tác trong lĩnh vực thuế và kế toán',
-    unit: 'năm',
-    min: 0,
-    max: 30,
-    step: 1,
-  },
-  {
-    key: 'availabilityWeight',
+    key: 'slotAvailabilityWeight',
     label: 'Lịch rảnh sắp tới',
-    desc: 'Ưu tiên chuyên gia có khung giờ trống trong số ngày tới',
-    unit: 'ngày',
-    min: 1,
-    max: 30,
-    step: 1,
+    desc: 'Ưu tiên chuyên gia có khung giờ trống trong 3 ngày tới',
+    defaultPercent: 15,
   },
   {
-    key: 'verifiedCertWeight',
+    key: 'verifiedCertificateWeight',
     label: 'Chứng chỉ đã xác thực',
-    desc: 'Số văn bằng hành nghề đã được thẩm định và xác thực',
-    unit: 'chứng chỉ',
-    min: 0,
-    max: 10,
-    step: 1,
+    desc: 'Ưu tiên hồ sơ có văn bằng hành nghề đã thẩm định',
+    defaultPercent: 10,
   },
 ]
 
-function parseSearchableFieldsFromBe(searchableFields) {
-  if (Array.isArray(searchableFields) && searchableFields.length > 0) {
-    return searchableFields
-  }
-  if (searchableFields && typeof searchableFields === 'object') {
-    const mapped = SEARCHABLE_FIELD_OPTIONS.filter(
-      (opt) => searchableFields[opt.beKey] !== false
-    ).map((opt) => opt.key)
-    return mapped.length > 0 ? mapped : SEARCHABLE_FIELD_OPTIONS.map((o) => o.key)
-  }
-  return SEARCHABLE_FIELD_OPTIONS.map((o) => o.key)
-}
+const ALL_SORT_VALUES = SORT_OPTIONS.map((opt) => opt.value)
 
-function buildSearchableFieldsForBe(selectedKeys) {
-  const set = new Set(Array.isArray(selectedKeys) ? selectedKeys : [])
-  return {
-    searchInFullName: set.has('fullName'),
-    searchInJobTitle: set.has('jobTitle'),
-    searchInCompanyName: set.has('companyName'),
-    searchInBio: set.has('bio'),
-    searchInSpecializations: set.has('specialization'),
-    searchInCertificates: set.has('certificates'),
+function normalizeSortBy(raw) {
+  if (typeof raw === 'number' && raw in SORT_BY_CODE_MAP) {
+    return SORT_BY_CODE_MAP[raw]
   }
-}
-
-function buildRankingWeightsForBe(form) {
-  const ratingNorm = Math.max(0, Number(form.ratingWeight || 0)) / 5
-  const sessionsNorm = Math.max(0, Number(form.totalSessionsWeight || 0)) / 50
-  const reviewsNorm = Math.max(0, Number(form.totalReviewsWeight || 0)) / 50
-  const slotNorm = Math.max(0, Number(form.availabilityWeight || 0)) / 30
-  const certNorm = Math.max(0, Number(form.verifiedCertWeight || 0)) / 10
-  const sum = ratingNorm + sessionsNorm + reviewsNorm + slotNorm + certNorm
-
-  if (sum <= 0) {
-    return {
-      ratingWeight: 0.35,
-      completedConsultationsWeight: 0.25,
-      reviewsCountWeight: 0.15,
-      slotAvailabilityWeight: 0.15,
-      verifiedCertificateWeight: 0.1,
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return null
+    const asNum = Number(trimmed)
+    if (!Number.isNaN(asNum) && asNum in SORT_BY_CODE_MAP) {
+      return SORT_BY_CODE_MAP[asNum]
     }
+    return SORT_BY_LOWER_MAP[trimmed.toLowerCase()] || null
+  }
+  return null
+}
+
+function toPercent(rawWeight, fallbackPercent) {
+  const num = Number(rawWeight)
+  if (!Number.isFinite(num) || num < 0) return fallbackPercent
+  // BE lưu tỷ trọng thang 0..1 (VD: 0.35 -> 35%). Nếu đã là > 1 thì giữ nguyên trong [0, 100].
+  const pct = num <= 1 ? Math.round(num * 100) : Math.round(num)
+  return Math.min(100, Math.max(0, pct))
+}
+
+function createDefaultForm() {
+  return {
+    ratingWeight: 35,
+    completedConsultationsWeight: 25,
+    reviewsCountWeight: 15,
+    slotAvailabilityWeight: 15,
+    verifiedCertificateWeight: 10,
+    defaultSortBy: 'Recommended',
+    requireVerifiedCertificate: false,
+    allowedSortOptions: [...ALL_SORT_VALUES],
+    searchableFields: {
+      searchInFullName: true,
+      searchInJobTitle: true,
+      searchInCompanyName: true,
+      searchInBio: true,
+      searchInSpecializations: true,
+      searchInCertificates: true,
+    },
+    featuredSpecializationIds: [],
+  }
+}
+
+function mapDtoToForm(configData) {
+  const defaults = createDefaultForm()
+  if (!configData || typeof configData !== 'object') return defaults
+
+  const weights = configData.rankingWeights || {}
+  const fields = configData.searchableFields || {}
+
+  const defaultSortBy = normalizeSortBy(configData.defaultSortBy) || defaults.defaultSortBy
+
+  const normalizedAllowed = Array.isArray(configData.allowedSortOptions)
+    ? Array.from(new Set(configData.allowedSortOptions.map(normalizeSortBy).filter(Boolean)))
+    : [...ALL_SORT_VALUES]
+
+  const allowedSortOptions =
+    normalizedAllowed.length > 0 ? normalizedAllowed : [...ALL_SORT_VALUES]
+  if (!allowedSortOptions.includes(defaultSortBy)) {
+    allowedSortOptions.unshift(defaultSortBy)
   }
 
-  const rw = Number((ratingNorm / sum).toFixed(2))
-  const cw = Number((sessionsNorm / sum).toFixed(2))
-  const revW = Number((reviewsNorm / sum).toFixed(2))
-  const sw = Number((slotNorm / sum).toFixed(2))
-  const vw = Number(Math.max(0, 1 - (rw + cw + revW + sw)).toFixed(2))
+  const featuredSpecializationIds = Array.isArray(configData.featuredSpecializationIds)
+    ? Array.from(
+        new Set(
+          configData.featuredSpecializationIds
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        )
+      )
+    : []
 
   return {
-    ratingWeight: rw,
-    completedConsultationsWeight: cw,
-    reviewsCountWeight: revW,
-    slotAvailabilityWeight: sw,
-    verifiedCertificateWeight: vw,
+    ratingWeight: toPercent(weights.ratingWeight, defaults.ratingWeight),
+    completedConsultationsWeight: toPercent(
+      weights.completedConsultationsWeight,
+      defaults.completedConsultationsWeight
+    ),
+    reviewsCountWeight: toPercent(weights.reviewsCountWeight, defaults.reviewsCountWeight),
+    slotAvailabilityWeight: toPercent(
+      weights.slotAvailabilityWeight,
+      defaults.slotAvailabilityWeight
+    ),
+    verifiedCertificateWeight: toPercent(
+      weights.verifiedCertificateWeight,
+      defaults.verifiedCertificateWeight
+    ),
+    defaultSortBy,
+    requireVerifiedCertificate: Boolean(configData.requireVerifiedCertificate),
+    allowedSortOptions,
+    searchableFields: {
+      searchInFullName: Boolean(fields.searchInFullName ?? true),
+      searchInJobTitle: Boolean(fields.searchInJobTitle ?? true),
+      searchInCompanyName: Boolean(fields.searchInCompanyName ?? true),
+      searchInBio: Boolean(fields.searchInBio ?? true),
+      searchInSpecializations: Boolean(fields.searchInSpecializations ?? true),
+      searchInCertificates: Boolean(fields.searchInCertificates ?? true),
+    },
+    featuredSpecializationIds,
   }
 }
 
-function readLocalUnitConfig() {
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
+function mapFormToDto(form) {
+  const allowedSortOptions = Array.from(
+    new Set([...(form.allowedSortOptions || []), form.defaultSortBy].filter(Boolean))
+  )
 
-function writeLocalUnitConfig(data) {
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data))
-  } catch {
-    // ignore storage errors
+  return {
+    defaultSortBy: form.defaultSortBy,
+    requireVerifiedCertificate: Boolean(form.requireVerifiedCertificate),
+    featuredSpecializationIds: (form.featuredSpecializationIds || []).map((id) => Number(id)),
+    allowedSortOptions:
+      allowedSortOptions.length > 0 ? allowedSortOptions : [...ALL_SORT_VALUES],
+    searchableFields: {
+      searchInFullName: Boolean(form.searchableFields.searchInFullName),
+      searchInJobTitle: Boolean(form.searchableFields.searchInJobTitle),
+      searchInCompanyName: Boolean(form.searchableFields.searchInCompanyName),
+      searchInBio: Boolean(form.searchableFields.searchInBio),
+      searchInSpecializations: Boolean(form.searchableFields.searchInSpecializations),
+      searchInCertificates: Boolean(form.searchableFields.searchInCertificates),
+    },
+    rankingWeights: {
+      ratingWeight: Number((Number(form.ratingWeight || 0) / 100).toFixed(4)),
+      completedConsultationsWeight: Number(
+        (Number(form.completedConsultationsWeight || 0) / 100).toFixed(4)
+      ),
+      reviewsCountWeight: Number((Number(form.reviewsCountWeight || 0) / 100).toFixed(4)),
+      slotAvailabilityWeight: Number((Number(form.slotAvailabilityWeight || 0) / 100).toFixed(4)),
+      verifiedCertificateWeight: Number(
+        (Number(form.verifiedCertificateWeight || 0) / 100).toFixed(4)
+      ),
+    },
   }
 }
 
@@ -191,19 +239,7 @@ export function ExpertSearchConfigTab({ onShowToast }) {
   const [confirmResetOpen, setConfirmResetOpen] = useState(false)
   const [specializations, setSpecializations] = useState([])
   const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
-
-  const [form, setForm] = useState({
-    ...DEFAULT_CRITERIA_VALUES,
-    defaultSortBy: 'Recommended',
-    featuredMaxCount: 6,
-    featuredMinRating: 4.0,
-    featuredMinSessions: 0,
-    onlyShowExpertsWithAvailableSlots: false,
-    prioritizeTodayAvailableSlots: true,
-    searchableFields: SEARCHABLE_FIELD_OPTIONS.map((o) => o.key),
-    featuredSpecializationIds: [],
-    updatedAt: null,
-  })
+  const [form, setForm] = useState(createDefaultForm)
 
   const notify = (title, message, type = 'success') => {
     if (onShowToast) {
@@ -213,137 +249,165 @@ export function ExpertSearchConfigTab({ onShowToast }) {
     }
   }
 
-  const fetchData = async () => {
-    setIsLoading(true)
-    try {
-      const [configData, specsData] = await Promise.all([
-        expertSearchConfigService.getConfig(),
-        expertService.getSpecializations(true).catch(() => []),
-      ])
+  const totalWeight = WEIGHT_FIELDS.reduce((sum, w) => sum + Number(form[w.key] || 0), 0)
+  const isWeightValid = Math.abs(totalWeight - 100) <= 0.01
 
-      const localSaved = readLocalUnitConfig()
-
-      if (configData) {
-        const rawSort =
-          configData.defaultSortBy === 'SessionsDesc'
-            ? 'CompletedSessionsDesc'
-            : configData.defaultSortBy || 'Recommended'
-
-        setForm({
-          ratingWeight: Number(
-            localSaved?.ratingWeight ?? DEFAULT_CRITERIA_VALUES.ratingWeight
-          ),
-          totalSessionsWeight: Number(
-            localSaved?.totalSessionsWeight ?? DEFAULT_CRITERIA_VALUES.totalSessionsWeight
-          ),
-          totalReviewsWeight: Number(
-            localSaved?.totalReviewsWeight ?? DEFAULT_CRITERIA_VALUES.totalReviewsWeight
-          ),
-          experienceWeight: Number(
-            localSaved?.experienceWeight ?? DEFAULT_CRITERIA_VALUES.experienceWeight
-          ),
-          availabilityWeight: Number(
-            localSaved?.availabilityWeight ?? DEFAULT_CRITERIA_VALUES.availabilityWeight
-          ),
-          verifiedCertWeight: Number(
-            localSaved?.verifiedCertWeight ??
-              (configData.requireVerifiedCertificate ? 1 : DEFAULT_CRITERIA_VALUES.verifiedCertWeight)
-          ),
-          defaultSortBy: rawSort,
-          featuredMaxCount: Number(localSaved?.featuredMaxCount ?? configData.featuredMaxCount ?? 6),
-          featuredMinRating: Number(localSaved?.featuredMinRating ?? configData.featuredMinRating ?? 4.0),
-          featuredMinSessions: Number(
-            localSaved?.featuredMinSessions ?? configData.featuredMinSessions ?? 0
-          ),
-          onlyShowExpertsWithAvailableSlots: Boolean(
-            localSaved?.onlyShowExpertsWithAvailableSlots ??
-              configData.onlyShowExpertsWithAvailableSlots ??
-              false
-          ),
-          prioritizeTodayAvailableSlots: Boolean(
-            localSaved?.prioritizeTodayAvailableSlots ??
-              configData.prioritizeTodayAvailableSlots ??
-              true
-          ),
-          searchableFields: parseSearchableFieldsFromBe(configData.searchableFields),
-          featuredSpecializationIds: Array.isArray(configData.featuredSpecializationIds)
-            ? configData.featuredSpecializationIds
-            : [],
-          updatedAt: configData.updatedAt || localSaved?.updatedAt || null,
-        })
-      }
-      setSpecializations(Array.isArray(specsData) ? specsData : [])
-    } catch (err) {
-      notify('Lỗi tải dữ liệu', err?.message || 'Không thể tải cấu hình đề xuất chuyên gia.', 'error')
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const enabledSearchFieldCount = SEARCHABLE_FIELD_OPTIONS.filter(
+    (f) => form.searchableFields[f.key]
+  ).length
 
   useEffect(() => {
-    fetchData()
+    let active = true
+    const loadInitialData = async () => {
+      try {
+        const [configData, specsData] = await Promise.all([
+          expertSearchConfigService.getConfig(),
+          expertService.getSpecializations(true).catch(() => []),
+        ])
+        if (!active) return
+        setForm(mapDtoToForm(configData))
+        setSpecializations(Array.isArray(specsData) ? specsData : [])
+      } catch (err) {
+        if (!active) return
+        const msg = err?.message || 'Không thể tải cấu hình đề xuất chuyên gia.'
+        if (onShowToast) {
+          onShowToast('Lỗi tải dữ liệu', msg, 'error')
+        } else {
+          setNotice({ open: true, type: 'error', title: 'Lỗi tải dữ liệu', description: msg })
+        }
+      } finally {
+        if (active) setIsLoading(false)
+      }
+    }
+    loadInitialData()
+    return () => {
+      active = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const toggleSearchField = (fieldKey) => {
+  const handleAutoBalanceWeights = () => {
+    if (totalWeight <= 0) {
+      setForm((prev) => ({
+        ...prev,
+        ratingWeight: 35,
+        completedConsultationsWeight: 25,
+        reviewsCountWeight: 15,
+        slotAvailabilityWeight: 15,
+        verifiedCertificateWeight: 10,
+      }))
+      return
+    }
+
+    const keys = WEIGHT_FIELDS.map((w) => w.key)
+    const factor = 100 / totalWeight
+    let runningSum = 0
+    const updated = {}
+
+    keys.forEach((key, idx) => {
+      if (idx === keys.length - 1) {
+        updated[key] = Math.max(0, Math.round(100 - runningSum))
+      } else {
+        const val = Math.round(Number(form[key] || 0) * factor)
+        updated[key] = val
+        runningSum += val
+      }
+    })
+
+    setForm((prev) => ({ ...prev, ...updated }))
+  }
+
+  const handleChangeDefaultSort = (value) => {
     setForm((prev) => {
-      const exists = prev.searchableFields.includes(fieldKey)
-      if (exists && prev.searchableFields.length <= 1) {
-        notify('Lưu ý', 'Cần bật ít nhất một trường thông tin tìm kiếm.', 'error')
+      const nextAllowed = prev.allowedSortOptions.includes(value)
+        ? prev.allowedSortOptions
+        : [value, ...prev.allowedSortOptions]
+      return {
+        ...prev,
+        defaultSortBy: value,
+        allowedSortOptions: nextAllowed,
+      }
+    })
+  }
+
+  const toggleAllowedSortOption = (sortValue) => {
+    setForm((prev) => {
+      const exists = prev.allowedSortOptions.includes(sortValue)
+      if (exists && sortValue === prev.defaultSortBy) {
+        notify(
+          'Không thể ẩn tiêu chí mặc định',
+          'Tiêu chí đang được chọn làm thứ tự sắp xếp mặc định phải luôn được bật.',
+          'error'
+        )
+        return prev
+      }
+      if (exists && prev.allowedSortOptions.length <= 1) {
+        notify('Lưu ý', 'Cần bật ít nhất một tiêu chí sắp xếp cho người dùng.', 'error')
         return prev
       }
       const next = exists
-        ? prev.searchableFields.filter((f) => f !== fieldKey)
-        : [...prev.searchableFields, fieldKey]
-      return { ...prev, searchableFields: next }
+        ? prev.allowedSortOptions.filter((v) => v !== sortValue)
+        : [...prev.allowedSortOptions, sortValue]
+      return { ...prev, allowedSortOptions: next }
+    })
+  }
+
+  const toggleSearchField = (fieldKey) => {
+    setForm((prev) => {
+      const currentlyChecked = Boolean(prev.searchableFields[fieldKey])
+      const activeCount = SEARCHABLE_FIELD_OPTIONS.filter(
+        (f) => prev.searchableFields[f.key]
+      ).length
+      if (currentlyChecked && activeCount <= 1) {
+        notify('Lưu ý', 'Cần bật ít nhất một trường thông tin tìm kiếm.', 'error')
+        return prev
+      }
+      return {
+        ...prev,
+        searchableFields: {
+          ...prev.searchableFields,
+          [fieldKey]: !currentlyChecked,
+        },
+      }
     })
   }
 
   const toggleFeaturedSpec = (specId) => {
+    const numericId = Number(specId)
     setForm((prev) => {
-      const exists = prev.featuredSpecializationIds.includes(specId)
+      const exists = prev.featuredSpecializationIds.includes(numericId)
       const next = exists
-        ? prev.featuredSpecializationIds.filter((id) => id !== specId)
-        : [...prev.featuredSpecializationIds, specId]
+        ? prev.featuredSpecializationIds.filter((id) => id !== numericId)
+        : [...prev.featuredSpecializationIds, numericId]
       return { ...prev, featuredSpecializationIds: next }
     })
   }
 
   const handleSave = async () => {
+    if (!isWeightValid) {
+      notify(
+        'Trọng số chưa hợp lệ',
+        `Tổng trọng số hiện tại là ${totalWeight}%. Vui lòng điều chỉnh đúng bằng 100%.`,
+        'error'
+      )
+      return
+    }
+    if (enabledSearchFieldCount === 0) {
+      notify('Phạm vi tìm kiếm chưa hợp lệ', 'Cần bật ít nhất một trường dữ liệu tìm kiếm.', 'error')
+      return
+    }
+
     setIsSaving(true)
     try {
-      const normalizedSort =
-        form.defaultSortBy === 'SessionsDesc' ? 'CompletedSessionsDesc' : form.defaultSortBy
-
-      const payload = {
-        defaultSortBy: normalizedSort,
-        requireVerifiedCertificate: Number(form.verifiedCertWeight || 0) > 0,
-        featuredSpecializationIds: form.featuredSpecializationIds,
-        searchableFields: buildSearchableFieldsForBe(form.searchableFields),
-        rankingWeights: buildRankingWeightsForBe(form),
-        allowedSortOptions: SORT_OPTIONS.map((o) => o.value),
-      }
-
+      const payload = mapFormToDto(form)
       const updated = await expertSearchConfigService.updateConfig(payload)
-      const nowIso = updated?.updatedAt || new Date().toISOString()
-
-      writeLocalUnitConfig({
-        ratingWeight: Number(form.ratingWeight),
-        totalSessionsWeight: Number(form.totalSessionsWeight),
-        totalReviewsWeight: Number(form.totalReviewsWeight),
-        experienceWeight: Number(form.experienceWeight),
-        availabilityWeight: Number(form.availabilityWeight),
-        verifiedCertWeight: Number(form.verifiedCertWeight),
-        featuredMaxCount: Number(form.featuredMaxCount),
-        featuredMinRating: Number(form.featuredMinRating),
-        featuredMinSessions: Number(form.featuredMinSessions),
-        onlyShowExpertsWithAvailableSlots: Boolean(form.onlyShowExpertsWithAvailableSlots),
-        prioritizeTodayAvailableSlots: Boolean(form.prioritizeTodayAvailableSlots),
-        updatedAt: nowIso,
-      })
-
-      setForm((prev) => ({ ...prev, defaultSortBy: normalizedSort, updatedAt: nowIso }))
-      notify('Đã lưu cấu hình', 'Quy tắc đề xuất và tìm kiếm chuyên gia đã được cập nhật.')
+      if (updated) {
+        setForm(mapDtoToForm(updated))
+      }
+      notify(
+        'Đã lưu cấu hình',
+        'Quy tắc đề xuất và tìm kiếm chuyên gia đã được cập nhật và áp dụng ngay trên ứng dụng.'
+      )
     } catch (err) {
       notify('Lỗi cập nhật', err?.message || 'Không thể lưu cấu hình lúc này.', 'error')
     } finally {
@@ -355,31 +419,7 @@ export function ExpertSearchConfigTab({ onShowToast }) {
     setIsResetting(true)
     try {
       const resetData = await expertSearchConfigService.resetDefaults()
-      const nowIso = resetData?.updatedAt || new Date().toISOString()
-
-      try {
-        localStorage.removeItem(LOCAL_STORAGE_KEY)
-      } catch {
-        // ignore
-      }
-
-      setForm({
-        ...DEFAULT_CRITERIA_VALUES,
-        defaultSortBy:
-          resetData?.defaultSortBy === 'SessionsDesc'
-            ? 'CompletedSessionsDesc'
-            : resetData?.defaultSortBy || 'Recommended',
-        featuredMaxCount: 6,
-        featuredMinRating: 4.0,
-        featuredMinSessions: 0,
-        onlyShowExpertsWithAvailableSlots: false,
-        prioritizeTodayAvailableSlots: true,
-        searchableFields: parseSearchableFieldsFromBe(resetData?.searchableFields),
-        featuredSpecializationIds: Array.isArray(resetData?.featuredSpecializationIds)
-          ? resetData.featuredSpecializationIds
-          : [],
-        updatedAt: nowIso,
-      })
+      setForm(mapDtoToForm(resetData))
       setConfirmResetOpen(false)
       notify('Đã khôi phục mặc định', 'Cấu hình đề xuất chuyên gia đã về mức chuẩn ban đầu.')
     } catch (err) {
@@ -409,7 +449,7 @@ export function ExpertSearchConfigTab({ onShowToast }) {
               Quy tắc đề xuất & Tìm kiếm chuyên gia
             </h3>
             <p className="text-xs text-on-surface-variant">
-              Thiết lập định mức xếp hạng, tiêu chuẩn chọn chuyên gia nổi bật và phạm vi tìm kiếm trên ứng dụng.
+              Thiết lập trọng số xếp hạng đề xuất, thứ tự sắp xếp mặc định, điều kiện chứng chỉ và phạm vi tìm kiếm đồng bộ với ứng dụng di động.
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -426,7 +466,7 @@ export function ExpertSearchConfigTab({ onShowToast }) {
               type="button"
               size="sm"
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={isSaving || !isWeightValid}
             >
               {isSaving ? 'Đang lưu...' : 'Lưu cấu hình'}
             </Button>
@@ -435,36 +475,57 @@ export function ExpertSearchConfigTab({ onShowToast }) {
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* CỘT TRÁI: TRỌNG SỐ & ĐỊNH MỨC XẾP HẠNG ĐỀ XUẤT */}
+        {/* CỘT TRÁI: TRỌNG SỐ XẾP HẠNG ĐỀ XUẤT */}
         <Card className="lg:col-span-7 flex flex-col justify-between">
           <div>
             <CardHeader className="pb-3 border-b border-outline-variant/30">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <CardTitle className="text-sm font-bold text-on-surface">
-                    Trọng số xếp hạng đề xuất
+                    Trọng số thuật toán đề xuất
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    Định mức chuẩn của 6 tiêu chí dùng để tính điểm ưu tiên đề xuất chuyên gia
+                    Tổng tỷ trọng của 5 tiêu chí phải bằng 100%
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="tabular-nums">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                    6 tiêu chí đang áp dụng
+                  <Badge variant={isWeightValid ? 'secondary' : 'destructive'} className="tabular-nums">
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        isWeightValid ? 'bg-emerald-600' : 'bg-red-600'
+                      }`}
+                    />
+                    Tổng: {totalWeight}% / 100%
                   </Badge>
+                  {!isWeightValid && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAutoBalanceWeights}
+                      className="h-7 px-2.5 text-[11px]"
+                    >
+                      Tự cân bằng
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
 
-            <CardContent className="pt-3 flex flex-col gap-3">
+            <CardContent className="pt-4 flex flex-col gap-3">
+              {/* Thanh phân bổ tỷ trọng */}
+              <div className="w-full h-2 rounded-full bg-surface-container-high overflow-hidden flex">
+                <div
+                  style={{ width: `${Math.min(100, totalWeight)}%` }}
+                  className={`h-full transition-all duration-300 ${
+                    isWeightValid ? 'bg-primary' : 'bg-red-600'
+                  }`}
+                />
+              </div>
+
               <div className="flex flex-col divide-y divide-outline-variant/30">
                 {WEIGHT_FIELDS.map((w) => {
-                  const rawVal = form[w.key]
-                  const sliderVal =
-                    rawVal === '' || rawVal === null || rawVal === undefined
-                      ? w.min
-                      : Math.min(w.max, Math.max(w.min, Number(rawVal) || 0))
+                  const val = Number(form[w.key] || 0)
                   return (
                     <div key={w.key} className="py-3 first:pt-1 last:pb-0 flex flex-col gap-2">
                       <div className="flex items-center justify-between gap-2">
@@ -472,52 +533,31 @@ export function ExpertSearchConfigTab({ onShowToast }) {
                           <p className="text-xs font-semibold text-on-surface">{w.label}</p>
                           <p className="text-[11px] text-on-surface-variant">{w.desc}</p>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-1 shrink-0">
                           <input
                             type="number"
-                            min={w.min}
-                            max={w.max}
-                            step={w.step}
-                            value={rawVal ?? ''}
+                            min={0}
+                            max={100}
+                            value={val}
                             aria-label={w.label}
-                            onChange={(e) => {
-                              const text = e.target.value
-                              if (text === '') {
-                                setForm((prev) => ({ ...prev, [w.key]: '' }))
-                                return
-                              }
-                              const num = Number(text)
-                              if (!Number.isNaN(num)) {
-                                setForm((prev) => ({
-                                  ...prev,
-                                  [w.key]: Math.min(w.max, num),
-                                }))
-                              }
-                            }}
-                            onBlur={() => {
-                              setForm((prev) => {
-                                const current = prev[w.key]
-                                const parsed =
-                                  current === '' || Number.isNaN(Number(current))
-                                    ? w.min
-                                    : Math.min(w.max, Math.max(w.min, Number(current)))
-                                return { ...prev, [w.key]: parsed }
-                              })
-                            }}
-                            className="w-16 h-8 text-center rounded-md border border-outline-variant/60 bg-surface-container-lowest font-semibold text-xs text-on-surface tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
+                            onChange={(e) =>
+                              setForm((prev) => ({
+                                ...prev,
+                                [w.key]: Math.min(100, Math.max(0, Number(e.target.value) || 0)),
+                              }))
+                            }
+                            className="w-14 h-8 text-center rounded-md border border-outline-variant/60 bg-surface-container-lowest font-semibold text-xs text-on-surface tabular-nums focus:outline-none focus:ring-1 focus:ring-primary"
                           />
-                          <span className="text-xs font-medium text-on-surface-variant min-w-[56px]">
-                            {w.unit}
-                          </span>
+                          <span className="text-xs font-medium text-on-surface-variant">%</span>
                         </div>
                       </div>
 
                       <input
                         type="range"
-                        min={w.min}
-                        max={w.max}
-                        step={w.step}
-                        value={sliderVal}
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={val}
                         aria-label={`Thanh trượt ${w.label}`}
                         onChange={(e) =>
                           setForm((prev) => ({
@@ -535,34 +575,28 @@ export function ExpertSearchConfigTab({ onShowToast }) {
           </div>
 
           <CardFooter className="pt-3 border-t border-outline-variant/30 text-[11px] text-on-surface-variant justify-between">
-            <span>Hệ thống tự động quy đổi định mức các tiêu chí sang điểm xếp hạng đề xuất.</span>
-            {form.updatedAt && (
-              <span className="tabular-nums">
-                Cập nhật: {new Date(form.updatedAt).toLocaleString('vi-VN')}
-              </span>
-            )}
+            <span>
+              Trọng số được áp dụng cho thứ hạng Top chuyên gia đề xuất khi chọn &quot;Đề xuất ưu tiên&quot;.
+            </span>
           </CardFooter>
         </Card>
 
-        {/* CỘT PHẢI: CHUYÊN GIA NỔI BẬT & TÌM KIẾM */}
+        {/* CỘT PHẢI: SẮP XẾP, ĐIỀU KIỆN HIỂN THỊ & PHẠM VI TÌM KIẾM */}
         <div className="lg:col-span-5 flex flex-col gap-4">
-          {/* Tiêu chuẩn hiển thị chuyên gia nổi bật */}
+          {/* Tiêu chuẩn sắp xếp & Hiển thị */}
           <Card>
             <CardHeader className="pb-3 border-b border-outline-variant/30">
               <CardTitle className="text-sm font-bold text-on-surface">
-                Tiêu chuẩn hiển thị chuyên gia nổi bật
+                Sắp xếp mặc định & Điều kiện hiển thị
               </CardTitle>
               <CardDescription className="text-xs">
-                Điều kiện lọc danh sách chuyên gia đề xuất đầu trang
+                Quy định cách xếp hạng Top chuyên gia đề xuất và tùy chọn sắp xếp trên ứng dụng
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-4 flex flex-col gap-3.5">
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs font-semibold">Thứ tự sắp xếp mặc định</Label>
-                <Select
-                  value={form.defaultSortBy}
-                  onValueChange={(value) => setForm((prev) => ({ ...prev, defaultSortBy: value }))}
-                >
+                <Select value={form.defaultSortBy} onValueChange={handleChangeDefaultSort}>
                   <SelectTrigger className="w-full h-9 text-xs">
                     <SelectValue placeholder="Chọn tiêu chí sắp xếp" />
                   </SelectTrigger>
@@ -576,168 +610,63 @@ export function ExpertSearchConfigTab({ onShowToast }) {
                 </Select>
               </div>
 
-              <div className="grid grid-cols-3 gap-2.5">
-                <div className="flex flex-col gap-1">
-                  <Label className="text-[11px] font-medium text-on-surface-variant">
-                    Số lượng tối đa
-                  </Label>
-                  <div className="flex items-center h-9 px-2.5 rounded-md border border-outline-variant/60 bg-surface-container-lowest focus-within:ring-1 focus-within:ring-primary">
-                    <input
-                      type="number"
-                      min={1}
-                      max={20}
-                      value={form.featuredMaxCount ?? ''}
-                      onChange={(e) => {
-                        const text = e.target.value
-                        if (text === '') {
-                          setForm((prev) => ({ ...prev, featuredMaxCount: '' }))
-                          return
-                        }
-                        const num = Number(text)
-                        if (!Number.isNaN(num)) {
-                          setForm((prev) => ({
-                            ...prev,
-                            featuredMaxCount: Math.min(20, num),
-                          }))
-                        }
-                      }}
-                      onBlur={() =>
-                        setForm((prev) => ({
-                          ...prev,
-                          featuredMaxCount: Math.min(
-                            20,
-                            Math.max(1, Number(prev.featuredMaxCount) || 1)
-                          ),
-                        }))
-                      }
-                      className="w-full min-w-0 bg-transparent text-xs font-semibold text-on-surface tabular-nums focus:outline-none"
-                    />
-                    <span className="text-[11px] text-on-surface-variant shrink-0 ml-1 select-none">
-                      người
-                    </span>
-                  </div>
+              <label className="flex items-start gap-2.5 p-2.5 rounded-lg border border-outline-variant/40 bg-surface-container-low/40 cursor-pointer">
+                <Checkbox
+                  checked={form.requireVerifiedCertificate}
+                  onCheckedChange={(checked) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      requireVerifiedCertificate: Boolean(checked),
+                    }))
+                  }
+                  className="mt-0.5"
+                />
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-on-surface">
+                    Bắt buộc có chứng chỉ hành nghề đã xác thực
+                  </span>
+                  <span className="text-[11px] text-on-surface-variant">
+                    Chỉ hiển thị chuyên gia có ít nhất 1 chứng chỉ đã được thẩm định hợp lệ
+                  </span>
                 </div>
+              </label>
 
-                <div className="flex flex-col gap-1">
-                  <Label className="text-[11px] font-medium text-on-surface-variant">
-                    Số sao tối thiểu
-                  </Label>
-                  <div className="flex items-center h-9 px-2.5 rounded-md border border-outline-variant/60 bg-surface-container-lowest focus-within:ring-1 focus-within:ring-primary">
-                    <input
-                      type="number"
-                      min={0}
-                      max={5}
-                      step={0.5}
-                      value={form.featuredMinRating ?? ''}
-                      onChange={(e) => {
-                        const text = e.target.value
-                        if (text === '') {
-                          setForm((prev) => ({ ...prev, featuredMinRating: '' }))
-                          return
-                        }
-                        const num = Number(text)
-                        if (!Number.isNaN(num)) {
-                          setForm((prev) => ({
-                            ...prev,
-                            featuredMinRating: Math.min(5, num),
-                          }))
-                        }
-                      }}
-                      onBlur={() =>
-                        setForm((prev) => ({
-                          ...prev,
-                          featuredMinRating: Math.min(
-                            5,
-                            Math.max(0, Number(prev.featuredMinRating) || 0)
-                          ),
-                        }))
-                      }
-                      className="w-full min-w-0 bg-transparent text-xs font-semibold text-on-surface tabular-nums focus:outline-none"
-                    />
-                    <span className="text-[11px] text-on-surface-variant shrink-0 ml-1 select-none">
-                      sao
-                    </span>
-                  </div>
+              <div className="flex flex-col gap-1.5 pt-2 border-t border-outline-variant/30">
+                <Label className="text-xs font-semibold">
+                  Các tùy chọn sắp xếp hiển thị cho người dùng
+                </Label>
+                <p className="text-[11px] text-on-surface-variant">
+                  Người dùng chỉ chọn được các tiêu chí được bật trong bộ lọc sắp xếp.
+                </p>
+                <div className="flex flex-col gap-1.5 mt-1">
+                  {SORT_OPTIONS.map((opt) => {
+                    const checked = form.allowedSortOptions.includes(opt.value)
+                    const isDefault = opt.value === form.defaultSortBy
+                    return (
+                      <label
+                        key={opt.value}
+                        className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
+                          checked
+                            ? 'border-outline-variant bg-surface-container-low/70'
+                            : 'border-outline-variant/40 bg-surface-container-lowest opacity-75'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={() => toggleAllowedSortOption(opt.value)}
+                          />
+                          <span className="font-medium text-on-surface">{opt.label}</span>
+                        </div>
+                        {isDefault && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            Mặc định
+                          </Badge>
+                        )}
+                      </label>
+                    )
+                  })}
                 </div>
-
-                <div className="flex flex-col gap-1">
-                  <Label className="text-[11px] font-medium text-on-surface-variant">
-                    Số ca tối thiểu
-                  </Label>
-                  <div className="flex items-center h-9 px-2.5 rounded-md border border-outline-variant/60 bg-surface-container-lowest focus-within:ring-1 focus-within:ring-primary">
-                    <input
-                      type="number"
-                      min={0}
-                      max={1000}
-                      value={form.featuredMinSessions ?? ''}
-                      onChange={(e) => {
-                        const text = e.target.value
-                        if (text === '') {
-                          setForm((prev) => ({ ...prev, featuredMinSessions: '' }))
-                          return
-                        }
-                        const num = Number(text)
-                        if (!Number.isNaN(num)) {
-                          setForm((prev) => ({
-                            ...prev,
-                            featuredMinSessions: Math.min(1000, num),
-                          }))
-                        }
-                      }}
-                      onBlur={() =>
-                        setForm((prev) => ({
-                          ...prev,
-                          featuredMinSessions: Math.max(0, Number(prev.featuredMinSessions) || 0),
-                        }))
-                      }
-                      className="w-full min-w-0 bg-transparent text-xs font-semibold text-on-surface tabular-nums focus:outline-none"
-                    />
-                    <span className="text-[11px] text-on-surface-variant shrink-0 ml-1 select-none">
-                      ca
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2 pt-2 border-t border-outline-variant/30">
-                <label className="flex items-start gap-2.5 p-2.5 rounded-lg border border-outline-variant/40 bg-surface-container-low/40 cursor-pointer">
-                  <Checkbox
-                    checked={form.prioritizeTodayAvailableSlots}
-                    onCheckedChange={(checked) =>
-                      setForm((prev) => ({ ...prev, prioritizeTodayAvailableSlots: Boolean(checked) }))
-                    }
-                    className="mt-0.5"
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-on-surface">
-                      Ưu tiên chuyên gia có lịch rảnh hôm nay
-                    </span>
-                    <span className="text-[11px] text-on-surface-variant">
-                      Cộng thêm điểm ưu tiên nếu chuyên gia còn khung giờ trống trong ngày
-                    </span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-2.5 p-2.5 rounded-lg border border-outline-variant/40 bg-surface-container-low/40 cursor-pointer">
-                  <Checkbox
-                    checked={form.onlyShowExpertsWithAvailableSlots}
-                    onCheckedChange={(checked) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        onlyShowExpertsWithAvailableSlots: Boolean(checked),
-                      }))
-                    }
-                    className="mt-0.5"
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-on-surface">
-                      Ẩn chuyên gia đã kín lịch
-                    </span>
-                    <span className="text-[11px] text-on-surface-variant">
-                      Chỉ hiển thị chuyên gia còn ít nhất 1 khung giờ trống trong 7 ngày tới
-                    </span>
-                  </div>
-                </label>
               </div>
             </CardContent>
           </Card>
@@ -755,7 +684,7 @@ export function ExpertSearchConfigTab({ onShowToast }) {
             <CardContent className="pt-4 flex flex-col gap-3.5">
               <div className="flex flex-col gap-1.5">
                 {SEARCHABLE_FIELD_OPTIONS.map((f) => {
-                  const checked = form.searchableFields.includes(f.key)
+                  const checked = Boolean(form.searchableFields[f.key])
                   return (
                     <label
                       key={f.key}
@@ -783,7 +712,7 @@ export function ExpertSearchConfigTab({ onShowToast }) {
               {specializations.length > 0 && (
                 <div className="flex flex-col gap-2 pt-3 border-t border-outline-variant/30">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold">Lĩnh vực ưu tiên đề xuất</Label>
+                    <Label className="text-xs font-semibold">Lĩnh vực ưu tiên đề xuất (+15 điểm)</Label>
                     {form.featuredSpecializationIds.length > 0 && (
                       <button
                         type="button"
@@ -795,11 +724,11 @@ export function ExpertSearchConfigTab({ onShowToast }) {
                     )}
                   </div>
                   <p className="text-[11px] text-on-surface-variant">
-                    Để trống nếu áp dụng cho tất cả lĩnh vực tư vấn.
+                    Chuyên gia thuộc các lĩnh vực này sẽ được cộng điểm thưởng ưu tiên khi xếp hạng đề xuất. Để trống nếu áp dụng đồng đều.
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {specializations.map((spec) => {
-                      const active = form.featuredSpecializationIds.includes(spec.id)
+                      const active = form.featuredSpecializationIds.includes(Number(spec.id))
                       return (
                         <button
                           key={spec.id}
@@ -827,7 +756,7 @@ export function ExpertSearchConfigTab({ onShowToast }) {
         open={confirmResetOpen}
         onOpenChange={setConfirmResetOpen}
         title="Khôi phục cấu hình mặc định"
-        description="Đưa toàn bộ trọng số xếp hạng và tiêu chuẩn tìm kiếm chuyên gia về mức mặc định ban đầu?"
+        description="Đưa toàn bộ trọng số xếp hạng, thứ tự mặc định và phạm vi tìm kiếm chuyên gia về mức mặc định ban đầu?"
         confirmLabel={isResetting ? 'Đang khôi phục...' : 'Khôi phục'}
         onConfirm={handleConfirmReset}
       />
