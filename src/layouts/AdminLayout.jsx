@@ -93,6 +93,7 @@ export function AdminLayout({
     { id: 'goi-dich-vu', label: 'Gói dịch vụ', icon: 'workspace_premium' },
     { id: 'phan-quyen', label: 'Phân quyền', icon: 'admin_panel_settings' },
     { id: 'cai-dat', label: 'Cấu hình hệ thống', icon: 'tune' },
+    { id: 'tham-so-thue', label: 'Tham số thuế TNCN', icon: 'request_quote' },
   ]
 
   const roleNormalized = (user?.userRole || user?.role || '').toLowerCase()

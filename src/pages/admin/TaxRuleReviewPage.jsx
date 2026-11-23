@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams, useParams, useNavigate } from 'react-router-dom'
 import { taxRuleService } from '@/services/taxRuleService'
+import { dependentService } from '@/services/dependentService'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading } from '@/components/ui/loading'
@@ -27,6 +28,105 @@ function extractYearFromTextOrDate(effectiveFrom, name, fallbackRules = []) {
     if (match) return parseInt(match[1], 10)
   }
   return null
+}
+
+// Danh sách nhóm đối tượng chi tiết chuẩn hóa từ BE (fallback nếu API GET /api/v1/dependents/groups chưa phản hồi)
+const FALLBACK_DEPENDENT_GROUPS = [
+  'CHILD_UNDER_18',
+  'CHILD_OVER_18_STUDYING',
+  'CHILD_OVER_18_DISABLED',
+  'SPOUSE_RETIRED',
+  'SPOUSE_DISABLED',
+  'PARENT_RETIRED',
+  'PARENT_DISABLED',
+  'OTHER_HELPLESS',
+]
+
+const REQUIRED_DOCUMENT_TYPE_VALUES = [
+  'BIRTH_CERTIFICATE',
+  'CITIZEN_ID',
+  'STUDENT_CARD',
+  'DISABILITY_CERTIFICATE',
+  'MARRIAGE_CERTIFICATE',
+  'RELATIONSHIP_CERTIFICATE',
+  'SUPPORT_COMMITMENT_FORM',
+  'RESIDENCE_CT07',
+  'OTHER',
+]
+
+const REQUIRED_DOCUMENT_TYPE_SET = new Set(REQUIRED_DOCUMENT_TYPE_VALUES)
+
+const TAX_RULE_STATUS_LABELS = {
+  Draft: 'Bản nháp',
+  Active: 'Đang áp dụng',
+  Expired: 'Hết hiệu lực',
+  Archived: 'Đã lưu trữ',
+}
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function isValidUuid(val) {
+  return typeof val === 'string' && UUID_REGEX.test(val.trim())
+}
+
+// Khớp normalize_document_type ở TaxAIService (app/mappers/tax_rule/tax_rule_mapper.py)
+function normalizeRequiredDocType(rawType) {
+  if (!rawType) return 'OTHER'
+  const cleaned = String(rawType).trim().toUpperCase()
+  if (['CCCD', 'CMND', 'CCCD_FRONT', 'CCCD_BACK', 'CCCD_BOTH'].includes(cleaned)) {
+    return 'CITIZEN_ID'
+  }
+  if (cleaned === 'DISABILITY_CERT') {
+    return 'DISABILITY_CERTIFICATE'
+  }
+  return REQUIRED_DOCUMENT_TYPE_SET.has(cleaned) ? cleaned : 'OTHER'
+}
+
+function unwrapRuleSetPayload(res) {
+  const resData = res?.data || res || {}
+  if (resData.taxRuleSet || resData.taxRules || resData.dependentRules) {
+    return resData
+  }
+  if (
+    resData.data &&
+    (resData.data.taxRuleSet || resData.data.taxRules || resData.data.dependentRules)
+  ) {
+    return resData.data
+  }
+  return resData
+}
+
+function normalizeDependentRule(item) {
+  if (!item) return null
+  const rawDocs = item.requiredDocuments ?? item.required_documents ?? []
+  return {
+    ...item,
+    id: item.id ?? null,
+    ruleId: item.ruleId ?? item.rule_id ?? null,
+    ruleSetId: item.ruleSetId ?? item.rule_set_id ?? null,
+    dependentType: item.dependentType ?? item.dependent_type ?? '',
+    name: item.name ?? '',
+    maxAge: item.maxAge ?? item.max_age ?? null,
+    maxMonthlyIncome: item.maxMonthlyIncome ?? item.max_monthly_income ?? null,
+    isStudying: Boolean(item.isStudying ?? item.is_studying ?? false),
+    isDisabled: Boolean(item.isDisabled ?? item.is_disabled ?? false),
+    conditions: item.conditions ?? null,
+    requiredDocuments: Array.isArray(rawDocs) ? rawDocs : [],
+    status: item.status ?? 'Draft',
+  }
+}
+
+function formatDependentConditionSummary(isStudying, isDisabled) {
+  const flags = []
+  if (isStudying) flags.push('Đang theo học')
+  if (isDisabled) flags.push('Khuyết tật / Mất khả năng LĐ')
+  return flags.length > 0 ? flags.join(', ') : 'Không yêu cầu đặc biệt'
+}
+
+function formatRuleStatusLabel(status) {
+  if (!status) return TAX_RULE_STATUS_LABELS.Draft
+  return TAX_RULE_STATUS_LABELS[status] || status
 }
 
 export function TaxRuleReviewPage({
@@ -85,6 +185,11 @@ export function TaxRuleReviewPage({
 
   // Trạng thái modal và form chỉnh sửa từng quy tắc riêng lẻ
   const [editingRule, setEditingRule] = useState(null)
+  // Trạng thái xác nhận xóa tiêu chí người phụ thuộc
+  const [deletingDependent, setDeletingDependent] = useState(null)
+  const [isDeletingDependent, setIsDeletingDependent] = useState(false)
+  // Danh sách nhóm đối tượng tải động từ BE (GET /api/v1/dependents/groups)
+  const [apiDependentGroups, setApiDependentGroups] = useState([])
 
   // 1. Đồng bộ prop extractedData từ trang Upload chỉ khi khớp với bộ quy tắc đang xem
   useEffect(() => {
@@ -120,6 +225,16 @@ export function TaxRuleReviewPage({
       })
       .catch(() => {
         // Bỏ qua lỗi tải danh mục bộ quy tắc thuế
+      })
+    dependentService
+      .getGroups()
+      .then((groups) => {
+        if (isMounted && Array.isArray(groups) && groups.length > 0) {
+          setApiDependentGroups(groups)
+        }
+      })
+      .catch(() => {
+        // Fallback sang danh sách nhóm chuẩn hóa nếu không gọi được API
       })
     return () => {
       isMounted = false
@@ -362,9 +477,39 @@ export function TaxRuleReviewPage({
   const brackets = rawTaxRules.filter((r) => r.ruleType === 'BRACKET')
   const deductions = rawTaxRules.filter((r) => r.ruleType === 'DEDUCTION')
   const rateExemptions = rawTaxRules.filter(
-    (r) => r.ruleType === 'RATE' || r.ruleType === 'EXEMPTION' || r.ruleType === 'REDUCTION'
+    (r) => r.ruleType === 'RATE' || r.ruleType === 'EXEMPTION'
   )
-  const dependents = rawDependentRules
+  const dependents = rawDependentRules.map(normalizeDependentRule).filter(Boolean)
+
+  // Danh sách nhóm đối tượng sinh động từ API BE (GET /api/v1/dependents/groups),
+  // bổ sung thêm nhóm chuẩn hóa còn thiếu (nếu DB chưa sync đủ) và giữ giá trị hiện tại khi mở sửa
+  const dependentGroupOptions = (() => {
+    const seen = new Set()
+    const ordered = []
+    const addGroup = (val) => {
+      if (!val) return
+      const key = String(val).trim().toUpperCase()
+      if (!key || seen.has(key)) return
+      seen.add(key)
+      ordered.push({ value: key, label: formatTargetGroup(key) })
+    }
+
+    const baseGroups =
+      apiDependentGroups.length > 0 ? apiDependentGroups : FALLBACK_DEPENDENT_GROUPS
+    baseGroups.forEach(addGroup)
+    FALLBACK_DEPENDENT_GROUPS.forEach(addGroup)
+
+    if (editingRule?.type === 'DEPENDENT_RULE' && editingRule.form?.dependentType) {
+      addGroup(editingRule.form.dependentType)
+    }
+
+    return ordered
+  })()
+
+  const requiredDocumentTypeOptions = REQUIRED_DOCUMENT_TYPE_VALUES.map((val) => ({
+    value: val,
+    label: formatDocType(val),
+  }))
 
   const totalRulesCount = rawTaxRules.length
 
@@ -592,19 +737,12 @@ export function TaxRuleReviewPage({
         isSaving: false,
       })
     } else {
-      // DEPENDENT_RULE
-      let condsText = ''
-      if (item.conditions) {
-        if (Array.isArray(item.conditions)) {
-          condsText = item.conditions.join('\n')
-        } else if (typeof item.conditions === 'string') {
-          condsText = item.conditions
-        }
-      }
-
+      // DEPENDENT_RULE: Chuẩn hóa đúng 100% schema DependentRuleResponse / DependentRuleUpdateRequest
+      const normalized = normalizeDependentRule(item)
+      const condsText = parseConditionsList(normalized.conditions).join('\n')
       const initialReqDocs = parseRequiredDocuments(
-        item.requiredDocuments || item.required_documents,
-        item.dependentType,
+        normalized.requiredDocuments,
+        normalized.dependentType,
         rawTaxRules
       )
 
@@ -613,18 +751,23 @@ export function TaxRuleReviewPage({
         isNew: false,
         type: 'DEPENDENT_RULE',
         category: category || 'Tiêu chí Người phụ thuộc',
-        original: item,
+        original: normalized,
         form: {
-          name: item.name || '',
-          dependentType: item.dependentType || 'CHILD',
-          maxAge: item.maxAge !== undefined && item.maxAge !== null ? String(item.maxAge) : '',
-          maxMonthlyIncome:
-            item.maxMonthlyIncome !== undefined && item.maxMonthlyIncome !== null
-              ? String(item.maxMonthlyIncome)
+          ruleId: normalized.ruleId || '',
+          name: normalized.name || '',
+          dependentType: normalized.dependentType || 'CHILD_UNDER_18',
+          maxAge:
+            normalized.maxAge !== undefined && normalized.maxAge !== null
+              ? String(normalized.maxAge)
               : '',
-          isStudying: Boolean(item.isStudying),
-          isDisabled: Boolean(item.isDisabled),
+          maxMonthlyIncome:
+            normalized.maxMonthlyIncome !== undefined && normalized.maxMonthlyIncome !== null
+              ? String(normalized.maxMonthlyIncome)
+              : '',
+          isStudying: Boolean(normalized.isStudying),
+          isDisabled: Boolean(normalized.isDisabled),
           conditionsText: condsText,
+          status: normalized.status || taxRuleSet.status || 'Draft',
           requiredDocuments: initialReqDocs,
         },
         errors: {},
@@ -640,6 +783,9 @@ export function TaxRuleReviewPage({
     }
 
     if (category === 'Tiêu chí Người phụ thuộc') {
+      // Lấy ruleId cha từ các dependentRule hiện có (TaxRule PIT_DEDUCTION_DEPENDENT)
+      const defaultParentRuleId = dependents.find((d) => isValidUuid(d.ruleId))?.ruleId || ''
+
       setEditingRule({
         isOpen: true,
         isNew: true,
@@ -647,13 +793,15 @@ export function TaxRuleReviewPage({
         category,
         original: null,
         form: {
+          ruleId: defaultParentRuleId,
           name: '',
-          dependentType: 'CHILD',
+          dependentType: 'CHILD_UNDER_18',
           maxAge: '',
           maxMonthlyIncome: '',
           isStudying: false,
           isDisabled: false,
           conditionsText: '',
+          status: taxRuleSet.status || 'Draft',
           requiredDocuments: [],
         },
         errors: {},
@@ -703,14 +851,39 @@ export function TaxRuleReviewPage({
         newErrors.value = 'Giá trị phải là một số hợp lệ.'
       }
     } else {
-      if (!form.name?.trim()) {
-        newErrors.name = 'Vui lòng nhập tên đối tượng người phụ thuộc.'
+      const trimmedName = form.name?.trim() || ''
+      if (!trimmedName) {
+        newErrors.name = 'Vui lòng nhập tên tiêu chí người phụ thuộc.'
+      } else if (trimmedName.length > 255) {
+        newErrors.name = 'Tên tiêu chí người phụ thuộc tối đa 255 ký tự.'
       }
-      if (form.maxAge !== '' && isNaN(Number(form.maxAge))) {
-        newErrors.maxAge = 'Độ tuổi tối đa phải là số.'
+      if (!form.dependentType?.trim()) {
+        newErrors.dependentType = 'Vui lòng chọn nhóm đối tượng người phụ thuộc.'
       }
-      if (form.maxMonthlyIncome !== '' && isNaN(Number(form.maxMonthlyIncome))) {
-        newErrors.maxMonthlyIncome = 'Thu nhập tối đa phải là số.'
+      if (form.maxAge !== '') {
+        const ageNum = Number(form.maxAge)
+        if (!Number.isFinite(ageNum) || !Number.isInteger(ageNum) || ageNum < 0) {
+          newErrors.maxAge = 'Độ tuổi tối đa phải là số nguyên không âm.'
+        }
+      }
+      if (form.maxMonthlyIncome !== '') {
+        const incNum = Number(form.maxMonthlyIncome)
+        if (!Number.isFinite(incNum) || incNum < 0) {
+          newErrors.maxMonthlyIncome = 'Thu nhập tối đa phải là số không âm.'
+        }
+      }
+      // Validate từng giấy tờ yêu cầu (RequiredDocumentItemRequest yêu cầu docType & name bắt buộc)
+      const docErrors = {}
+      ;(form.requiredDocuments || []).forEach((doc, idx) => {
+        const docName = doc.name?.trim() || ''
+        if (!docName) {
+          docErrors[idx] = 'Vui lòng nhập tên giấy tờ.'
+        } else if (docName.length > 255) {
+          docErrors[idx] = 'Tên giấy tờ tối đa 255 ký tự.'
+        }
+      })
+      if (Object.keys(docErrors).length > 0) {
+        newErrors.requiredDocuments = docErrors
       }
     }
 
@@ -722,7 +895,6 @@ export function TaxRuleReviewPage({
     setEditingRule((prev) => ({ ...prev, isSaving: true, errors: {} }))
 
     try {
-      let payload = {}
       if (type === 'TAX_RULE') {
         const ruleItemPayload = {
           ruleName: form.ruleName.trim(),
@@ -741,49 +913,23 @@ export function TaxRuleReviewPage({
         if (!isNew && original) {
           ruleItemPayload.ruleId = original.ruleId || original.id
         }
-        payload = {
-          taxRules: [ruleItemPayload],
-        }
-      } else {
-        const condList = form.conditionsText
-          ? form.conditionsText.split('\n').map((s) => s.trim()).filter(Boolean)
-          : []
-        const depItemPayload = {
-          name: form.name.trim(),
-          dependentType: form.dependentType,
-          maxAge: form.maxAge !== '' ? parseInt(form.maxAge, 10) : null,
-          maxMonthlyIncome: form.maxMonthlyIncome !== '' ? parseFloat(form.maxMonthlyIncome) : null,
-          isStudying: Boolean(form.isStudying),
-          isDisabled: Boolean(form.isDisabled),
-          conditions: condList.length > 0 ? condList : null,
-          requiredDocuments: form.requiredDocuments || [],
-          required_documents: form.requiredDocuments || [],
-        }
-        if (!isNew && original) {
-          depItemPayload.id = original.id || original.ruleId
-        }
-        payload = {
-          dependentRules: [depItemPayload],
-        }
-      }
+        const payload = { taxRules: [ruleItemPayload] }
+        const res = await taxRuleService.updateRuleSet(ruleSetId, payload)
+        const resData = unwrapRuleSetPayload(res)
 
-      const res = await taxRuleService.updateRuleSet(ruleSetId, payload)
-      const resData = res?.data || res || {}
-
-      // Cập nhật state in-memory currentData
-      setCurrentData((prev) => {
-        if (!prev) return prev
-        let updatedTaxRules = prev.taxRules || []
-        let updatedDepRules = prev.dependentRules || []
-
-        if (resData.taxRules) {
-          updatedTaxRules = resData.taxRules
-        } else if (type === 'TAX_RULE') {
-          if (isNew) {
-            updatedTaxRules = [...updatedTaxRules, {
-              ...payload.taxRules[0],
-              ruleId: `new_${Date.now()}`,
-            }]
+        setCurrentData((prev) => {
+          if (!prev) return prev
+          let updatedTaxRules = prev.taxRules || []
+          if (Array.isArray(resData.taxRules)) {
+            updatedTaxRules = resData.taxRules
+          } else if (isNew) {
+            updatedTaxRules = [
+              ...updatedTaxRules,
+              {
+                ...ruleItemPayload,
+                ruleId: `new_${Date.now()}`,
+              },
+            ]
           } else {
             updatedTaxRules = updatedTaxRules.map((r) => {
               const isMatch =
@@ -807,48 +953,139 @@ export function TaxRuleReviewPage({
               return r
             })
           }
+          return {
+            ...prev,
+            ...resData,
+            taxRules: updatedTaxRules,
+            dependentRules: Array.isArray(resData.dependentRules)
+              ? resData.dependentRules
+              : (prev.dependentRules || []),
+          }
+        })
+      } else {
+        // DEPENDENT_RULE: Gọi đúng endpoint CRUD mới của TaxAIService:
+        // - Thêm mới: POST /api/tax-rules/{ruleId}/dependent-rules (fallback PUT /api/tax-rules/{ruleSetId} nếu chưa có ruleId cha)
+        // - Cập nhật: PUT /api/tax-rules/dependent-rules/{dependentRuleId}
+        const condList = form.conditionsText
+          ? form.conditionsText.split('\n').map((s) => s.trim()).filter(Boolean)
+          : []
+
+        const formattedDocs = (form.requiredDocuments || []).map((doc) => {
+          const docPayload = {
+            docType: normalizeRequiredDocType(doc.docType),
+            name: doc.name.trim(),
+            isMandatory: doc.isMandatory !== false,
+            description: doc.description?.trim() || null,
+          }
+          if (!isNew && isValidUuid(doc.id)) {
+            docPayload.id = doc.id
+          }
+          return docPayload
+        })
+
+        const depPayload = {
+          dependentType: form.dependentType,
+          name: form.name.trim(),
+          maxAge: form.maxAge !== '' ? parseInt(form.maxAge, 10) : null,
+          maxMonthlyIncome: form.maxMonthlyIncome !== '' ? parseFloat(form.maxMonthlyIncome) : null,
+          isStudying: Boolean(form.isStudying),
+          isDisabled: Boolean(form.isDisabled),
+          conditions: condList,
+          status: form.status || original?.status || taxRuleSet.status || 'Draft',
+          requiredDocuments: formattedDocs,
         }
 
-        if (resData.dependentRules) {
-          updatedDepRules = resData.dependentRules
-        } else if (type === 'DEPENDENT_RULE') {
-          if (isNew) {
-            updatedDepRules = [...updatedDepRules, {
-              ...payload.dependentRules[0],
-              id: `new_dep_${Date.now()}`,
-            }]
-          } else {
-            const condList = form.conditionsText
-              ? form.conditionsText.split('\n').map((s) => s.trim()).filter(Boolean)
-              : []
-            updatedDepRules = updatedDepRules.map((d) => {
-              const isMatch = original.id && d.id === original.id
-              if (isMatch) {
-                return {
-                  ...d,
-                  name: form.name.trim(),
-                  dependentType: form.dependentType,
-                  maxAge: form.maxAge !== '' ? parseInt(form.maxAge, 10) : null,
-                  maxMonthlyIncome: form.maxMonthlyIncome !== '' ? parseFloat(form.maxMonthlyIncome) : null,
-                  isStudying: Boolean(form.isStudying),
-                  isDisabled: Boolean(form.isDisabled),
-                  conditions: condList.length > 0 ? condList : d.conditions,
-                  requiredDocuments: form.requiredDocuments || d.requiredDocuments || d.required_documents || [],
-                  required_documents: form.requiredDocuments || d.required_documents || d.requiredDocuments || [],
-                }
+        if (isNew) {
+          const parentRuleId = isValidUuid(form.ruleId)
+            ? form.ruleId
+            : (dependents.find((d) => isValidUuid(d.ruleId))?.ruleId || '')
+
+          if (parentRuleId) {
+            const res = await taxRuleService.createDependentRule(parentRuleId, {
+              ...depPayload,
+              ruleId: parentRuleId,
+            })
+            const createdDep = normalizeDependentRule(res?.data || res)
+            setCurrentData((prev) => {
+              if (!prev) return prev
+              return {
+                ...prev,
+                dependentRules: [
+                  ...(prev.dependentRules || []),
+                  {
+                    ...createdDep,
+                    ruleSetId: createdDep.ruleSetId || ruleSetId,
+                  },
+                ],
               }
-              return d
+            })
+          } else {
+            // Khi bộ luật chưa có tiêu chí NPT nào để lấy ruleId cha, PUT /api/tax-rules/{ruleSetId}
+            // sẽ tự ánh xạ sang TaxRule PIT_DEDUCTION_DEPENDENT và lưu cả dependent_rule_documents
+            const res = await taxRuleService.updateRuleSet(ruleSetId, {
+              dependentRules: [depPayload],
+            })
+            const resData = unwrapRuleSetPayload(res)
+            setCurrentData((prev) => {
+              if (!prev) return prev
+              return {
+                ...prev,
+                ...resData,
+                taxRules: Array.isArray(resData.taxRules) ? resData.taxRules : (prev.taxRules || []),
+                dependentRules: Array.isArray(resData.dependentRules)
+                  ? resData.dependentRules
+                  : (prev.dependentRules || []),
+              }
             })
           }
+        } else if (isValidUuid(original?.id)) {
+          const updatePayload = {
+            id: original.id,
+            ...(isValidUuid(form.ruleId) ? { ruleId: form.ruleId } : {}),
+            ...depPayload,
+          }
+          const res = await taxRuleService.updateDependentRule(original.id, updatePayload)
+          const updatedDep = normalizeDependentRule(res?.data || res)
+          setCurrentData((prev) => {
+            if (!prev) return prev
+            return {
+              ...prev,
+              dependentRules: (prev.dependentRules || []).map((d) =>
+                d.id === original.id
+                  ? {
+                      ...d,
+                      ...updatedDep,
+                      ruleSetId: updatedDep.ruleSetId || d.ruleSetId || ruleSetId,
+                    }
+                  : d
+              ),
+            }
+          })
+        } else {
+          // Fallback an toàn nếu dữ liệu tạm chưa có UUID chuẩn
+          const res = await taxRuleService.updateRuleSet(ruleSetId, {
+            dependentRules: [
+              {
+                ...(original?.id ? { id: original.id } : {}),
+                ...(isValidUuid(form.ruleId) ? { ruleId: form.ruleId } : {}),
+                ...depPayload,
+              },
+            ],
+          })
+          const resData = unwrapRuleSetPayload(res)
+          setCurrentData((prev) => {
+            if (!prev) return prev
+            return {
+              ...prev,
+              ...resData,
+              taxRules: Array.isArray(resData.taxRules) ? resData.taxRules : (prev.taxRules || []),
+              dependentRules: Array.isArray(resData.dependentRules)
+                ? resData.dependentRules
+                : (prev.dependentRules || []),
+            }
+          })
         }
-
-        return {
-          ...prev,
-          ...resData,
-          taxRules: updatedTaxRules,
-          dependentRules: updatedDepRules,
-        }
-      })
+      }
 
       if (
         selectedDetail && !isNew &&
@@ -863,7 +1100,9 @@ export function TaxRuleReviewPage({
       setEditingRule(null)
       showToast(
         'Thành công',
-        isNew ? 'Đã thêm quy tắc mới vào bộ quy tắc thuế!' : 'Đã cập nhật thông tin quy tắc thuế thành công!',
+        type === 'DEPENDENT_RULE'
+          ? (isNew ? 'Đã thêm tiêu chí người phụ thuộc mới!' : 'Đã cập nhật tiêu chí người phụ thuộc và danh mục giấy tờ!')
+          : (isNew ? 'Đã thêm quy tắc mới vào bộ quy tắc thuế!' : 'Đã cập nhật thông tin quy tắc thuế thành công!'),
         'success'
       )
     } catch (err) {
@@ -874,6 +1113,31 @@ export function TaxRuleReviewPage({
           server: err.message || 'Không thể lưu quy tắc. Vui lòng thử lại.',
         },
       }))
+    }
+  }
+
+  const handleConfirmDeleteDependent = async () => {
+    if (!deletingDependent || !isValidUuid(deletingDependent.id)) return
+    setIsDeletingDependent(true)
+    try {
+      await taxRuleService.deleteDependentRule(deletingDependent.id)
+      const deletedId = deletingDependent.id
+      setCurrentData((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          dependentRules: (prev.dependentRules || []).filter((d) => d.id !== deletedId),
+        }
+      })
+      if (selectedDetail?.type === 'DEPENDENT_RULE' && selectedDetail.data?.id === deletedId) {
+        setSelectedDetail(null)
+      }
+      setDeletingDependent(null)
+      showToast('Thành công', 'Đã xóa tiêu chí người phụ thuộc khỏi bộ quy tắc thuế.', 'success')
+    } catch (err) {
+      showToast('Xóa thất bại', err.message || 'Không thể xóa tiêu chí người phụ thuộc.', 'error')
+    } finally {
+      setIsDeletingDependent(false)
     }
   }
 
@@ -1087,12 +1351,22 @@ export function TaxRuleReviewPage({
 
     return raw.map((d) => {
       if (typeof d === 'string') {
-        return { name: d, docType: 'OTHER', isMandatory: true, description: '' }
+        return {
+          id: null,
+          dependentRuleId: null,
+          name: d,
+          docType: 'OTHER',
+          isMandatory: true,
+          description: '',
+        }
       }
+      const normalizedDocType = normalizeRequiredDocType(d.docType || d.doc_type)
       return {
-        name: d.name || d.docType || 'Giấy tờ chứng minh',
-        docType: d.docType || 'OTHER',
-        isMandatory: d.isMandatory !== false,
+        id: d.id || null,
+        dependentRuleId: d.dependentRuleId || d.dependent_rule_id || null,
+        name: d.name || formatDocType(normalizedDocType),
+        docType: normalizedDocType,
+        isMandatory: (d.isMandatory ?? d.is_mandatory) !== false,
         description: d.description || '',
       }
     })
@@ -1699,7 +1973,7 @@ export function TaxRuleReviewPage({
                           : 'group'}
                       </span>
                       <h4 className="font-title-sm text-title-sm font-bold text-on-surface">
-                        {formatTargetGroup(dep.name || dep.dependentType || dep.targetGroup)}
+                        {dep.name || formatTargetGroup(dep.dependentType)}
                       </h4>
                     </div>
                     <p className="font-body-sm text-body-sm text-on-surface-variant">
@@ -1710,17 +1984,31 @@ export function TaxRuleReviewPage({
                   <div className="flex flex-col gap-space-xs pt-space-sm border-t border-surface-container-high/60">
                     <div className="flex justify-between text-body-sm">
                       <span className="text-on-surface-variant">Độ tuổi tối đa:</span>
-                      <span className="font-bold text-primary">{dep.maxAge ? `Dưới ${dep.maxAge} tuổi` : 'Không áp dụng'}</span>
+                      <span className="font-bold text-primary">
+                        {dep.maxAge !== null && dep.maxAge !== undefined
+                          ? `≤ ${dep.maxAge} tuổi`
+                          : 'Không giới hạn'}
+                      </span>
                     </div>
                     <div className="flex justify-between text-body-sm">
                       <span className="text-on-surface-variant">Thu nhập tối đa:</span>
                       <span className="font-bold text-secondary">
-                        {dep.maxMonthlyIncome ? `≤ ${Number(dep.maxMonthlyIncome).toLocaleString('vi-VN')} đ/tháng` : 'Không quy định'}
+                        {dep.maxMonthlyIncome !== null && dep.maxMonthlyIncome !== undefined
+                          ? `≤ ${Number(dep.maxMonthlyIncome).toLocaleString('vi-VN')} đ/tháng`
+                          : 'Không quy định'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-body-sm gap-2">
+                      <span className="text-on-surface-variant shrink-0">Tình trạng:</span>
+                      <span className="font-medium text-on-surface text-right">
+                        {formatDependentConditionSummary(dep.isStudying, dep.isDisabled)}
                       </span>
                     </div>
                     <div className="flex justify-between text-body-sm">
-                      <span className="text-on-surface-variant">Tình trạng:</span>
-                      <span className="font-medium text-on-surface">{dep.isStudying ? 'Đang đi học' : dep.isDisabled ? 'Khuyết tật' : 'Bình thường'}</span>
+                      <span className="text-on-surface-variant">Trạng thái:</span>
+                      <span className="font-medium text-on-surface">
+                        {formatRuleStatusLabel(dep.status)}
+                      </span>
                     </div>
                   </div>
 
@@ -1778,15 +2066,27 @@ export function TaxRuleReviewPage({
                         <span>Chi tiết</span>
                       </button>
                       {!isSetApproved && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditRule('DEPENDENT_RULE', dep, 'Tiêu chí Người phụ thuộc')}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-on-primary transition-all text-xs font-semibold cursor-pointer border border-primary/30 shadow-2xs"
-                          title="Chỉnh sửa tiêu chí người phụ thuộc"
-                        >
-                          <span className="material-symbols-outlined text-[15px]">edit</span>
-                          <span>Sửa</span>
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditRule('DEPENDENT_RULE', dep, 'Tiêu chí Người phụ thuộc')}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-on-primary transition-all text-xs font-semibold cursor-pointer border border-primary/30 shadow-2xs"
+                            title="Chỉnh sửa tiêu chí người phụ thuộc"
+                          >
+                            <span className="material-symbols-outlined text-[15px]">edit</span>
+                            <span>Sửa</span>
+                          </button>
+                          {isValidUuid(dep.id) && (
+                            <button
+                              type="button"
+                              onClick={() => setDeletingDependent(dep)}
+                              className="inline-flex items-center justify-center p-1.5 rounded-lg bg-error/10 hover:bg-error text-error hover:text-on-error transition-all text-xs font-semibold cursor-pointer border border-error/30 shadow-2xs"
+                              title="Xóa tiêu chí người phụ thuộc"
+                            >
+                              <span className="material-symbols-outlined text-[15px]">delete</span>
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -2030,11 +2330,10 @@ export function TaxRuleReviewPage({
                       }}
                       className="w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border border-outline-variant/30 cursor-pointer"
                     >
-                      <option value="BRACKET">Biểu thuế lũy tiến từng phần (BRACKET)</option>
-                      <option value="DEDUCTION">Giảm trừ gia cảnh (DEDUCTION)</option>
-                      <option value="RATE">Thuế suất toàn phần (RATE)</option>
-                      <option value="EXEMPTION">Miễn thuế (EXEMPTION)</option>
-                        <option value="REDUCTION">Giảm thuế (REDUCTION)</option>
+                      <option value="BRACKET">Biểu thuế lũy tiến từng phần</option>
+                      <option value="DEDUCTION">Giảm trừ gia cảnh</option>
+                      <option value="RATE">Thuế suất toàn phần</option>
+                      <option value="EXEMPTION">Miễn thuế</option>
                     </select>
                   </div>
                 )}
@@ -2208,7 +2507,7 @@ export function TaxRuleReviewPage({
                 </div>
               </div>
             ) : (
-              /* Content for DEPENDENT_RULE */
+              /* Content for DEPENDENT_RULE - Khớp 100% DependentRuleCreateRequest / DependentRuleUpdateRequest */
               <div className="flex flex-col gap-space-md">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-md">
                   <div className="flex flex-col gap-1">
@@ -2217,6 +2516,7 @@ export function TaxRuleReviewPage({
                     </label>
                     <input
                       type="text"
+                      maxLength={255}
                       value={editingRule.form.name}
                       onChange={(e) =>
                         setEditingRule((prev) => ({
@@ -2225,7 +2525,9 @@ export function TaxRuleReviewPage({
                           errors: { ...prev.errors, name: null },
                         }))
                       }
-                      className="w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border border-outline-variant/30"
+                      className={`w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border ${
+                        editingRule.errors?.name ? 'border-error' : 'border-outline-variant/30'
+                      }`}
                       placeholder="VD: Con dưới 18 tuổi"
                     />
                     {editingRule.errors?.name && (
@@ -2235,7 +2537,7 @@ export function TaxRuleReviewPage({
 
                   <div className="flex flex-col gap-1">
                     <label className="text-label-md font-semibold text-on-surface">
-                      Nhóm đối tượng
+                      Nhóm đối tượng <span className="text-error">*</span>
                     </label>
                     <select
                       value={editingRule.form.dependentType}
@@ -2243,23 +2545,22 @@ export function TaxRuleReviewPage({
                         setEditingRule((prev) => ({
                           ...prev,
                           form: { ...prev.form, dependentType: e.target.value },
+                          errors: { ...prev.errors, dependentType: null },
                         }))
                       }
-                      className="w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border border-outline-variant/30 cursor-pointer"
+                      className={`w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border cursor-pointer ${
+                        editingRule.errors?.dependentType ? 'border-error' : 'border-outline-variant/30'
+                      }`}
                     >
-                      <option value="CHILD">Con dưới 18 tuổi</option>
-                      <option value="CHILD_UNDER_18">Con dưới 18 tuổi (Chi tiết)</option>
-                      <option value="ADULT_CHILD">Con từ 18 tuổi trở lên đang đi học</option>
-                      <option value="CHILD_OVER_18_STUDYING">Con từ 18 tuổi trở lên đang đi học (Chi tiết)</option>
-                      <option value="CHILD_OVER_18_DISABLED">Con từ 18 tuổi trở lên bị khuyết tật, mất khả năng lao động</option>
-                      <option value="SPOUSE">Vợ hoặc chồng</option>
-                      <option value="SPOUSE_DISABLED">Vợ hoặc chồng không có khả năng lao động</option>
-                      <option value="PARENT">Cha đẻ, mẹ đẻ, cha mẹ vợ/chồng, cha dượng, mẹ kế</option>
-                      <option value="PARENT_RETIRED">Cha mẹ đã hết tuổi lao động</option>
-                      <option value="PARENT_DISABLED">Cha mẹ trong độ tuổi lao động bị khuyết tật</option>
-                      <option value="OTHER">Người phụ thuộc khác</option>
-                      <option value="OTHER_HELPLESS">Cá nhân khác không nơi nương tựa</option>
+                      {dependentGroupOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
                     </select>
+                    {editingRule.errors?.dependentType && (
+                      <span className="text-xs text-error">{editingRule.errors.dependentType}</span>
+                    )}
                   </div>
                 </div>
 
@@ -2270,6 +2571,8 @@ export function TaxRuleReviewPage({
                     </label>
                     <input
                       type="number"
+                      min="0"
+                      step="1"
                       value={editingRule.form.maxAge}
                       onChange={(e) =>
                         setEditingRule((prev) => ({
@@ -2278,8 +2581,10 @@ export function TaxRuleReviewPage({
                           errors: { ...prev.errors, maxAge: null },
                         }))
                       }
-                      className="w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border border-outline-variant/30"
-                      placeholder="VD: 18 (để trống nếu không giới hạn)"
+                      className={`w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border ${
+                        editingRule.errors?.maxAge ? 'border-error' : 'border-outline-variant/30'
+                      }`}
+                      placeholder="VD: 18 (trống = không giới hạn)"
                     />
                     {editingRule.errors?.maxAge && (
                       <span className="text-xs text-error">{editingRule.errors.maxAge}</span>
@@ -2292,6 +2597,8 @@ export function TaxRuleReviewPage({
                     </label>
                     <input
                       type="number"
+                      min="0"
+                      step="any"
                       value={editingRule.form.maxMonthlyIncome}
                       onChange={(e) =>
                         setEditingRule((prev) => ({
@@ -2300,9 +2607,18 @@ export function TaxRuleReviewPage({
                           errors: { ...prev.errors, maxMonthlyIncome: null },
                         }))
                       }
-                      className="w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border border-outline-variant/30"
-                      placeholder="VD: 1000000 (để trống nếu không quy định)"
+                      className={`w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border ${
+                        editingRule.errors?.maxMonthlyIncome ? 'border-error' : 'border-outline-variant/30'
+                      }`}
+                      placeholder="VD: 1000000 (trống = không quy định)"
                     />
+                    {editingRule.form.maxMonthlyIncome !== '' &&
+                      !Number.isNaN(Number(editingRule.form.maxMonthlyIncome)) &&
+                      Number(editingRule.form.maxMonthlyIncome) >= 0 && (
+                        <span className="text-[11px] text-on-surface-variant">
+                          Hiển thị: ≤ {Number(editingRule.form.maxMonthlyIncome).toLocaleString('vi-VN')} đ/tháng
+                        </span>
+                      )}
                     {editingRule.errors?.maxMonthlyIncome && (
                       <span className="text-xs text-error">{editingRule.errors.maxMonthlyIncome}</span>
                     )}
@@ -2345,7 +2661,7 @@ export function TaxRuleReviewPage({
                 {/* Conditions / Documentation */}
                 <div className="flex flex-col gap-1">
                   <label className="text-label-md font-semibold text-on-surface">
-                    Điều kiện chứng minh &amp; Hồ sơ bắt buộc (Mỗi điều kiện một dòng)
+                    Điều kiện áp dụng (Mỗi điều kiện một dòng)
                   </label>
                   <textarea
                     rows={3}
@@ -2357,11 +2673,11 @@ export function TaxRuleReviewPage({
                       }))
                     }
                     className="w-full p-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border border-outline-variant/30 font-sans"
-                    placeholder="Bản sao Giấy khai sinh hoặc Thẻ CCCD&#10;Giấy xác nhận sinh viên đối với con trên 18 tuổi..."
+                    placeholder="Nhập từng điều kiện áp dụng theo quy định pháp luật, mỗi điều kiện một dòng..."
                   />
                 </div>
 
-                {/* Danh mục giấy tờ cần chứng minh (required_documents) */}
+                {/* Danh mục giấy tờ cần chứng minh (bảng dependent_rule_documents - khớp RequiredDocumentItemRequest) */}
                 <div className="flex flex-col gap-2 p-space-md rounded-xl bg-surface-container-low/60 border border-outline-variant/20">
                   <div className="flex items-center justify-between">
                     <label className="text-label-md font-semibold text-on-surface flex items-center gap-1.5">
@@ -2378,8 +2694,9 @@ export function TaxRuleReviewPage({
                             requiredDocuments: [
                               ...(prev.form.requiredDocuments || []),
                               {
+                                id: null,
+                                docType: REQUIRED_DOCUMENT_TYPE_VALUES[0],
                                 name: '',
-                                docType: 'OTHER',
                                 isMandatory: true,
                                 description: '',
                               },
@@ -2396,114 +2713,134 @@ export function TaxRuleReviewPage({
 
                   {(!editingRule.form.requiredDocuments || editingRule.form.requiredDocuments.length === 0) && (
                     <p className="text-xs text-on-surface-variant italic py-1">
-                      Chưa có loại giấy tờ nào được cấu hình cho tiêu chí này. Nhấn "Thêm giấy tờ" để bổ sung các loại hồ sơ chứng minh.
+                      Chưa có loại giấy tờ nào được cấu hình cho tiêu chí này. Nhấn &quot;Thêm giấy tờ&quot; để bổ sung các loại hồ sơ chứng minh.
                     </p>
                   )}
 
                   <div className="flex flex-col gap-2">
-                    {(editingRule.form.requiredDocuments || []).map((docItem, dIndex) => (
-                      <div
-                        key={dIndex}
-                        className="p-3 rounded-lg bg-surface-container-lowest border border-outline-variant/30 flex flex-col gap-2 shadow-2xs"
-                      >
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-                          <div className="sm:col-span-6 flex flex-col gap-0.5">
-                            <span className="text-[11px] font-semibold text-on-surface-variant">Tên giấy tờ</span>
+                    {(editingRule.form.requiredDocuments || []).map((docItem, dIndex) => {
+                      const docErr = editingRule.errors?.requiredDocuments?.[dIndex]
+                      return (
+                        <div
+                          key={docItem.id || `new-doc-${dIndex}`}
+                          className="p-3 rounded-lg bg-surface-container-lowest border border-outline-variant/30 flex flex-col gap-2 shadow-2xs"
+                        >
+                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
+                            <div className="sm:col-span-5 flex flex-col gap-0.5">
+                              <span className="text-[11px] font-semibold text-on-surface-variant">
+                                Tên giấy tờ <span className="text-error">*</span>
+                              </span>
+                              <input
+                                type="text"
+                                maxLength={255}
+                                value={docItem.name}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  setEditingRule((prev) => {
+                                    const updated = [...(prev.form.requiredDocuments || [])]
+                                    updated[dIndex] = { ...updated[dIndex], name: val }
+                                    const nextDocErrors = { ...(prev.errors?.requiredDocuments || {}) }
+                                    delete nextDocErrors[dIndex]
+                                    return {
+                                      ...prev,
+                                      form: { ...prev.form, requiredDocuments: updated },
+                                      errors: {
+                                        ...prev.errors,
+                                        requiredDocuments:
+                                          Object.keys(nextDocErrors).length > 0 ? nextDocErrors : null,
+                                      },
+                                    }
+                                  })
+                                }}
+                                className={`w-full h-8 px-2.5 rounded text-xs bg-surface-container-low border focus:outline-none ${
+                                  docErr ? 'border-error' : 'border-outline-variant/30'
+                                }`}
+                                placeholder="VD: Giấy khai sinh, CCCD..."
+                              />
+                              {docErr && <span className="text-[11px] text-error">{docErr}</span>}
+                            </div>
+
+                            <div className="sm:col-span-5 flex flex-col gap-0.5">
+                              <span className="text-[11px] font-semibold text-on-surface-variant">
+                                Loại chứng từ <span className="text-error">*</span>
+                              </span>
+                              <select
+                                value={normalizeRequiredDocType(docItem.docType)}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  setEditingRule((prev) => {
+                                    const updated = [...(prev.form.requiredDocuments || [])]
+                                    updated[dIndex] = { ...updated[dIndex], docType: val }
+                                    return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
+                                  })
+                                }}
+                                className="w-full h-8 px-2 rounded text-xs bg-surface-container-low border border-outline-variant/30 focus:outline-none cursor-pointer"
+                              >
+                                {requiredDocumentTypeOptions.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="sm:col-span-2 flex items-center justify-between sm:justify-end gap-2 pt-3 sm:pt-4">
+                              <label className="flex items-center gap-1 text-[11px] font-semibold text-on-surface cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={docItem.isMandatory !== false}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked
+                                    setEditingRule((prev) => {
+                                      const updated = [...(prev.form.requiredDocuments || [])]
+                                      updated[dIndex] = { ...updated[dIndex], isMandatory: checked }
+                                      return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
+                                    })
+                                  }}
+                                  className="w-3.5 h-3.5 rounded text-primary focus:ring-primary"
+                                />
+                                <span>Bắt buộc</span>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingRule((prev) => {
+                                    const updated = (prev.form.requiredDocuments || []).filter((_, idx) => idx !== dIndex)
+                                    return {
+                                      ...prev,
+                                      form: { ...prev.form, requiredDocuments: updated },
+                                      errors: { ...prev.errors, requiredDocuments: null },
+                                    }
+                                  })
+                                }}
+                                className="text-error hover:bg-error/10 p-1 rounded transition-colors cursor-pointer"
+                                title="Xóa loại giấy tờ này"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">delete</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[11px] font-semibold text-on-surface-variant">Mô tả / Hướng dẫn hồ sơ</span>
                             <input
                               type="text"
-                              value={docItem.name}
+                              value={docItem.description || ''}
                               onChange={(e) => {
                                 const val = e.target.value
                                 setEditingRule((prev) => {
                                   const updated = [...(prev.form.requiredDocuments || [])]
-                                  updated[dIndex] = { ...updated[dIndex], name: val }
+                                  updated[dIndex] = { ...updated[dIndex], description: val }
                                   return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
                                 })
                               }}
                               className="w-full h-8 px-2.5 rounded text-xs bg-surface-container-low border border-outline-variant/30 focus:outline-none"
-                              placeholder="VD: Giấy khai sinh, CCCD..."
+                              placeholder="VD: Bản sao công chứng, nộp kèm bản chính đối chiếu..."
                             />
                           </div>
-
-                          <div className="sm:col-span-4 flex flex-col gap-0.5">
-                            <span className="text-[11px] font-semibold text-on-surface-variant">Loại chứng từ</span>
-                            <select
-                              value={docItem.docType}
-                              onChange={(e) => {
-                                const val = e.target.value
-                                setEditingRule((prev) => {
-                                  const updated = [...(prev.form.requiredDocuments || [])]
-                                  updated[dIndex] = { ...updated[dIndex], docType: val }
-                                  return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
-                                })
-                              }}
-                              className="w-full h-8 px-2 rounded text-xs bg-surface-container-low border border-outline-variant/30 focus:outline-none cursor-pointer"
-                            >
-                              <option value="BIRTH_CERTIFICATE">Giấy khai sinh</option>
-                              <option value="CITIZEN_ID">Căn cước công dân / CMND</option>
-                              <option value="STUDENT_CARD">Thẻ sinh viên / Giấy xác nhận nhà trường</option>
-                              <option value="DISABILITY_CERTIFICATE">Giấy xác nhận khuyết tật / Y tế</option>
-                              <option value="MARRIAGE_CERTIFICATE">Giấy chứng nhận kết hôn</option>
-                              <option value="RELATIONSHIP_CERTIFICATE">Giấy tờ xác nhận quan hệ gia đình</option>
-                              <option value="SUPPORT_COMMITMENT_FORM">Bản kê khai cam kết nuôi dưỡng</option>
-                              <option value="RESIDENCE_CT07">Giấy xác nhận thông tin cư trú (Mẫu CT07)</option>
-                              <option value="INCOME_DECLARATION">Tờ khai xác nhận thu nhập</option>
-                              <option value="OTHER">Giấy tờ chứng minh khác</option>
-                            </select>
-                          </div>
-
-                          <div className="sm:col-span-2 flex items-center justify-between sm:justify-end gap-2 pt-3 sm:pt-4">
-                            <label className="flex items-center gap-1 text-[11px] font-semibold text-on-surface cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={docItem.isMandatory}
-                                onChange={(e) => {
-                                  const checked = e.target.checked
-                                  setEditingRule((prev) => {
-                                    const updated = [...(prev.form.requiredDocuments || [])]
-                                    updated[dIndex] = { ...updated[dIndex], isMandatory: checked }
-                                    return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
-                                  })
-                                }}
-                                className="w-3.5 h-3.5 rounded text-primary focus:ring-primary"
-                              />
-                              <span>Bắt buộc</span>
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingRule((prev) => {
-                                  const updated = (prev.form.requiredDocuments || []).filter((_, idx) => idx !== dIndex)
-                                  return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
-                                })
-                              }}
-                              className="text-error hover:bg-error/10 p-1 rounded transition-colors cursor-pointer"
-                              title="Xóa loại giấy tờ này"
-                            >
-                              <span className="material-symbols-outlined text-[16px]">delete</span>
-                            </button>
-                          </div>
                         </div>
-
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-[11px] font-semibold text-on-surface-variant">Mô tả / Hướng dẫn hồ sơ</span>
-                          <input
-                            type="text"
-                            value={docItem.description || ''}
-                            onChange={(e) => {
-                              const val = e.target.value
-                              setEditingRule((prev) => {
-                                const updated = [...(prev.form.requiredDocuments || [])]
-                                updated[dIndex] = { ...updated[dIndex], description: val }
-                                return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
-                              })
-                            }}
-                            className="w-full h-8 px-2.5 rounded text-xs bg-surface-container-low border border-outline-variant/30 focus:outline-none"
-                            placeholder="VD: Bản sao công chứng, nộp kèm bản chính đối chiếu..."
-                          />
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               </div>
@@ -2614,7 +2951,7 @@ export function TaxRuleReviewPage({
                     </span>
                     <div className="flex items-center gap-2 mt-1 text-on-surface font-medium text-body-sm">
                       <span className="material-symbols-outlined text-secondary text-[18px]">calendar_today</span>
-                      <span>Năm {taxRuleSet.taxYear || selectedDetail?.data?.taxYear || '—'}</span>
+                      <span>Năm {taxRuleSet.taxYear || '—'}</span>
                       {selectedDetail.data.effectiveFrom && (
                         <span className="text-on-surface-variant text-xs">
                           (Từ: {selectedDetail.data.effectiveFrom})
@@ -2692,9 +3029,9 @@ export function TaxRuleReviewPage({
 
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-outline-variant/30 text-xs text-on-surface-variant">
                     <span className="truncate">Văn bản: {selectedDetail.data.legalDocument || taxRuleSet.name || '—'}</span>
-                    {(selectedDetail.data.sourceUrl || taxRuleSet.sourceUrl) && (
+                    {selectedDetail.data.sourceUrl && (
                       <a
-                        href={selectedDetail.data.sourceUrl || taxRuleSet.sourceUrl}
+                        href={selectedDetail.data.sourceUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="text-primary hover:underline font-semibold flex items-center gap-1 shrink-0"
@@ -2724,7 +3061,8 @@ export function TaxRuleReviewPage({
                       Mức thu nhập tối đa
                     </span>
                     <span className="text-title-sm font-bold text-secondary mt-0.5">
-                      {selectedDetail.data.maxMonthlyIncome
+                      {selectedDetail.data.maxMonthlyIncome !== null &&
+                      selectedDetail.data.maxMonthlyIncome !== undefined
                         ? `≤ ${Number(selectedDetail.data.maxMonthlyIncome).toLocaleString('vi-VN')} đ/tháng`
                         : 'Không quy định'}
                     </span>
@@ -2735,7 +3073,9 @@ export function TaxRuleReviewPage({
                       Độ tuổi tối đa
                     </span>
                     <span className="text-title-sm font-bold text-on-surface mt-0.5">
-                      {selectedDetail.data.maxAge ? `Dưới ${selectedDetail.data.maxAge} tuổi` : 'Không giới hạn'}
+                      {selectedDetail.data.maxAge !== null && selectedDetail.data.maxAge !== undefined
+                        ? `≤ ${selectedDetail.data.maxAge} tuổi`
+                        : 'Không giới hạn'}
                     </span>
                   </div>
 
@@ -2744,7 +3084,19 @@ export function TaxRuleReviewPage({
                       Điều kiện học tập &amp; sức khỏe
                     </span>
                     <span className="text-title-sm font-bold text-on-surface mt-0.5">
-                      {selectedDetail.data.isStudying ? 'Đang theo học' : selectedDetail.data.isDisabled ? 'Khuyết tật / Mất khả năng LĐ' : 'Bình thường'}
+                      {formatDependentConditionSummary(
+                        selectedDetail.data.isStudying,
+                        selectedDetail.data.isDisabled
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="p-space-md rounded-xl bg-surface-container-low/60 flex flex-col gap-1 border border-outline-variant/20 sm:col-span-2">
+                    <span className="text-label-sm font-semibold text-on-surface-variant uppercase tracking-wider">
+                      Trạng thái quy tắc
+                    </span>
+                    <span className="text-title-sm font-bold text-on-surface mt-0.5">
+                      {formatRuleStatusLabel(selectedDetail.data.status)}
                     </span>
                   </div>
                 </div>
@@ -2855,24 +3207,79 @@ export function TaxRuleReviewPage({
 
             {/* Footer */}
             <div className="flex items-center justify-between pt-space-xs border-t border-outline-variant/30">
-              <button
-                type="button"
-                onClick={() => {
-                  const detail = selectedDetail
-                  setSelectedDetail(null)
-                  handleOpenEditRule(detail.type, detail.data, detail.category)
-                }}
-                className="inline-flex items-center gap-1.5 px-space-md py-2 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-on-primary font-title-sm text-title-sm font-semibold transition-all cursor-pointer border border-primary/30 shadow-2xs"
-              >
-                <span className="material-symbols-outlined text-[18px]">edit</span>
-                <span>Chỉnh sửa quy tắc này</span>
-              </button>
+              {!isSetApproved ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const detail = selectedDetail
+                    setSelectedDetail(null)
+                    handleOpenEditRule(detail.type, detail.data, detail.category)
+                  }}
+                  className="inline-flex items-center gap-1.5 px-space-md py-2 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-on-primary font-title-sm text-title-sm font-semibold transition-all cursor-pointer border border-primary/30 shadow-2xs"
+                >
+                  <span className="material-symbols-outlined text-[18px]">edit</span>
+                  <span>Chỉnh sửa quy tắc này</span>
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs text-secondary italic">
+                  <span className="material-symbols-outlined text-[14px]">lock</span>
+                  Đã khóa chỉnh sửa (bộ quy tắc đã duyệt)
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => setSelectedDetail(null)}
                 className="px-space-xl py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-title-sm text-title-sm font-semibold transition-all cursor-pointer shadow-sm"
               >
                 Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Dependent Rule Confirmation Modal */}
+      {deletingDependent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-surface-container-lowest w-full max-w-md rounded-2xl shadow-2xl p-space-xl flex flex-col gap-space-md">
+            <div className="flex items-start gap-space-md">
+              <div className="w-11 h-11 rounded-xl bg-error/10 text-error flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[24px]">delete_forever</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <h3 className="font-headline-sm text-title-md font-bold text-on-surface">
+                  Xác nhận xóa tiêu chí người phụ thuộc
+                </h3>
+                <p className="text-body-sm text-on-surface-variant leading-relaxed">
+                  Bạn có chắc chắn muốn xóa tiêu chí{' '}
+                  <strong className="text-on-surface">
+                    {formatTargetGroup(deletingDependent.name || deletingDependent.dependentType)}
+                  </strong>{' '}
+                  cùng toàn bộ danh mục giấy tờ yêu cầu thuộc tiêu chí này?
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-space-sm pt-space-xs border-t border-outline-variant/30">
+              <button
+                type="button"
+                disabled={isDeletingDependent}
+                onClick={() => setDeletingDependent(null)}
+                className="px-space-md py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface text-title-sm font-medium transition-colors cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingDependent}
+                onClick={handleConfirmDeleteDependent}
+                className="inline-flex items-center gap-1.5 px-space-lg py-2 rounded-lg bg-error text-on-error hover:opacity-90 text-title-sm font-bold shadow-sm transition-all cursor-pointer disabled:opacity-70"
+              >
+                {isDeletingDependent ? (
+                  <span className="w-4 h-4 rounded-full border-2 border-on-error border-t-transparent animate-spin" />
+                ) : (
+                  <span className="material-symbols-outlined text-[18px]">delete</span>
+                )}
+                <span>{isDeletingDependent ? 'Đang xóa...' : 'Xóa tiêu chí'}</span>
               </button>
             </div>
           </div>
