@@ -11,6 +11,7 @@ import { TaxDocumentTypeModal } from '@/components/admin/TaxDocumentTypeModal'
 import { MedicalCategoryTab } from '@/components/admin/MedicalCategoryTab'
 import { AiKeyManagementTab } from '@/components/admin/AiKeyManagementTab'
 import { AiPromptTemplateTab } from '@/components/admin/AiPromptTemplateTab'
+import { SystemConfigV1Tab } from '@/components/admin/SystemConfigV1Tab'
 import {
   DATA_TYPE_META,
   CONFIG_SORT_ORDER,
@@ -28,7 +29,7 @@ import {
 
 export function AdminSystemSettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  // Tabs: 'ai-configs' | 'ai-keys' | 'ai-prompts' | 'domains' | 'document-types' | 'medical-categories' | 'expert-search' | 'expert-certificates' | 'system'
+  // Tabs: 'ai-configs' | 'ai-keys' | 'ai-prompts' | 'domains' | 'document-types' | 'medical-categories' | 'system-configs' | 'system'
   const activeTab = searchParams.get('tab') || 'ai-configs'
 
   const handleTabChange = (tab) => {
@@ -654,6 +655,18 @@ export function AdminSystemSettingsPage() {
         </button>
 
         <button
+          onClick={() => handleTabChange('system-configs')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'system-configs'
+              ? 'bg-primary text-on-primary shadow-xs'
+              : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">database</span>
+          <span>Bảng tham số hệ thống</span>
+        </button>
+
+        <button
           onClick={() => handleTabChange('system')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
             activeTab === 'system'
@@ -1179,6 +1192,9 @@ export function AdminSystemSettingsPage() {
           </div>
         </div>
       )}
+
+      {/* Bảng system_configs của BE: CRUD qua /api/v1/system-configs */}
+      {activeTab === 'system-configs' && <SystemConfigV1Tab />}
 
       {/* ========================================================================= */}
       {/* TAB 3: THAM SỐ VẬN HÀNH CHUNG                                             */}

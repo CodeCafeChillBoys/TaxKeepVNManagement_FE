@@ -6,6 +6,7 @@ import { TaxRuleReviewPage } from './TaxRuleReviewPage'
 import { AdminProfileSettings } from './AdminProfileSettings'
 import { AdminSystemSettingsPage } from './AdminSystemSettingsPage'
 import { AdminDependentRulesPage } from './AdminDependentRulesPage'
+import { AdminTaxParametersPage } from './AdminTaxParametersPage'
 import { AdminApprovalHistoryPage } from './AdminApprovalHistoryPage'
 import { AdminExpertManagementPage, AdminSystemFundPage } from './AdminExpertManagementPage'
 import { AdminSubscriptionPlansPage } from './AdminSubscriptionPlansPage'
@@ -219,6 +220,8 @@ export function AdminDashboard({ onLogout }) {
           : searchParams.get('tab') === 'ai-prompts'
           ? 'Quản trị mẫu chỉ dẫn nghiệp vụ'
           : 'Cấu hình hệ thống')
+      : currentRoute === 'tham-so-thue'
+      ? 'Tham số thuế TNCN'
       : currentRoute === 'ai-keys'
       ? 'Quản lý khóa kết nối dịch vụ'
       : currentRoute === 'ai-prompts' || currentRoute === 'prompt-ai' || currentRoute === 'prompt-templates'
@@ -269,6 +272,11 @@ export function AdminDashboard({ onLogout }) {
       {/* Route 4: Cấu hình hệ thống */}
       {currentRoute === 'cai-dat' && (
         <AdminSystemSettingsPage />
+      )}
+
+      {/* Route: Tham số thuế TNCN (bộ API /api/v1/system-configs) */}
+      {currentRoute === 'tham-so-thue' && (
+        <AdminTaxParametersPage />
       )}
 
       {/* Route 5: Hồ sơ cá nhân & Đổi mật khẩu (từ submenu avatar góc dưới màn hình) */}
@@ -608,6 +616,7 @@ export function AdminDashboard({ onLogout }) {
         currentRoute !== 'quy-tac-thue' &&
         currentRoute !== 'van-ban-quy-pham' &&
         currentRoute !== 'cai-dat' &&
+        currentRoute !== 'tham-so-thue' &&
         currentRoute !== 'ho-so' &&
         currentRoute !== 'lich-su-phe-duyet' &&
         currentRoute !== 'lich-su' &&
