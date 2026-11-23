@@ -137,6 +137,16 @@ export function parseApiError(error) {
       suggestion =
         'Khắc phục: Vui lòng kiểm tra lại văn bản nguồn hoặc liên hệ quản trị viên để chuẩn hóa cấu trúc dữ liệu.'
     }
+  } else if (status === 422) {
+    title = 'Dữ liệu gửi lên chưa hợp lệ'
+    friendlyMessage = Array.isArray(data.detail)
+      ? data.detail
+          .map((d) => {
+            const loc = Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : ''
+            return loc ? `${loc}: ${d.msg}` : d.msg
+          })
+          .join('; ')
+      : rawMsg || 'Dữ liệu không đúng định dạng hệ thống yêu cầu.'
   } else if (status === 404) {
     title = 'Không tìm thấy dữ liệu'
     friendlyMessage = 'Bộ quy tắc thuế hoặc tài liệu yêu cầu không tồn tại trên hệ thống.'
@@ -304,6 +314,100 @@ export const taxRuleService = {
           // Bỏ qua fallback lỗi, tiếp tục ném lỗi gốc
         }
       }
+      throw parseApiError(error)
+    }
+  },
+
+  /**
+   * Thêm mới một tiêu chí người phụ thuộc (kèm danh mục giấy tờ yêu cầu) cho TaxRule cha
+   * POST /api/tax-rules/{ruleId}/dependent-rules
+   * @param {string} ruleId - UUID của TaxRule cha (vd: PIT_DEDUCTION_DEPENDENT)
+   * @param {Object} payload - DependentRuleCreateRequest
+   */
+  createDependentRule: async (ruleId, payload) => {
+    try {
+      const response = await api.post(`/api/tax-rules/${ruleId}/dependent-rules`, payload)
+      return response.data
+    } catch (error) {
+      throw parseApiError(error)
+    }
+  },
+
+  /**
+   * Cập nhật tiêu chí người phụ thuộc (kèm đồng bộ danh mục giấy tờ yêu cầu)
+   * PUT /api/tax-rules/dependent-rules/{dependentRuleId}
+   * @param {string} dependentRuleId - UUID của DependentRule
+   * @param {Object} payload - DependentRuleUpdateRequest
+   */
+  updateDependentRule: async (dependentRuleId, payload) => {
+    try {
+      const response = await api.put(`/api/tax-rules/dependent-rules/${dependentRuleId}`, payload)
+      return response.data
+    } catch (error) {
+      throw parseApiError(error)
+    }
+  },
+
+  /**
+   * Xóa tiêu chí người phụ thuộc (cascade xóa luôn các giấy tờ yêu cầu thuộc tiêu chí)
+   * DELETE /api/tax-rules/dependent-rules/{dependentRuleId}
+   * @param {string} dependentRuleId - UUID của DependentRule
+   */
+  deleteDependentRule: async (dependentRuleId) => {
+    try {
+      const response = await api.delete(`/api/tax-rules/dependent-rules/${dependentRuleId}`)
+      return response.data
+    } catch (error) {
+      throw parseApiError(error)
+    }
+  },
+
+  /**
+   * Thêm mới một giấy tờ yêu cầu cho tiêu chí người phụ thuộc
+   * POST /api/tax-rules/dependent-rules/{dependentRuleId}/documents
+   * @param {string} dependentRuleId - UUID của DependentRule
+   * @param {Object} payload - RequiredDocumentCreateRequest
+   */
+  addDependentRuleDocument: async (dependentRuleId, payload) => {
+    try {
+      const response = await api.post(
+        `/api/tax-rules/dependent-rules/${dependentRuleId}/documents`,
+        payload
+      )
+      return response.data
+    } catch (error) {
+      throw parseApiError(error)
+    }
+  },
+
+  /**
+   * Cập nhật thông tin một giấy tờ yêu cầu
+   * PUT /api/tax-rules/dependent-rules/documents/{documentId}
+   * @param {string} documentId - UUID của DependentRuleDocument
+   * @param {Object} payload - RequiredDocumentUpdateRequest
+   */
+  updateDependentRuleDocument: async (documentId, payload) => {
+    try {
+      const response = await api.put(
+        `/api/tax-rules/dependent-rules/documents/${documentId}`,
+        payload
+      )
+      return response.data
+    } catch (error) {
+      throw parseApiError(error)
+    }
+  },
+
+  /**
+   * Xóa một giấy tờ yêu cầu của tiêu chí người phụ thuộc
+   * DELETE /api/tax-rules/dependent-rules/documents/{documentId}
+   * @param {string} documentId - UUID của DependentRuleDocument
+   */
+  deleteDependentRuleDocument: async (documentId) => {
+    try {
+      const response = await api.delete(`/api/tax-rules/dependent-rules/documents/${documentId}`)
+      return response.data
+    } catch (error) {
       throw parseApiError(error)
     }
   },
