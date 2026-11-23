@@ -92,7 +92,9 @@ export function formatTargetGroup(group) {
     .replace(/_/g, ' ')
 }
 
-export function formatDocType(docType) {
+export function formatDocType(docType, docName) {
+  // Tên do admin cấu hình trong DB (doc_name) luôn được ưu tiên hơn nhãn dựng sẵn
+  if (docName?.trim()) return docName.trim()
   if (!docType) return 'Giấy tờ chứng minh'
   const key = String(docType).trim().toUpperCase()
   if (DOC_TYPE_LABELS[key]) return DOC_TYPE_LABELS[key]
@@ -176,7 +178,7 @@ export function AdminDependentRulesPage() {
     const matchGroup = targetGroupFilter === 'ALL' || r.targetGroup === targetGroupFilter
     const q = debouncedSearch.trim().toLowerCase()
     const vietGroup = formatTargetGroup(r.targetGroup).toLowerCase()
-    const vietDoc = formatDocType(r.docType).toLowerCase()
+    const vietDoc = formatDocType(r.docType, r.docName).toLowerCase()
     const matchSearch =
       !q ||
       vietGroup.includes(q) ||
@@ -272,7 +274,8 @@ export function AdminDependentRulesPage() {
                     {formatTargetGroup(rule.targetGroup)}
                   </td>
                   <td className="py-3.5 px-4 font-medium text-on-surface leading-snug">
-                    {formatDocType(rule.docType)}
+                    {formatDocType(rule.docType, rule.docName)}
+                    <div className="font-mono text-[11px] text-on-surface-variant mt-0.5">{rule.docType}</div>
                   </td>
                   <td className="py-3.5 px-4 text-on-surface-variant max-w-md leading-relaxed text-xs">
                     {rule.description}

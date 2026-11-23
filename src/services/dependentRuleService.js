@@ -25,12 +25,14 @@ export const dependentRuleService = {
 
   /**
    * Thêm mới quy tắc hồ sơ người phụ thuộc
-   * @param {Object} data - { targetGroup, docType, isMandatory, description, isActive }
+   * @param {Object} data - { targetGroup, docType, docName, isMandatory, description, isActive }
    */
   create: async (data) => {
     const payload = {
       targetGroup: data.targetGroup?.trim(),
-      docType: data.docType?.trim(),
+      // BE chỉ nhận mã A-Z, 0-9, _
+      docType: data.docType?.trim().toUpperCase(),
+      docName: data.docName?.trim() || null,
       isMandatory: data.isMandatory !== undefined ? Boolean(data.isMandatory) : true,
       description: data.description?.trim() || null,
       isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
@@ -42,10 +44,12 @@ export const dependentRuleService = {
   /**
    * Cập nhật quy tắc hồ sơ người phụ thuộc
    * @param {string} id - UUID của quy tắc
-   * @param {Object} data - { isMandatory, description, isActive }
+   * @param {Object} data - { docName, isMandatory, description, isActive }
    */
   update: async (id, data) => {
     const payload = {
+      // undefined = giữ nguyên tên cũ (BE bỏ qua khi null)
+      docName: data.docName !== undefined ? data.docName?.trim() || null : undefined,
       isMandatory: data.isMandatory !== undefined ? Boolean(data.isMandatory) : true,
       description: data.description?.trim() || null,
       isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
