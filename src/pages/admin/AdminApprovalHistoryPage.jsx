@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading } from '@/components/ui/loading'
 import { formatTargetGroup } from './AdminDependentRulesPage'
+import { useDependentGroups } from '@/hooks/useDependentGroups'
 import {
   Select,
   SelectContent,
@@ -45,6 +46,7 @@ function getJwtUserName() {
 export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const { groups: dependentGroups } = useDependentGroups()
 
   // Thông tin chuyên viên quản trị đăng nhập từ phiên làm việc và API hồ sơ
   const { user: authUser } = useAuth()
@@ -652,7 +654,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                     <div className="flex flex-col gap-1 text-[11px] text-on-surface-variant">
                       {currentDependents.slice(0, 3).map((dep, i) => {
                         const docCount = (dep.requiredDocuments || dep.required_documents || []).length
-                        const depLabel = formatTargetGroup(dep.name || dep.dependentType || dep.targetGroup)
+                        const depLabel = formatTargetGroup(dep.name || dep.dependentType || dep.targetGroup, dependentGroups)
                         return (
                           <div key={dep.id || i} className="flex items-center justify-between">
                             <span className="truncate max-w-[130px]" title={depLabel}>

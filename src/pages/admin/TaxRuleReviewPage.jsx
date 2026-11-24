@@ -5,6 +5,16 @@ import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading } from '@/components/ui/loading'
 import { formatTargetGroup, formatDocType } from './AdminDependentRulesPage'
+import { useDependentGroups } from '@/hooks/useDependentGroups'
+import { dependentCatalogService } from '@/services/dependentCatalogService'
+import { normalizeAlternativeGroup } from '@/services/dependentRuleService'
+import { ALTERNATIVE_GROUP_NOTE } from '@/components/admin/dependent-catalog/DependentRuleModal'
+import {
+  buildDependentTypeOptions,
+  documentAlternativeSuggestions,
+  catalogName,
+  sortByDisplayOrder,
+} from '@/utils/dependentCatalogUtils'
 
 /**
  * Trích xuất năm văn bản từ ngày hiệu lực hoặc tên văn bản quy phạm
@@ -85,6 +95,22 @@ export function TaxRuleReviewPage({
 
   // Trạng thái modal và form chỉnh sửa từng quy tắc riêng lẻ
   const [editingRule, setEditingRule] = useState(null)
+
+  // Danh mục nhóm/quan hệ NPT cho dropdown loại NPT và quan hệ
+  const { groups: dependentGroups, error: dependentGroupsError, reload: reloadDependentGroups } = useDependentGroups()
+  const [dependentRelationships, setDependentRelationships] = useState([])
+  useEffect(() => {
+    let alive = true
+    dependentCatalogService
+      .listRelationships()
+      .then((list) => {
+        if (alive) setDependentRelationships(sortByDisplayOrder(list || []))
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
 
   // 1. Đồng bộ prop extractedData từ trang Upload chỉ khi khớp với bộ quy tắc đang xem
   useEffect(() => {
@@ -616,7 +642,8 @@ export function TaxRuleReviewPage({
         original: item,
         form: {
           name: item.name || '',
-          dependentType: item.dependentType || 'CHILD',
+          dependentType: item.dependentType || '',
+          relationship: item.relationship || '',
           maxAge: item.maxAge !== undefined && item.maxAge !== null ? String(item.maxAge) : '',
           maxMonthlyIncome:
             item.maxMonthlyIncome !== undefined && item.maxMonthlyIncome !== null
@@ -648,7 +675,8 @@ export function TaxRuleReviewPage({
         original: null,
         form: {
           name: '',
-          dependentType: 'CHILD',
+          dependentType: '',
+          relationship: '',
           maxAge: '',
           maxMonthlyIncome: '',
           isStudying: false,
@@ -706,6 +734,9 @@ export function TaxRuleReviewPage({
       if (!form.name?.trim()) {
         newErrors.name = 'Vui lòng nhập tên đối tượng người phụ thuộc.'
       }
+      if (!form.dependentType?.trim()) {
+        newErrors.dependentType = 'Vui lòng chọn nhóm đối tượng.'
+      }
       if (form.maxAge !== '' && isNaN(Number(form.maxAge))) {
         newErrors.maxAge = 'Độ tuổi tối đa phải là số.'
       }
@@ -748,16 +779,21 @@ export function TaxRuleReviewPage({
         const condList = form.conditionsText
           ? form.conditionsText.split('\n').map((s) => s.trim()).filter(Boolean)
           : []
+        const docsPayload = (form.requiredDocuments || []).map((d) => ({
+          ...d,
+          alternativeGroup: normalizeAlternativeGroup(d.alternativeGroup),
+        }))
         const depItemPayload = {
           name: form.name.trim(),
-          dependentType: form.dependentType,
+          dependentType: form.dependentType.trim(),
+          relationship: form.relationship || null,
           maxAge: form.maxAge !== '' ? parseInt(form.maxAge, 10) : null,
           maxMonthlyIncome: form.maxMonthlyIncome !== '' ? parseFloat(form.maxMonthlyIncome) : null,
           isStudying: Boolean(form.isStudying),
           isDisabled: Boolean(form.isDisabled),
           conditions: condList.length > 0 ? condList : null,
-          requiredDocuments: form.requiredDocuments || [],
-          required_documents: form.requiredDocuments || [],
+          requiredDocuments: docsPayload,
+          required_documents: docsPayload,
         }
         if (!isNew && original) {
           depItemPayload.id = original.id || original.ruleId
@@ -827,14 +863,15 @@ export function TaxRuleReviewPage({
                 return {
                   ...d,
                   name: form.name.trim(),
-                  dependentType: form.dependentType,
+                  dependentType: payload.dependentRules[0].dependentType,
+                  relationship: payload.dependentRules[0].relationship,
                   maxAge: form.maxAge !== '' ? parseInt(form.maxAge, 10) : null,
                   maxMonthlyIncome: form.maxMonthlyIncome !== '' ? parseFloat(form.maxMonthlyIncome) : null,
                   isStudying: Boolean(form.isStudying),
                   isDisabled: Boolean(form.isDisabled),
                   conditions: condList.length > 0 ? condList : d.conditions,
-                  requiredDocuments: form.requiredDocuments || d.requiredDocuments || d.required_documents || [],
-                  required_documents: form.requiredDocuments || d.required_documents || d.requiredDocuments || [],
+                  requiredDocuments: payload.dependentRules[0].requiredDocuments,
+                  required_documents: payload.dependentRules[0].requiredDocuments,
                 }
               }
               return d
@@ -949,7 +986,7 @@ export function TaxRuleReviewPage({
   }
 
   const mapDependentType = (type) => {
-    return formatTargetGroup(type)
+    return formatTargetGroup(type, dependentGroups)
   }
 
   const mapDocType = (docType) => {
@@ -1093,6 +1130,7 @@ export function TaxRuleReviewPage({
         name: d.name || d.docType || 'Giấy tờ chứng minh',
         docType: d.docType || 'OTHER',
         isMandatory: d.isMandatory !== false,
+        alternativeGroup: d.alternativeGroup || d.alternative_group || '',
         description: d.description || '',
       }
     })
@@ -1699,7 +1737,7 @@ export function TaxRuleReviewPage({
                           : 'group'}
                       </span>
                       <h4 className="font-title-sm text-title-sm font-bold text-on-surface">
-                        {formatTargetGroup(dep.name || dep.dependentType || dep.targetGroup)}
+                        {formatTargetGroup(dep.name || dep.dependentType || dep.targetGroup, dependentGroups)}
                       </h4>
                     </div>
                     <p className="font-body-sm text-body-sm text-on-surface-variant">
@@ -1749,6 +1787,11 @@ export function TaxRuleReviewPage({
                             >
                               <span className="text-on-surface truncate">
                                 • {doc.name}
+                                {doc.alternativeGroup && (
+                                  <span className="ml-1 font-mono text-[10px] text-primary" title={ALTERNATIVE_GROUP_NOTE}>
+                                    [{doc.alternativeGroup}]
+                                  </span>
+                                )}
                               </span>
                               <span
                                 className={`text-[11px] shrink-0 ${
@@ -2235,7 +2278,7 @@ export function TaxRuleReviewPage({
 
                   <div className="flex flex-col gap-1">
                     <label className="text-label-md font-semibold text-on-surface">
-                      Nhóm đối tượng
+                      Nhóm đối tượng <span className="text-error">*</span>
                     </label>
                     <select
                       value={editingRule.form.dependentType}
@@ -2243,24 +2286,61 @@ export function TaxRuleReviewPage({
                         setEditingRule((prev) => ({
                           ...prev,
                           form: { ...prev.form, dependentType: e.target.value },
+                          errors: { ...prev.errors, dependentType: null },
                         }))
                       }
                       className="w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border border-outline-variant/30 cursor-pointer"
                     >
-                      <option value="CHILD">Con dưới 18 tuổi</option>
-                      <option value="CHILD_UNDER_18">Con dưới 18 tuổi (Chi tiết)</option>
-                      <option value="ADULT_CHILD">Con từ 18 tuổi trở lên đang đi học</option>
-                      <option value="CHILD_OVER_18_STUDYING">Con từ 18 tuổi trở lên đang đi học (Chi tiết)</option>
-                      <option value="CHILD_OVER_18_DISABLED">Con từ 18 tuổi trở lên bị khuyết tật, mất khả năng lao động</option>
-                      <option value="SPOUSE">Vợ hoặc chồng</option>
-                      <option value="SPOUSE_DISABLED">Vợ hoặc chồng không có khả năng lao động</option>
-                      <option value="PARENT">Cha đẻ, mẹ đẻ, cha mẹ vợ/chồng, cha dượng, mẹ kế</option>
-                      <option value="PARENT_RETIRED">Cha mẹ đã hết tuổi lao động</option>
-                      <option value="PARENT_DISABLED">Cha mẹ trong độ tuổi lao động bị khuyết tật</option>
-                      <option value="OTHER">Người phụ thuộc khác</option>
-                      <option value="OTHER_HELPLESS">Cá nhân khác không nơi nương tựa</option>
+                      <option value="">-- Chọn nhóm đối tượng --</option>
+                      {buildDependentTypeOptions(
+                        dependentGroups,
+                        editingRule.original?.dependentType || editingRule.form.dependentType
+                      ).map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
                     </select>
+                    {editingRule.errors?.dependentType && (
+                      <span className="text-xs text-error">{editingRule.errors.dependentType}</span>
+                    )}
+                    {dependentGroupsError && (
+                      <span className="text-xs text-error flex items-center gap-1">
+                        {dependentGroupsError}
+                        <button type="button" onClick={reloadDependentGroups} className="underline font-semibold cursor-pointer">
+                          Thử lại
+                        </button>
+                      </span>
+                    )}
                   </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-label-md font-semibold text-on-surface">Quan hệ với người nộp thuế</label>
+                  <select
+                    value={editingRule.form.relationship}
+                    onChange={(e) =>
+                      setEditingRule((prev) => ({
+                        ...prev,
+                        form: { ...prev.form, relationship: e.target.value },
+                      }))
+                    }
+                    className="w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border border-outline-variant/30 cursor-pointer"
+                  >
+                    <option value="">-- Chưa xác định --</option>
+                    {dependentRelationships.map((r) => (
+                      <option key={r.code} value={r.code}>
+                        {r.name}
+                      </option>
+                    ))}
+                    {editingRule.form.relationship &&
+                      !dependentRelationships.some((r) => r.code === editingRule.form.relationship) && (
+                        <option value={editingRule.form.relationship}>{editingRule.form.relationship}</option>
+                      )}
+                  </select>
+                  <span className="text-[11px] text-on-surface-variant">
+                    Quan hệ dùng khi duyệt nhóm mới do AI đề xuất và khi lọc nhóm trên ứng dụng.
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-md">
@@ -2381,6 +2461,7 @@ export function TaxRuleReviewPage({
                                 name: '',
                                 docType: 'OTHER',
                                 isMandatory: true,
+                                alternativeGroup: '',
                                 description: '',
                               },
                             ],
@@ -2393,6 +2474,13 @@ export function TaxRuleReviewPage({
                       <span>Thêm giấy tờ</span>
                     </button>
                   </div>
+
+                  <p className="text-[11px] text-on-surface-variant">{ALTERNATIVE_GROUP_NOTE}.</p>
+                  <datalist id="review-doc-alt-groups">
+                    {documentAlternativeSuggestions(editingRule.form.requiredDocuments).map((s) => (
+                      <option key={s} value={s} />
+                    ))}
+                  </datalist>
 
                   {(!editingRule.form.requiredDocuments || editingRule.form.requiredDocuments.length === 0) && (
                     <p className="text-xs text-on-surface-variant italic py-1">
@@ -2485,22 +2573,44 @@ export function TaxRuleReviewPage({
                           </div>
                         </div>
 
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-[11px] font-semibold text-on-surface-variant">Mô tả / Hướng dẫn hồ sơ</span>
-                          <input
-                            type="text"
-                            value={docItem.description || ''}
-                            onChange={(e) => {
-                              const val = e.target.value
-                              setEditingRule((prev) => {
-                                const updated = [...(prev.form.requiredDocuments || [])]
-                                updated[dIndex] = { ...updated[dIndex], description: val }
-                                return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
-                              })
-                            }}
-                            className="w-full h-8 px-2.5 rounded text-xs bg-surface-container-low border border-outline-variant/30 focus:outline-none"
-                            placeholder="VD: Bản sao công chứng, nộp kèm bản chính đối chiếu..."
-                          />
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                          <div className="sm:col-span-8 flex flex-col gap-0.5">
+                            <span className="text-[11px] font-semibold text-on-surface-variant">Mô tả / Hướng dẫn hồ sơ</span>
+                            <input
+                              type="text"
+                              value={docItem.description || ''}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                setEditingRule((prev) => {
+                                  const updated = [...(prev.form.requiredDocuments || [])]
+                                  updated[dIndex] = { ...updated[dIndex], description: val }
+                                  return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
+                                })
+                              }}
+                              className="w-full h-8 px-2.5 rounded text-xs bg-surface-container-low border border-outline-variant/30 focus:outline-none"
+                              placeholder="VD: Bản sao công chứng, nộp kèm bản chính đối chiếu..."
+                            />
+                          </div>
+                          <div className="sm:col-span-4 flex flex-col gap-0.5">
+                            <span className="text-[11px] font-semibold text-on-surface-variant" title={ALTERNATIVE_GROUP_NOTE}>
+                              Nhóm "chọn 1" (alternativeGroup)
+                            </span>
+                            <input
+                              type="text"
+                              value={docItem.alternativeGroup || ''}
+                              list="review-doc-alt-groups"
+                              onChange={(e) => {
+                                const val = e.target.value
+                                setEditingRule((prev) => {
+                                  const updated = [...(prev.form.requiredDocuments || [])]
+                                  updated[dIndex] = { ...updated[dIndex], alternativeGroup: val }
+                                  return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
+                                })
+                              }}
+                              className="w-full h-8 px-2.5 rounded text-xs font-mono bg-surface-container-low border border-outline-variant/30 focus:outline-none"
+                              placeholder="VD: RELATION_PROOF"
+                            />
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -2717,6 +2827,12 @@ export function TaxRuleReviewPage({
                     <span className="text-title-sm font-bold text-primary mt-0.5">
                       {mapDependentType(selectedDetail.data.dependentType)}
                     </span>
+                    <span className="text-xs text-on-surface-variant">
+                      Quan hệ:{' '}
+                      {selectedDetail.data.relationship
+                        ? catalogName(dependentRelationships, selectedDetail.data.relationship)
+                        : 'Chưa xác định'}
+                    </span>
                   </div>
 
                   <div className="p-space-md rounded-xl bg-surface-container-low/60 flex flex-col gap-1 border border-outline-variant/20">
@@ -2827,6 +2943,14 @@ export function TaxRuleReviewPage({
                                 <span className="text-on-surface-variant">
                                   {mapDocType(doc.docType)}
                                 </span>
+                                {doc.alternativeGroup && (
+                                  <>
+                                    <span className="text-outline-variant">•</span>
+                                    <span className="font-mono text-primary" title={ALTERNATIVE_GROUP_NOTE}>
+                                      Chọn 1: {doc.alternativeGroup}
+                                    </span>
+                                  </>
+                                )}
                                 <span className="text-outline-variant">•</span>
                                 <span
                                   className={

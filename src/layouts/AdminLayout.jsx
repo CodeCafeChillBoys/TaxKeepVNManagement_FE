@@ -85,6 +85,7 @@ export function AdminLayout({
   const navItems = [
     { id: 'tong-quan', label: 'Tổng quan', icon: 'dashboard' },
     { id: 'van-ban-quy-pham', label: 'Quy tắc hồ sơ', icon: 'rule_folder' },
+    { id: 'nhom-quan-he-npt', label: 'Nhóm & quan hệ NPT', icon: 'diversity_3' },
     { id: 'quy-tac-thue', label: 'Quy tắc thuế', icon: 'account_balance' },
     { id: 'boc-tach-van-ban-ai', label: 'Tải lên văn bản thuế', icon: 'document_scanner' },
     { id: 'lich-su-phe-duyet', label: 'Lịch sử phê duyệt', icon: 'history_edu' },

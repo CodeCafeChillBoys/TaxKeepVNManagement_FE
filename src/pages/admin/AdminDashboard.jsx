@@ -6,6 +6,7 @@ import { TaxRuleReviewPage } from './TaxRuleReviewPage'
 import { AdminProfileSettings } from './AdminProfileSettings'
 import { AdminSystemSettingsPage } from './AdminSystemSettingsPage'
 import { AdminDependentRulesPage } from './AdminDependentRulesPage'
+import { AdminDependentCatalogPage } from './AdminDependentCatalogPage'
 import { AdminTaxParametersPage } from './AdminTaxParametersPage'
 import { AdminApprovalHistoryPage } from './AdminApprovalHistoryPage'
 import { AdminExpertManagementPage, AdminSystemFundPage } from './AdminExpertManagementPage'
@@ -212,6 +213,8 @@ export function AdminDashboard({ onLogout }) {
       ? 'Thẩm định & Phê duyệt'
       : currentRoute === 'van-ban-quy-pham'
       ? 'Quy tắc hồ sơ'
+      : currentRoute === 'nhom-quan-he-npt'
+      ? 'Nhóm & quan hệ NPT'
       : currentRoute === 'lich-su-phe-duyet' || currentRoute === 'lich-su' || currentRoute === 'lich-su-duyet'
       ? 'Lịch sử phê duyệt'
       : currentRoute === 'cai-dat'
@@ -267,6 +270,11 @@ export function AdminDashboard({ onLogout }) {
       {/* Route 3: Văn bản quy phạm & Quy tắc hồ sơ NPT */}
       {currentRoute === 'van-ban-quy-pham' && (
         <AdminDependentRulesPage />
+      )}
+
+      {/* Route 3b: Danh mục nhóm & quan hệ người phụ thuộc */}
+      {currentRoute === 'nhom-quan-he-npt' && (
+        <AdminDependentCatalogPage />
       )}
 
       {/* Route 4: Cấu hình hệ thống */}
@@ -615,6 +623,7 @@ export function AdminDashboard({ onLogout }) {
       {currentRoute !== 'boc-tach-van-ban-ai' &&
         currentRoute !== 'quy-tac-thue' &&
         currentRoute !== 'van-ban-quy-pham' &&
+        currentRoute !== 'nhom-quan-he-npt' &&
         currentRoute !== 'cai-dat' &&
         currentRoute !== 'tham-so-thue' &&
         currentRoute !== 'ho-so' &&
