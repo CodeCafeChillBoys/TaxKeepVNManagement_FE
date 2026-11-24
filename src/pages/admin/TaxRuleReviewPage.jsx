@@ -5,6 +5,7 @@ import { dependentService } from '@/services/dependentService'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 import { formatTargetGroup, formatDocType } from './AdminDependentRulesPage'
 
 /**
@@ -410,6 +411,47 @@ export function TaxRuleReviewPage({
     }
     return null
   }, [currentData, extractedData])
+
+  // Phân trang tối đa 10 dòng/trang cho 3 bảng quy tắc thuế (khai báo trước mọi return sớm)
+  const filteredBrackets = useMemo(() => {
+    const q = debouncedSearchQuery.toLowerCase()
+    return (currentData?.taxRules || [])
+      .filter((r) => r.ruleType === 'BRACKET')
+      .filter(
+        (b) =>
+          !q ||
+          (b.ruleName || '').toLowerCase().includes(q) ||
+          (b.ruleCode || '').toLowerCase().includes(q)
+      )
+  }, [currentData, debouncedSearchQuery])
+
+  const filteredDeductions = useMemo(() => {
+    const q = debouncedSearchQuery.toLowerCase()
+    return (currentData?.taxRules || [])
+      .filter((r) => r.ruleType === 'DEDUCTION')
+      .filter(
+        (d) =>
+          !q ||
+          (d.ruleName || '').toLowerCase().includes(q) ||
+          (d.ruleCode || '').toLowerCase().includes(q)
+      )
+  }, [currentData, debouncedSearchQuery])
+
+  const filteredRateExemptions = useMemo(() => {
+    const q = debouncedSearchQuery.toLowerCase()
+    return (currentData?.taxRules || [])
+      .filter((r) => r.ruleType === 'RATE' || r.ruleType === 'EXEMPTION')
+      .filter(
+        (r) =>
+          !q ||
+          (r.ruleName || '').toLowerCase().includes(q) ||
+          (r.ruleCode || '').toLowerCase().includes(q)
+      )
+  }, [currentData, debouncedSearchQuery])
+
+  const bracketsPagination = useClientPagination(filteredBrackets, 10)
+  const deductionsPagination = useClientPagination(filteredDeductions, 10)
+  const rateExemptionsPagination = useClientPagination(filteredRateExemptions, 10)
 
   // Đang tải chi tiết bộ quy tắc
   if (isLoadingDetail) {
@@ -1730,17 +1772,10 @@ export function TaxRuleReviewPage({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container-high/60 font-body-md text-body-md text-on-surface">
-                  {brackets
-                    .filter(
-                      (b) =>
-                        !debouncedSearchQuery ||
-                        (b.ruleName || '').toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-                        (b.ruleCode || '').toLowerCase().includes(debouncedSearchQuery.toLowerCase())
-                    )
-                    .map((item, i) => (
+                  {bracketsPagination.paginatedItems.map((item, i) => (
                       <tr key={item.ruleCode || i} className="hover:bg-surface-container-low/40 transition-colors group">
                         <td className="py-space-sm px-space-md text-center font-mono text-on-surface-variant font-medium">
-                          {String(i + 1).padStart(2, '0')}
+                          {String((bracketsPagination.page - 1) * bracketsPagination.pageSize + i + 1).padStart(2, '0')}
                         </td>
                         <td className="py-space-sm px-space-md font-semibold">
                           <button
@@ -1791,7 +1826,7 @@ export function TaxRuleReviewPage({
                         </td>
                       </tr>
                     ))}
-                  {brackets.length === 0 && (
+                  {filteredBrackets.length === 0 && (
                     <tr>
                       <td colSpan={5} className="py-8 text-center text-on-surface-variant text-body-sm">
                         Không có dữ liệu biểu thuế lũy tiến.
@@ -1801,11 +1836,14 @@ export function TaxRuleReviewPage({
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-between px-space-md py-space-sm bg-surface-container-low/40 border-t border-surface-container-high/40">
-              <span className="text-body-sm text-on-surface-variant">
-                Hiển thị {brackets.length} bậc thuế lũy tiến
-              </span>
-            </div>
+            <TablePagination
+              page={bracketsPagination.page}
+              totalPages={bracketsPagination.totalPages}
+              totalItems={bracketsPagination.totalItems}
+              pageSize={bracketsPagination.pageSize}
+              onPageChange={bracketsPagination.setPage}
+              itemLabel="bậc thuế lũy tiến"
+            />
           </div>
         </div>
       )}
@@ -1851,17 +1889,10 @@ export function TaxRuleReviewPage({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container-high/60 font-body-md text-body-md text-on-surface">
-                  {deductions
-                    .filter(
-                      (d) =>
-                        !debouncedSearchQuery ||
-                        (d.ruleName || '').toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-                        (d.ruleCode || '').toLowerCase().includes(debouncedSearchQuery.toLowerCase())
-                    )
-                    .map((item, i) => (
+                  {deductionsPagination.paginatedItems.map((item, i) => (
                     <tr key={item.ruleCode || i} className="hover:bg-surface-container-low/40 transition-colors group">
                       <td className="py-space-sm px-space-md text-center font-mono text-on-surface-variant font-medium">
-                        {String(i + 1).padStart(2, '0')}
+                        {String((deductionsPagination.page - 1) * deductionsPagination.pageSize + i + 1).padStart(2, '0')}
                       </td>
                       <td className="py-space-sm px-space-md font-semibold">
                         <button
@@ -1913,7 +1944,7 @@ export function TaxRuleReviewPage({
                       </td>
                     </tr>
                   ))}
-                  {deductions.length === 0 && (
+                  {filteredDeductions.length === 0 && (
                     <tr>
                       <td colSpan={5} className="py-8 text-center text-on-surface-variant text-body-sm">
                         Không có dữ liệu giảm trừ gia cảnh.
@@ -1923,6 +1954,14 @@ export function TaxRuleReviewPage({
                 </tbody>
               </table>
             </div>
+            <TablePagination
+              page={deductionsPagination.page}
+              totalPages={deductionsPagination.totalPages}
+              totalItems={deductionsPagination.totalItems}
+              pageSize={deductionsPagination.pageSize}
+              onPageChange={deductionsPagination.setPage}
+              itemLabel="mức giảm trừ"
+            />
           </div>
         </div>
       )}
@@ -2143,17 +2182,10 @@ export function TaxRuleReviewPage({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container-high/60 font-body-md text-body-md text-on-surface">
-                  {rateExemptions
-                    .filter(
-                      (r) =>
-                        !debouncedSearchQuery ||
-                        (r.ruleName || '').toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-                        (r.ruleCode || '').toLowerCase().includes(debouncedSearchQuery.toLowerCase())
-                    )
-                    .map((item, i) => (
+                  {rateExemptionsPagination.paginatedItems.map((item, i) => (
                     <tr key={item.ruleCode || i} className="hover:bg-surface-container-low/40 transition-colors group">
                       <td className="py-space-sm px-space-md text-center font-mono text-on-surface-variant font-medium">
-                        {String(i + 1).padStart(2, '0')}
+                        {String((rateExemptionsPagination.page - 1) * rateExemptionsPagination.pageSize + i + 1).padStart(2, '0')}
                       </td>
                       <td className="py-space-sm px-space-md font-semibold">
                         <button
@@ -2204,7 +2236,7 @@ export function TaxRuleReviewPage({
                       </td>
                     </tr>
                   ))}
-                  {rateExemptions.length === 0 && (
+                  {filteredRateExemptions.length === 0 && (
                     <tr>
                       <td colSpan={5} className="py-8 text-center text-on-surface-variant text-body-sm">
                         Không có dữ liệu thuế suất khác hoặc miễn thuế.
@@ -2214,6 +2246,14 @@ export function TaxRuleReviewPage({
                 </tbody>
               </table>
             </div>
+            <TablePagination
+              page={rateExemptionsPagination.page}
+              totalPages={rateExemptionsPagination.totalPages}
+              totalItems={rateExemptionsPagination.totalItems}
+              pageSize={rateExemptionsPagination.pageSize}
+              onPageChange={rateExemptionsPagination.setPage}
+              itemLabel="quy tắc"
+            />
           </div>
         </div>
       )}

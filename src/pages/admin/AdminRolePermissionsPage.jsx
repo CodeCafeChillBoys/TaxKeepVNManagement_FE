@@ -5,6 +5,7 @@ import { ConfirmDialog, NotificationDialog } from '@/components/ui/notification-
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading, TableLoadingRow } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 import {
   MANAGE_PERMISSION_CODE,
   isLockedPermission,
@@ -151,6 +152,8 @@ export function AdminRolePermissionsPage() {
   }
 
   const catalogGroups = useMemo(() => groupPermissions(catalog, debouncedCatalogSearch), [catalog, debouncedCatalogSearch])
+  const catalogItems = useMemo(() => catalogGroups.flatMap(({ items }) => items), [catalogGroups])
+  const catalogPagination = useClientPagination(catalogItems, 10)
   const groupSuggestions = useMemo(() => [...new Set(catalog.map((p) => p.groupName).filter(Boolean))], [catalog])
 
   const afterCatalogChange = () => {
@@ -370,7 +373,7 @@ export function AdminRolePermissionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-container-high/40">
-                {catalogGroups.flatMap(({ items }) => items).map((p) => (
+                {catalogPagination.paginatedItems.map((p) => (
                   <tr key={p.id} className="hover:bg-surface-container-low/30">
                     <td className="py-2.5 px-4 font-medium text-on-surface">{p.name}</td>
                     <td className="py-2.5 px-4 text-xs text-on-surface-variant">{p.groupName}</td>
@@ -407,6 +410,16 @@ export function AdminRolePermissionsPage() {
               </tbody>
             </table>
           </div>
+          {!loadingCatalog && catalogItems.length > 0 && (
+            <TablePagination
+              page={catalogPagination.page}
+              totalPages={catalogPagination.totalPages}
+              totalItems={catalogPagination.totalItems}
+              pageSize={catalogPagination.pageSize}
+              onPageChange={catalogPagination.setPage}
+              itemLabel="quyền"
+            />
+          )}
         </div>
       )}
 

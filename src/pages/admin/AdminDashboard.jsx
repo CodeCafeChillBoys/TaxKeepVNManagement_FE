@@ -13,6 +13,7 @@ import { AdminRolePermissionsPage } from './AdminRolePermissionsPage'
 import { taxRuleService } from '@/services/taxRuleService'
 import { useAuth } from '@/hooks/useAuth'
 import { SectionLoading } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 
 export function AdminDashboard({ onLogout }) {
   const { section = 'boc-tach-van-ban-ai', id: routeId } = useParams()
@@ -138,6 +139,8 @@ export function AdminDashboard({ onLogout }) {
         status: s.status || 'Active',
       })),
   ]
+
+  const recentDocsPagination = useClientPagination(recentDocs, 10)
 
   const handleUploadSuccess = (data) => {
     setExtractedData(data)
@@ -546,7 +549,7 @@ export function AdminDashboard({ onLogout }) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-surface-container-high/40">
-                      {recentDocs.slice(0, 5).map((doc, i) => (
+                      {recentDocsPagination.paginatedItems.map((doc, i) => (
                         <tr key={doc.id || i} className="hover:bg-surface-container-low/40">
                           <td className="py-2.5 font-medium text-on-surface max-w-[200px] truncate">
                             {doc.name}
@@ -585,6 +588,15 @@ export function AdminDashboard({ onLogout }) {
                       ))}
                     </tbody>
                   </table>
+                  <TablePagination
+                    page={recentDocsPagination.page}
+                    totalPages={recentDocsPagination.totalPages}
+                    totalItems={recentDocsPagination.totalItems}
+                    pageSize={recentDocsPagination.pageSize}
+                    onPageChange={recentDocsPagination.setPage}
+                    itemLabel="tài liệu"
+                    className="px-0 bg-transparent"
+                  />
                 </div>
               ) : (
                 <div className="py-8 text-center text-on-surface-variant flex flex-col items-center justify-center gap-2">

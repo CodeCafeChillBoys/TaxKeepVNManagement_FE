@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { CYCLE_LABELS, formatVnd, labelOf } from '@/utils/subscriptionFormat'
 import { SectionLoading } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 import { useDebounce } from '@/hooks/useDebounce'
 
 // Ngày trong ô date (yyyy-mm-dd, giờ máy) -> đầu ngày / cuối ngày ISO cho BE
@@ -98,6 +99,11 @@ export function SubscriptionRevenueTab() {
   const distribution = [...(data?.userDistribution || [])].sort((a, b) => b.activeUserCount - a.activeUserCount)
   const trends = [...(data?.monthlyTrends || [])].sort((a, b) => (a.yearMonth < b.yearMonth ? 1 : -1))
 
+  const byPlanPagination = useClientPagination(byPlan, 10)
+  const byCyclePagination = useClientPagination(byCycle, 10)
+  const distributionPagination = useClientPagination(distribution, 10)
+  const trendsPagination = useClientPagination(trends, 10)
+
   return (
     <div className="flex flex-col gap-4">
       {/* Khoảng thời gian */}
@@ -171,26 +177,37 @@ export function SubscriptionRevenueTab() {
               {byPlan.length === 0 ? (
                 <Empty />
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Gói</TableHead>
-                      <TableHead className="text-right">Lượt mua</TableHead>
-                      <TableHead className="text-right">Doanh thu</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {byPlan.map((r) => (
-                      <TableRow key={r.planId}>
-                        <TableCell className="font-semibold">{r.planName}</TableCell>
-                        <TableCell className="text-right tabular-nums">{r.purchaseCount}</TableCell>
-                        <TableCell className="text-right tabular-nums font-semibold">
-                          {formatVnd(r.totalRevenue)}
-                        </TableCell>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Gói</TableHead>
+                        <TableHead className="text-right">Lượt mua</TableHead>
+                        <TableHead className="text-right">Doanh thu</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {byPlanPagination.paginatedItems.map((r) => (
+                        <TableRow key={r.planId}>
+                          <TableCell className="font-semibold">{r.planName}</TableCell>
+                          <TableCell className="text-right tabular-nums">{r.purchaseCount}</TableCell>
+                          <TableCell className="text-right tabular-nums font-semibold">
+                            {formatVnd(r.totalRevenue)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <TablePagination
+                    page={byPlanPagination.page}
+                    totalPages={byPlanPagination.totalPages}
+                    totalItems={byPlanPagination.totalItems}
+                    pageSize={byPlanPagination.pageSize}
+                    onPageChange={byPlanPagination.setPage}
+                    itemLabel="gói"
+                    className="px-0 pb-0 bg-transparent"
+                  />
+                </>
               )}
             </Section>
 
@@ -198,26 +215,37 @@ export function SubscriptionRevenueTab() {
               {byCycle.length === 0 ? (
                 <Empty />
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Chu kỳ</TableHead>
-                      <TableHead className="text-right">Lượt mua</TableHead>
-                      <TableHead className="text-right">Doanh thu</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {byCycle.map((r) => (
-                      <TableRow key={r.billingCycle}>
-                        <TableCell className="font-semibold">{labelOf(CYCLE_LABELS, r.billingCycle)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{r.purchaseCount}</TableCell>
-                        <TableCell className="text-right tabular-nums font-semibold">
-                          {formatVnd(r.totalRevenue)}
-                        </TableCell>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Chu kỳ</TableHead>
+                        <TableHead className="text-right">Lượt mua</TableHead>
+                        <TableHead className="text-right">Doanh thu</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {byCyclePagination.paginatedItems.map((r) => (
+                        <TableRow key={r.billingCycle}>
+                          <TableCell className="font-semibold">{labelOf(CYCLE_LABELS, r.billingCycle)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{r.purchaseCount}</TableCell>
+                          <TableCell className="text-right tabular-nums font-semibold">
+                            {formatVnd(r.totalRevenue)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <TablePagination
+                    page={byCyclePagination.page}
+                    totalPages={byCyclePagination.totalPages}
+                    totalItems={byCyclePagination.totalItems}
+                    pageSize={byCyclePagination.pageSize}
+                    onPageChange={byCyclePagination.setPage}
+                    itemLabel="chu kỳ"
+                    className="px-0 pb-0 bg-transparent"
+                  />
+                </>
               )}
             </Section>
 
@@ -225,26 +253,37 @@ export function SubscriptionRevenueTab() {
               {distribution.length === 0 ? (
                 <Empty />
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Gói</TableHead>
-                      <TableHead className="text-right">Người dùng</TableHead>
-                      <TableHead className="text-right">Tỉ lệ</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {distribution.map((r) => (
-                      <TableRow key={r.planId}>
-                        <TableCell className="font-semibold">{r.planName}</TableCell>
-                        <TableCell className="text-right tabular-nums">{r.activeUserCount}</TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {Number(r.percentage || 0).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%
-                        </TableCell>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Gói</TableHead>
+                        <TableHead className="text-right">Người dùng</TableHead>
+                        <TableHead className="text-right">Tỉ lệ</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {distributionPagination.paginatedItems.map((r) => (
+                        <TableRow key={r.planId}>
+                          <TableCell className="font-semibold">{r.planName}</TableCell>
+                          <TableCell className="text-right tabular-nums">{r.activeUserCount}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {Number(r.percentage || 0).toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <TablePagination
+                    page={distributionPagination.page}
+                    totalPages={distributionPagination.totalPages}
+                    totalItems={distributionPagination.totalItems}
+                    pageSize={distributionPagination.pageSize}
+                    onPageChange={distributionPagination.setPage}
+                    itemLabel="gói"
+                    className="px-0 pb-0 bg-transparent"
+                  />
+                </>
               )}
             </Section>
 
@@ -252,24 +291,35 @@ export function SubscriptionRevenueTab() {
               {trends.length === 0 ? (
                 <Empty />
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tháng</TableHead>
-                      <TableHead className="text-right">Lượt mua</TableHead>
-                      <TableHead className="text-right">Doanh thu</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {trends.map((r) => (
-                      <TableRow key={r.yearMonth}>
-                        <TableCell className="font-semibold">{formatYearMonth(r.yearMonth)}</TableCell>
-                        <TableCell className="text-right tabular-nums">{r.purchaseCount}</TableCell>
-                        <TableCell className="text-right tabular-nums font-semibold">{formatVnd(r.revenue)}</TableCell>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tháng</TableHead>
+                        <TableHead className="text-right">Lượt mua</TableHead>
+                        <TableHead className="text-right">Doanh thu</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {trendsPagination.paginatedItems.map((r) => (
+                        <TableRow key={r.yearMonth}>
+                          <TableCell className="font-semibold">{formatYearMonth(r.yearMonth)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{r.purchaseCount}</TableCell>
+                          <TableCell className="text-right tabular-nums font-semibold">{formatVnd(r.revenue)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <TablePagination
+                    page={trendsPagination.page}
+                    totalPages={trendsPagination.totalPages}
+                    totalItems={trendsPagination.totalItems}
+                    pageSize={trendsPagination.pageSize}
+                    onPageChange={trendsPagination.setPage}
+                    itemLabel="tháng"
+                    className="px-0 pb-0 bg-transparent"
+                  />
+                </>
               )}
             </Section>
           </div>
