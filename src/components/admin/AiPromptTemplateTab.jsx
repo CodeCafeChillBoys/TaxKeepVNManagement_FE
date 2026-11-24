@@ -5,6 +5,7 @@ import { PromptTestRenderModal } from './PromptTestRenderModal'
 import { PromptDetailModal } from './PromptDetailModal'
 import { useDebounce } from '@/hooks/useDebounce'
 import { TableLoadingRow } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -103,6 +104,8 @@ export function AiPromptTemplateTab({ onShowToast }) {
       })
       .sort((a, b) => (a.prompt_key || '').localeCompare(b.prompt_key || ''))
   }, [prompts, filterActive, debouncedSearch])
+
+  const promptsPagination = useClientPagination(filteredPrompts, 10)
 
   // Stats
   const totalPromptsCount = prompts.length
@@ -362,7 +365,7 @@ export function AiPromptTemplateTab({ onShowToast }) {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredPrompts.map((promptItem) => {
+                promptsPagination.paginatedItems.map((promptItem) => {
                   const isToggling = togglingKey === promptItem.prompt_key
 
                   return (
@@ -484,6 +487,16 @@ export function AiPromptTemplateTab({ onShowToast }) {
             </TableBody>
           </Table>
         </div>
+        {!isLoading && filteredPrompts.length > 0 && (
+          <TablePagination
+            page={promptsPagination.page}
+            totalPages={promptsPagination.totalPages}
+            totalItems={promptsPagination.totalItems}
+            pageSize={promptsPagination.pageSize}
+            onPageChange={promptsPagination.setPage}
+            itemLabel="mẫu chỉ dẫn"
+          />
+        )}
       </Card>
 
       {/* Modal Tạo mới / Sửa Mẫu chỉ dẫn */}

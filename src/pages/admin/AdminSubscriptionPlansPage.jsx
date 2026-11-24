@@ -11,6 +11,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { ConfirmDialog, NotificationDialog } from '@/components/ui/notification-dialog'
 import { SectionLoading } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 
 const UNLIMITED = -1
 
@@ -79,6 +80,7 @@ export function AdminSubscriptionPlansPage() {
 
   const activeCount = plans.filter((p) => p.isActive).length
   const paidActiveCount = plans.filter((p) => p.isActive && p.priceMonthly > 0).length
+  const plansPagination = useClientPagination(plans, 10)
 
   const handleOpenCreate = () => {
     setModalMode('create')
@@ -242,20 +244,21 @@ export function AdminSubscriptionPlansPage() {
                 </Button>
               </CardContent>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-16 text-center">Thứ tự</TableHead>
-                    <TableHead>Gói</TableHead>
-                    <TableHead className="text-right w-32">Giá tháng</TableHead>
-                    <TableHead className="text-right w-40">Giá năm</TableHead>
-                    <TableHead className="w-56">Hạn mức chính</TableHead>
-                    <TableHead className="text-center w-32">Trạng thái</TableHead>
-                    <TableHead className="text-right w-52">Thao tác</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {plans.map((plan) => {
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-16 text-center">Thứ tự</TableHead>
+                      <TableHead>Gói</TableHead>
+                      <TableHead className="text-right w-32">Giá tháng</TableHead>
+                      <TableHead className="text-right w-40">Giá năm</TableHead>
+                      <TableHead className="w-56">Hạn mức chính</TableHead>
+                      <TableHead className="text-center w-32">Trạng thái</TableHead>
+                      <TableHead className="text-right w-52">Thao tác</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {plansPagination.paginatedItems.map((plan) => {
                     const freeMonths = freeMonthsOf(plan)
                     return (
                       <TableRow key={plan.id} className={plan.isActive ? '' : 'opacity-60'}>
@@ -333,8 +336,17 @@ export function AdminSubscriptionPlansPage() {
                       </TableRow>
                     )
                   })}
-                </TableBody>
-              </Table>
+                  </TableBody>
+                </Table>
+                <TablePagination
+                  page={plansPagination.page}
+                  totalPages={plansPagination.totalPages}
+                  totalItems={plansPagination.totalItems}
+                  pageSize={plansPagination.pageSize}
+                  onPageChange={plansPagination.setPage}
+                  itemLabel="gói dịch vụ"
+                />
+              </>
             )}
           </Card>
         </TabsContent>

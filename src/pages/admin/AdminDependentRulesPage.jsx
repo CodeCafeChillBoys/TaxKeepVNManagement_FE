@@ -3,6 +3,7 @@ import { dependentRuleService } from '@/services/dependentRuleService'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useDependentGroups } from '@/hooks/useDependentGroups'
 import { TableLoadingRow } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 import { DependentRuleModal, ALTERNATIVE_GROUP_NOTE } from '@/components/admin/dependent-catalog/DependentRuleModal'
 import { buildGroupOptions, catalogName, findByCode, isPendingGroup, PENDING_SUFFIX } from '@/utils/dependentCatalogUtils'
 
@@ -165,6 +166,8 @@ export function AdminDependentRulesPage() {
     return matchGroup && matchSearch
   })
 
+  const rulesPagination = useClientPagination(filteredRules, 10)
+
   return (
     <div className="p-4 sm:p-6 lg:p-space-xl flex flex-col gap-space-lg">
       {toast && (
@@ -281,10 +284,10 @@ export function AdminDependentRulesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container-high/40">
-              {filteredRules.map((rule, idx) => (
+              {rulesPagination.paginatedItems.map((rule, idx) => (
                 <tr key={rule.ruleId || idx} className="hover:bg-surface-container-low/30 transition-colors">
                   <td className="py-3.5 px-4 text-center font-mono text-on-surface-variant font-medium">
-                    {String(idx + 1).padStart(2, '0')}
+                    {String((rulesPagination.page - 1) * rulesPagination.pageSize + idx + 1).padStart(2, '0')}
                   </td>
                   <td className="py-3.5 px-4 font-semibold text-on-surface leading-snug">
                     {formatTargetGroup(rule.targetGroup, groups)}
@@ -377,6 +380,16 @@ export function AdminDependentRulesPage() {
             </tbody>
           </table>
         </div>
+        {!isLoading && filteredRules.length > 0 && (
+          <TablePagination
+            page={rulesPagination.page}
+            totalPages={rulesPagination.totalPages}
+            totalItems={rulesPagination.totalItems}
+            pageSize={rulesPagination.pageSize}
+            onPageChange={rulesPagination.setPage}
+            itemLabel="quy tắc"
+          />
+        )}
       </div>
 
       {ruleModal && (

@@ -3,6 +3,7 @@ import { adminAiKeyService } from '@/services/adminAiKeyService'
 import { AiKeyModal } from './AiKeyModal'
 import { useDebounce } from '@/hooks/useDebounce'
 import { TableLoadingRow } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -99,6 +100,8 @@ export function AiKeyManagementTab({ onShowToast }) {
       })
       .sort((a, b) => (a.priority ?? 1) - (b.priority ?? 1))
   }, [keys, filterStatus, filterActive, debouncedSearch])
+
+  const keysPagination = useClientPagination(filteredKeys, 10)
 
   // Stats calculation
   const totalKeysCount = keys.length
@@ -399,7 +402,7 @@ export function AiKeyManagementTab({ onShowToast }) {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredKeys.map((keyItem) => {
+                keysPagination.paginatedItems.map((keyItem) => {
                   const isToggling = togglingId === keyItem.id
                   const isCopied = copiedKeyId === keyItem.id
 
@@ -523,6 +526,16 @@ export function AiKeyManagementTab({ onShowToast }) {
             </TableBody>
           </Table>
         </div>
+        {!isLoading && filteredKeys.length > 0 && (
+          <TablePagination
+            page={keysPagination.page}
+            totalPages={keysPagination.totalPages}
+            totalItems={keysPagination.totalItems}
+            pageSize={keysPagination.pageSize}
+            onPageChange={keysPagination.setPage}
+            itemLabel="khóa kết nối"
+          />
+        )}
       </Card>
 
       {/* Modal Thêm mới / Sửa Khóa kết nối */}

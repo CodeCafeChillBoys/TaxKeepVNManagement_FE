@@ -3,6 +3,7 @@ import { expertCertificateConfigService } from '@/services/expertCertificateConf
 import { ExpertCertificateModal } from '@/components/admin/ExpertCertificateModal'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -90,6 +91,8 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
       })
       .sort((a, b) => (a.displayOrder ?? 99) - (b.displayOrder ?? 99))
   }, [items, filterStatus, debouncedSearch])
+
+  const certsPagination = useClientPagination(filteredItems, 10)
 
   const activeCount = items.filter((i) => i.isActive).length
   const requiresExpiryCount = items.filter((i) => i.requiresExpiryDate).length
@@ -246,18 +249,19 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
             </Button>
           </CardContent>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-16 text-center">Thứ tự</TableHead>
-                <TableHead>Tên loại chứng chỉ & Cơ quan cấp</TableHead>
-                <TableHead className="text-center w-36">Thời hạn</TableHead>
-                <TableHead className="text-center w-32">Trạng thái</TableHead>
-                <TableHead className="text-right w-40">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredItems.map((item) => (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-16 text-center">Thứ tự</TableHead>
+                  <TableHead>Tên loại chứng chỉ & Cơ quan cấp</TableHead>
+                  <TableHead className="text-center w-36">Thời hạn</TableHead>
+                  <TableHead className="text-center w-32">Trạng thái</TableHead>
+                  <TableHead className="text-right w-40">Thao tác</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {certsPagination.paginatedItems.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="text-center text-on-surface-variant tabular-nums">
                     {item.displayOrder ?? 1}
@@ -324,8 +328,17 @@ export function ExpertCertificateConfigTab({ onShowToast }) {
                   </TableCell>
                 </TableRow>
               ))}
-            </TableBody>
-          </Table>
+              </TableBody>
+            </Table>
+            <TablePagination
+              page={certsPagination.page}
+              totalPages={certsPagination.totalPages}
+              totalItems={certsPagination.totalItems}
+              pageSize={certsPagination.pageSize}
+              onPageChange={certsPagination.setPage}
+              itemLabel="loại chứng chỉ"
+            />
+          </>
         )}
       </Card>
 

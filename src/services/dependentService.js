@@ -6,6 +6,19 @@ import { apiClient } from './apiClient'
  */
 export const dependentService = {
   /**
+   * Lấy danh sách nhóm đối tượng người phụ thuộc đang hiệu lực từ BE
+   * GET /api/v1/dependents/groups
+   * @param {string} [relationship] - Tùy chọn lọc theo quan hệ (CHILD, SPOUSE, PARENT, OTHER_DEPENDENT)
+   * @returns {Promise<string[]>}
+   */
+  getGroups: async (relationship = null) => {
+    const params = relationship ? { relationship } : undefined
+    const res = await apiClient.get('/api/v1/dependents/groups', { params })
+    const list = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : [])
+    return list.filter((g) => typeof g === 'string' && g.trim()).map((g) => g.trim().toUpperCase())
+  },
+
+  /**
    * Đăng ký người phụ thuộc mới
    * @param {Object} data - { fullName, relationship, currentGroup, birthDate, citizenId, birthCertNumber, taxIdNumber, effectiveFromMonth, effectiveToMonth, note }
    */

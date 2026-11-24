@@ -6,6 +6,7 @@ import { authService } from '@/services/authService'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 import { formatTargetGroup } from './AdminDependentRulesPage'
 import { useDependentGroups } from '@/hooks/useDependentGroups'
 import {
@@ -266,6 +267,8 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
       return true
     })
   }, [allRuleSets, statusFilter, selectedYear, debouncedSearchQuery, userProfile, authUser])
+
+  const ruleSetsPagination = useClientPagination(filteredRuleSets, 10)
 
   // Dữ liệu chi tiết của năm hiện tại
   const currentSet = yearDetailData?.taxRuleSet || null
@@ -747,7 +750,7 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-container-high/40">
-                {filteredRuleSets.map((doc) => {
+                {ruleSetsPagination.paginatedItems.map((doc) => {
                   const isAct = String(doc.status).toUpperCase() === 'ACTIVE'
                   return (
                     <tr
@@ -802,6 +805,15 @@ export function AdminApprovalHistoryPage({ initialYear, onNavigateToReview }) {
                 })}
               </tbody>
             </table>
+            <TablePagination
+              page={ruleSetsPagination.page}
+              totalPages={ruleSetsPagination.totalPages}
+              totalItems={ruleSetsPagination.totalItems}
+              pageSize={ruleSetsPagination.pageSize}
+              onPageChange={ruleSetsPagination.setPage}
+              itemLabel="văn bản"
+              className="px-0 bg-transparent"
+            />
           </div>
         )}
       </div>
