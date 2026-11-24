@@ -1,40 +1,11 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { dependentRuleService } from '@/services/dependentRuleService'
 import { useDebounce } from '@/hooks/useDebounce'
+import { useDependentGroups } from '@/hooks/useDependentGroups'
 import { TableLoadingRow } from '@/components/ui/loading'
 import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
-
-export const TARGET_GROUP_LABELS = {
-  CHILD_UNDER_18: 'Con dưới 18 tuổi',
-  CHILD_OVER_18_STUDYING: 'Con từ 18 tuổi trở lên đang đi học',
-  CHILD_OVER_18_DISABLED: 'Con từ 18 tuổi trở lên bị khuyết tật, không có khả năng lao động',
-  CHILD_DISABLED: 'Con bị khuyết tật, không có khả năng lao động',
-  CHILD: 'Con dưới 18 tuổi',
-  ADULT_CHILD: 'Con từ 18 tuổi trở lên đang đi học',
-  SPOUSE_DISABLED: 'Vợ hoặc chồng không có khả năng lao động',
-  SPOUSE_UNABLE_TO_WORK: 'Vợ hoặc chồng không có khả năng lao động',
-  SPOUSE: 'Vợ hoặc chồng',
-  PARENT_RETIRED: 'Cha mẹ đã hết tuổi lao động',
-  PARENT_OVER_WORKING_AGE: 'Cha mẹ ngoài độ tuổi lao động',
-  PARENT_DISABLED: 'Cha mẹ trong độ tuổi lao động bị khuyết tật, không có khả năng lao động',
-  PARENT_WORKING_AGE_DISABLED: 'Cha mẹ trong độ tuổi lao động bị khuyết tật, không có khả năng lao động',
-  PARENT_UNDER_WORKING_AGE_DISABLED: 'Cha mẹ trong độ tuổi lao động bị khuyết tật, không có khả năng lao động',
-  PARENT: 'Cha đẻ, mẹ đẻ, cha mẹ vợ/chồng, cha dượng, mẹ kế',
-  PARENT_IN_LAW: 'Cha mẹ vợ/chồng, cha dượng, mẹ kế',
-  OTHER_HELPLESS: 'Cá nhân khác không nơi nương tựa mà người nộp thuế trực tiếp nuôi dưỡng',
-  OTHER_DEPENDENT: 'Cá nhân khác không nơi nương tựa',
-  OTHER: 'Người phụ thuộc khác',
-}
-
-export const DEFAULT_TARGET_GROUP_OPTIONS = [
-  { value: 'CHILD_UNDER_18', label: 'Con dưới 18 tuổi' },
-  { value: 'CHILD_OVER_18_STUDYING', label: 'Con từ 18 tuổi trở lên đang đi học' },
-  { value: 'CHILD_OVER_18_DISABLED', label: 'Con từ 18 tuổi trở lên bị khuyết tật, không có khả năng lao động' },
-  { value: 'SPOUSE_DISABLED', label: 'Vợ hoặc chồng không có khả năng lao động' },
-  { value: 'PARENT_RETIRED', label: 'Cha mẹ đã hết tuổi lao động' },
-  { value: 'PARENT_DISABLED', label: 'Cha mẹ trong độ tuổi lao động bị khuyết tật, không có khả năng lao động' },
-  { value: 'OTHER_HELPLESS', label: 'Cá nhân khác không nơi nương tựa mà người nộp thuế trực tiếp nuôi dưỡng' },
-]
+import { DependentRuleModal, ALTERNATIVE_GROUP_NOTE } from '@/components/admin/dependent-catalog/DependentRuleModal'
+import { buildGroupOptions, catalogName, findByCode, isPendingGroup, PENDING_SUFFIX } from '@/utils/dependentCatalogUtils'
 
 export const DOC_TYPE_LABELS = {
   BIRTH_CERTIFICATE: 'Giấy khai sinh',
@@ -64,33 +35,12 @@ export const DOC_TYPE_LABELS = {
   OTHER: 'Giấy tờ chứng minh khác',
 }
 
-export function formatTargetGroup(group) {
+/** Nhãn nhóm NPT lấy `name` từ danh mục; mã chưa có trong danh mục thì hiện nguyên mã */
+export function formatTargetGroup(group, groups = []) {
   if (!group) return 'Người phụ thuộc'
-  const key = String(group).trim().toUpperCase()
-  if (TARGET_GROUP_LABELS[key]) return TARGET_GROUP_LABELS[key]
-
-  return String(group)
-    .replace(/CHILD_UNDER_18/gi, 'Con dưới 18 tuổi')
-    .replace(/CHILD_OVER_18_STUDYING/gi, 'Con từ 18 tuổi trở lên đang đi học')
-    .replace(/CHILD_OVER_18_DISABLED/gi, 'Con từ 18 tuổi trở lên bị khuyết tật')
-    .replace(/SPOUSE_DISABLED/gi, 'Vợ hoặc chồng không có khả năng lao động')
-    .replace(/PARENT_RETIRED/gi, 'Cha mẹ đã hết tuổi lao động')
-    .replace(/PARENT_DISABLED/gi, 'Cha mẹ trong độ tuổi lao động bị khuyết tật')
-    .replace(/OTHER_HELPLESS/gi, 'Cá nhân khác không nơi nương tựa')
-    .replace(/ADULT_CHILD/gi, 'Con từ 18 tuổi trở lên đang đi học')
-    .replace(/PARENT_IN_LAW/gi, 'Cha mẹ vợ/chồng, cha dượng, mẹ kế')
-    .replace(/OTHER_DEPENDENT/gi, 'Cá nhân khác không nơi nương tựa')
-    .replace(/CHILD/gi, 'Con')
-    .replace(/SPOUSE/gi, 'Vợ hoặc chồng')
-    .replace(/PARENT/gi, 'Cha mẹ')
-    .replace(/UNDER_18/gi, 'dưới 18 tuổi')
-    .replace(/OVER_18/gi, 'từ 18 tuổi trở lên')
-    .replace(/STUDYING/gi, 'đang đi học')
-    .replace(/DISABLED/gi, 'bị khuyết tật, mất khả năng lao động')
-    .replace(/RETIRED/gi, 'đã hết tuổi lao động')
-    .replace(/HELPLESS/gi, 'không nơi nương tựa')
-    .replace(/OTHER/gi, 'Người phụ thuộc khác')
-    .replace(/_/g, ' ')
+  const found = findByCode(groups, group)
+  if (!found) return String(group)
+  return `${catalogName(groups, group)}${isPendingGroup(found) ? PENDING_SUFFIX : ''}`
 }
 
 export function formatDocType(docType, docName) {
@@ -123,6 +73,35 @@ export function AdminDependentRulesPage() {
   const [targetGroupFilter, setTargetGroupFilter] = useState('ALL')
   const debouncedTargetGroup = useDebounce(targetGroupFilter, 150)
   const [dbNotice, setDbNotice] = useState(null)
+  const [reloadTick, setReloadTick] = useState(0)
+  const { groups, error: groupsError, reload: reloadGroups } = useDependentGroups()
+
+  const [ruleModal, setRuleModal] = useState(null) // { mode, item }
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [toast, setToast] = useState(null)
+  const toastTimer = useRef(null)
+
+  const showToast = (type, message) => {
+    clearTimeout(toastTimer.current)
+    setToast({ type, message })
+    toastTimer.current = setTimeout(() => setToast(null), 4000)
+  }
+  useEffect(() => () => clearTimeout(toastTimer.current), [])
+
+  const handleSubmitRule = async (form) => {
+    setIsSubmitting(true)
+    try {
+      if (ruleModal.mode === 'create') await dependentRuleService.create(form)
+      else await dependentRuleService.update(ruleModal.item.ruleId, form)
+      showToast('success', ruleModal.mode === 'create' ? 'Đã thêm quy tắc giấy tờ.' : 'Đã cập nhật quy tắc giấy tờ.')
+      setRuleModal(null)
+      setReloadTick((t) => t + 1)
+    } catch (err) {
+      showToast('error', err?.message || 'Không lưu được quy tắc giấy tờ.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   useEffect(() => {
     let mounted = true
@@ -160,25 +139,21 @@ export function AdminDependentRulesPage() {
     return () => {
       mounted = false
     }
-  }, [debouncedTargetGroup, debouncedSearch])
+  }, [debouncedTargetGroup, debouncedSearch, reloadTick])
 
-  const targetGroupOptions = useMemo(() => {
-    const map = new Map()
-    DEFAULT_TARGET_GROUP_OPTIONS.forEach((opt) => {
-      map.set(opt.value, opt.label)
-    })
-    rules.forEach((r) => {
-      if (r.targetGroup && !map.has(r.targetGroup)) {
-        map.set(r.targetGroup, formatTargetGroup(r.targetGroup))
-      }
-    })
-    return Array.from(map.entries()).map(([value, label]) => ({ value, label }))
-  }, [rules])
+  const targetGroupOptions = useMemo(
+    () => buildGroupOptions(groups, rules.map((r) => r.targetGroup)),
+    [groups, rules]
+  )
+  const docTypeOptions = useMemo(
+    () => [...new Set([...Object.keys(DOC_TYPE_LABELS), ...rules.map((r) => r.docType).filter(Boolean)])].sort(),
+    [rules]
+  )
 
   const filteredRules = rules.filter((r) => {
     const matchGroup = targetGroupFilter === 'ALL' || r.targetGroup === targetGroupFilter
     const q = debouncedSearch.trim().toLowerCase()
-    const vietGroup = formatTargetGroup(r.targetGroup).toLowerCase()
+    const vietGroup = formatTargetGroup(r.targetGroup, groups).toLowerCase()
     const vietDoc = formatDocType(r.docType, r.docName).toLowerCase()
     const matchSearch =
       !q ||
@@ -186,7 +161,8 @@ export function AdminDependentRulesPage() {
       vietDoc.includes(q) ||
       r.docType?.toLowerCase().includes(q) ||
       r.description?.toLowerCase().includes(q) ||
-      r.targetGroup?.toLowerCase().includes(q)
+      r.targetGroup?.toLowerCase().includes(q) ||
+      r.alternativeGroup?.toLowerCase().includes(q)
     return matchGroup && matchSearch
   })
 
@@ -194,6 +170,17 @@ export function AdminDependentRulesPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-space-xl flex flex-col gap-space-lg">
+      {toast && (
+        <div
+          className={`fixed top-6 right-6 z-[60] max-w-md px-4 py-3 rounded-xl shadow-lg border text-sm font-medium flex items-center gap-2 ${
+            toast.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">{toast.type === 'error' ? 'error' : 'check_circle'}</span>
+          <span>{toast.message}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-md">
         <div className="flex flex-col gap-1">
@@ -202,9 +189,35 @@ export function AdminDependentRulesPage() {
           </h2>
           <p className="font-body-md text-on-surface-variant text-sm max-w-2xl">
             Các tiêu chuẩn hồ sơ bắt buộc và tùy chọn áp dụng theo từng nhóm đối tượng người phụ thuộc căn cứ theo quy định của Luật Thuế TNCN.
+            {' '}{ALTERNATIVE_GROUP_NOTE}.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setRuleModal({ mode: 'create', item: null })}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-on-primary text-xs font-bold hover:bg-primary-container shadow-sm transition-all cursor-pointer shrink-0"
+        >
+          <span className="material-symbols-outlined text-[18px]">add_circle</span>
+          <span>Thêm quy tắc</span>
+        </button>
       </div>
+
+      {groupsError && (
+        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm flex items-start gap-3">
+          <span className="material-symbols-outlined text-red-600 text-[20px] mt-0.5 shrink-0">error</span>
+          <div className="flex-1">
+            <strong>Không tải được danh mục nhóm người phụ thuộc.</strong>
+            <span className="block text-[13px] mt-0.5">{groupsError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={reloadGroups}
+            className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-bold hover:bg-red-700 cursor-pointer shrink-0"
+          >
+            Thử lại
+          </button>
+        </div>
+      )}
 
       {/* Database Notice if table migration pending */}
       {dbNotice && (
@@ -263,8 +276,11 @@ export function AdminDependentRulesPage() {
                 <th className="py-3 px-4">Nhóm đối tượng</th>
                 <th className="py-3 px-4">Loại chứng từ / Hồ sơ</th>
                 <th className="py-3 px-4">Mô tả quy tắc & Điều kiện</th>
+                <th className="py-3 px-4" title={ALTERNATIVE_GROUP_NOTE}>Chọn 1 trong</th>
                 <th className="py-3 px-4 text-center">Tính bắt buộc</th>
                 <th className="py-3 px-4 text-center">Trạng thái</th>
+                <th className="py-3 px-4 text-center" title="Rule nguồn AI sẽ bị tắt khi đồng bộ lại quy tắc từ AI">Nguồn</th>
+                <th className="py-3 px-4 text-center">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container-high/40">
@@ -274,7 +290,8 @@ export function AdminDependentRulesPage() {
                     {String((rulesPagination.page - 1) * rulesPagination.pageSize + idx + 1).padStart(2, '0')}
                   </td>
                   <td className="py-3.5 px-4 font-semibold text-on-surface leading-snug">
-                    {formatTargetGroup(rule.targetGroup)}
+                    {formatTargetGroup(rule.targetGroup, groups)}
+                    <div className="font-mono text-[11px] font-normal text-on-surface-variant mt-0.5">{rule.targetGroup}</div>
                   </td>
                   <td className="py-3.5 px-4 font-medium text-on-surface leading-snug">
                     {formatDocType(rule.docType, rule.docName)}
@@ -282,6 +299,15 @@ export function AdminDependentRulesPage() {
                   </td>
                   <td className="py-3.5 px-4 text-on-surface-variant max-w-md leading-relaxed text-xs">
                     {rule.description}
+                  </td>
+                  <td className="py-3.5 px-4">
+                    {rule.alternativeGroup ? (
+                      <span className="px-2 py-0.5 rounded-md bg-primary/10 text-primary font-mono text-[11px] font-semibold whitespace-nowrap">
+                        {rule.alternativeGroup}
+                      </span>
+                    ) : (
+                      <span className="text-on-surface-variant/50 text-xs">—</span>
+                    )}
                   </td>
                   <td className="py-3.5 px-4 text-center">
                     <span
@@ -310,17 +336,38 @@ export function AdminDependentRulesPage() {
                       {rule.isActive ? 'Hiệu lực' : 'Chưa áp dụng'}
                     </span>
                   </td>
+                  <td className="py-3.5 px-4 text-center">
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                        String(rule.source).toUpperCase() === 'AI'
+                          ? 'bg-secondary/10 text-secondary border-secondary/20'
+                          : 'bg-surface-container text-on-surface-variant border-outline-variant/40'
+                      }`}
+                    >
+                      {rule.source || 'ADMIN'}
+                    </span>
+                  </td>
+                  <td className="py-3.5 px-4 text-center">
+                    <button
+                      type="button"
+                      title="Sửa quy tắc"
+                      onClick={() => setRuleModal({ mode: 'edit', item: rule })}
+                      className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container cursor-pointer transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">edit</span>
+                    </button>
+                  </td>
                 </tr>
               ))}
               {isLoading && (
                 <TableLoadingRow
-                  colSpan={6}
+                  colSpan={9}
                   title="Đang tải danh mục quy tắc hồ sơ người phụ thuộc..."
                 />
               )}
               {!isLoading && filteredRules.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-on-surface-variant text-xs">
+                  <td colSpan={9} className="py-12 text-center text-on-surface-variant text-xs">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <span className="material-symbols-outlined text-[32px] text-outline">
                         rule_folder
@@ -344,6 +391,20 @@ export function AdminDependentRulesPage() {
           />
         )}
       </div>
+
+      {ruleModal && (
+        <DependentRuleModal
+          key={`${ruleModal.mode}-${ruleModal.item?.ruleId ?? 'new'}`}
+          mode={ruleModal.mode}
+          initialData={ruleModal.item}
+          groups={groups}
+          rules={rules}
+          docTypeOptions={docTypeOptions}
+          isSubmitting={isSubmitting}
+          onClose={() => setRuleModal(null)}
+          onSubmit={handleSubmitRule}
+        />
+      )}
     </div>
   )
 }

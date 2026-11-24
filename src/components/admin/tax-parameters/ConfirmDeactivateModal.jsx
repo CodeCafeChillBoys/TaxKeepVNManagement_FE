@@ -20,10 +20,21 @@ const COPY = {
   },
 }
 
-export function ConfirmDeactivateModal({ item, isSubmitting, onConfirm, onCancel, mode = 'deactivate' }) {
-  const meta = getConfigMeta(item.configKey, item.appliesFromYear)
-  const name = meta.year ? `${meta.title} (${meta.year})` : meta.title
-  const copy = COPY[mode] ?? COPY.deactivate
+// itemName / itemCode / copyOverride: dùng cho danh mục khác ngoài system_configs (không có configKey)
+export function ConfirmDeactivateModal({
+  item,
+  isSubmitting,
+  onConfirm,
+  onCancel,
+  mode = 'deactivate',
+  itemName,
+  itemCode,
+  copyOverride,
+}) {
+  const meta = itemName ? null : getConfigMeta(item.configKey, item.appliesFromYear)
+  const name = itemName || (meta.year ? `${meta.title} (${meta.year})` : meta.title)
+  const code = itemCode ?? item.configKey
+  const copy = { ...(COPY[mode] ?? COPY.deactivate), ...copyOverride }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
@@ -37,7 +48,7 @@ export function ConfirmDeactivateModal({ item, isSubmitting, onConfirm, onCancel
             <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">
               <strong className="text-on-surface">{name}</strong>: {copy.body}
             </p>
-            <span className="mt-1.5 font-mono text-[10px] text-on-surface-variant/80">{item.configKey}</span>
+            <span className="mt-1.5 font-mono text-[10px] text-on-surface-variant/80">{code}</span>
           </div>
         </div>
 
