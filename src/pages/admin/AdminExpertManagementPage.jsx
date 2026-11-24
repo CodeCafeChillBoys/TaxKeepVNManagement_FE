@@ -42,6 +42,7 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { NotificationDialog, ConfirmDialog } from '@/components/ui/notification-dialog'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading } from '@/components/ui/loading'
 
@@ -947,31 +948,15 @@ function ApplicationsTab({ onBadgeRefresh }) {
           </Table>
         )}
 
-        {pagination.totalPages > 1 && (
-          <CardFooter className="py-3 px-4 border-t border-outline-variant/30 flex items-center justify-between text-xs text-on-surface-variant">
-            <span>
-              Trang <strong className="text-on-surface">{pagination.page}</strong> /{' '}
-              {pagination.totalPages} ({pagination.totalItems} hồ sơ)
-            </span>
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!pagination.hasPrevious}
-                onClick={() => fetchApplications(pagination.page - 1)}
-              >
-                Trước
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!pagination.hasNext}
-                onClick={() => fetchApplications(pagination.page + 1)}
-              >
-                Tiếp
-              </Button>
-            </div>
-          </CardFooter>
+        {!loading && items.length > 0 && (
+          <TablePagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems || items.length}
+            pageSize={10}
+            onPageChange={(nextPage) => fetchApplications(nextPage)}
+            itemLabel="hồ sơ"
+          />
         )}
       </Card>
 
@@ -1038,6 +1023,7 @@ function ApplicationDetailDialog({
   const [reviewNotesInput, setReviewNotesInput] = useState('')
   const [formError, setFormError] = useState('')
   const [submittingAction, setSubmittingAction] = useState(false)
+  const feeProposalsPagination = useClientPagination(data?.feeProposals || [], 10)
 
   useEffect(() => {
     if (data) {
@@ -1438,7 +1424,7 @@ function ApplicationDetailDialog({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {data.feeProposals.map((fp) => (
+                      {feeProposalsPagination.paginatedItems.map((fp) => (
                         <TableRow key={fp.id}>
                           <TableCell className="font-semibold text-xs text-on-surface">
                             {SESSION_TYPE_MAP[fp.sessionType] || fp.sessionType}
@@ -1453,6 +1439,14 @@ function ApplicationDetailDialog({
                       ))}
                     </TableBody>
                   </Table>
+                  <TablePagination
+                    page={feeProposalsPagination.page}
+                    totalPages={feeProposalsPagination.totalPages}
+                    totalItems={feeProposalsPagination.totalItems}
+                    pageSize={feeProposalsPagination.pageSize}
+                    onPageChange={feeProposalsPagination.setPage}
+                    itemLabel="mức phí"
+                  />
                 </div>
               </div>
             )}
@@ -2019,6 +2013,16 @@ function WithdrawalsTab({ onBadgeRefresh }) {
             </TableBody>
           </Table>
         )}
+        {!loading && filteredItems.length > 0 && (
+          <TablePagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems || filteredItems.length}
+            pageSize={10}
+            onPageChange={(nextPage) => fetchWithdrawals(nextPage)}
+            itemLabel="lệnh rút"
+          />
+        )}
       </Card>
 
       {/* Dialog xử lý lệnh rút */}
@@ -2140,24 +2144,48 @@ function DisputesTab({ onBadgeRefresh }) {
     setNotice({ open: true, type, title, description })
   }
 
-  const fetchDisputes = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await expertService.getAdminDisputes({
-        status: statusFilter,
-        page: 1,
-        size: 50,
-      })
-      setItems(res?.items || [])
-    } catch (err) {
-      showNotice('error', 'Không thể tải danh sách khiếu nại', err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [statusFilter])
+  const [disputePagination, setDisputePagination] = useState({
+    page: 1,
+    pageSize: 10,
+    totalItems: 0,
+    totalPages: 1,
+  })
+
+  const fetchDisputes = useCallback(
+    async (page = 1) => {
+      setLoading(true)
+      try {
+        const res = await expertService.getAdminDisputes({
+          status: statusFilter,
+          page,
+          size: 10,
+        })
+        const rawItems = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : []
+        if (res?.pagination) {
+          setItems(rawItems.slice(0, 10))
+          setDisputePagination({
+            ...res.pagination,
+            page: res.pagination.page || page,
+            pageSize: 10,
+          })
+        } else {
+          const totalItems = rawItems.length
+          const totalPages = Math.max(1, Math.ceil(totalItems / 10))
+          const safePage = Math.min(Math.max(1, page), totalPages)
+          setItems(rawItems.slice((safePage - 1) * 10, safePage * 10))
+          setDisputePagination({ page: safePage, pageSize: 10, totalItems, totalPages })
+        }
+      } catch (err) {
+        showNotice('error', 'Không thể tải danh sách khiếu nại', err.message)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [statusFilter]
+  )
 
   useEffect(() => {
-    fetchDisputes()
+    fetchDisputes(1)
   }, [fetchDisputes])
 
   const openDisputeDetail = async (id) => {
@@ -2199,7 +2227,7 @@ function DisputesTab({ onBadgeRefresh }) {
       })
       setSelectedDispute(null)
       showNotice('success', 'Đã ban hành phán quyết', 'Giao dịch tài chính đã được quyết toán theo phán quyết.')
-      fetchDisputes()
+      fetchDisputes(disputePagination.page)
       onBadgeRefresh?.()
     } catch (err) {
       setResolveForm((prev) => ({ ...prev, submitting: false }))
@@ -2228,7 +2256,7 @@ function DisputesTab({ onBadgeRefresh }) {
                 <SelectItem value="RESOLVED_PARTIAL">Hoàn tiền một phần</SelectItem>
               </SelectContent>
             </Select>
-            <Button type="button" variant="outline" size="sm" onClick={fetchDisputes}>
+            <Button type="button" variant="outline" size="sm" onClick={() => fetchDisputes(disputePagination.page)}>
               Làm mới
             </Button>
           </div>
@@ -2312,6 +2340,16 @@ function DisputesTab({ onBadgeRefresh }) {
               })}
             </TableBody>
           </Table>
+        )}
+        {!loading && items.length > 0 && (
+          <TablePagination
+            page={disputePagination.page}
+            totalPages={disputePagination.totalPages}
+            totalItems={disputePagination.totalItems || items.length}
+            pageSize={10}
+            onPageChange={(nextPage) => fetchDisputes(nextPage)}
+            itemLabel="khiếu nại"
+          />
         )}
       </Card>
 
@@ -2555,6 +2593,7 @@ function PlatformWalletTab() {
   })
 
   const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+  const platformTxPagination = useClientPagination(wallet?.recentPlatformTransactions || [], 10)
   const showNotice = (type, title, description) => {
     setNotice({ open: true, type, title, description })
   }
@@ -2829,7 +2868,7 @@ function PlatformWalletTab() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {wallet.recentPlatformTransactions.map((tx) => {
+                  {platformTxPagination.paginatedItems.map((tx) => {
                     const meta = getPlatformTxTypeMeta(tx.transactionType, tx.amount)
                     const isPos = Number(tx.amount) >= 0
                     return (
@@ -2862,6 +2901,16 @@ function PlatformWalletTab() {
                   })}
                 </TableBody>
               </Table>
+            )}
+            {!loadingWallet && (wallet?.recentPlatformTransactions?.length || 0) > 0 && (
+              <TablePagination
+                page={platformTxPagination.page}
+                totalPages={platformTxPagination.totalPages}
+                totalItems={platformTxPagination.totalItems}
+                pageSize={platformTxPagination.pageSize}
+                onPageChange={platformTxPagination.setPage}
+                itemLabel="giao dịch"
+              />
             )}
           </Card>
         </TabsContent>
@@ -2925,6 +2974,16 @@ function PlatformWalletTab() {
                   })}
                 </TableBody>
               </Table>
+            )}
+            {!loadingWd && platformWithdrawals.length > 0 && (
+              <TablePagination
+                page={wdPagination.page}
+                totalPages={wdPagination.totalPages}
+                totalItems={wdPagination.totalItems || platformWithdrawals.length}
+                pageSize={10}
+                onPageChange={(nextPage) => fetchPlatformWithdrawals(nextPage)}
+                itemLabel="lệnh rút"
+              />
             )}
           </Card>
         </TabsContent>
@@ -3056,6 +3115,16 @@ function PlatformWalletTab() {
                   })}
                 </TableBody>
               </Table>
+            )}
+            {!loadingEscrow && escrowItems.length > 0 && (
+              <TablePagination
+                page={escrowPagination.page}
+                totalPages={escrowPagination.totalPages}
+                totalItems={escrowPagination.totalItems || escrowItems.length}
+                pageSize={10}
+                onPageChange={(nextPage) => fetchEscrowList(nextPage)}
+                itemLabel="giao dịch"
+              />
             )}
           </Card>
         </TabsContent>
@@ -3282,6 +3351,7 @@ function SpecializationsTab() {
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState({ open: false, item: null, loading: false })
   const [notice, setNotice] = useState({ open: false, type: 'info', title: '', description: '' })
+  const specsPagination = useClientPagination(items, 10)
 
   const showNotice = (type, title, description) => {
     setNotice({ open: true, type, title, description })
@@ -3403,7 +3473,7 @@ function SpecializationsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((sp) => (
+              {specsPagination.paginatedItems.map((sp) => (
                 <TableRow key={sp.id}>
                   <TableCell className="font-mono text-on-surface-variant tabular-nums">
                     #{sp.id}
@@ -3448,6 +3518,16 @@ function SpecializationsTab() {
               ))}
             </TableBody>
           </Table>
+        )}
+        {!loading && items.length > 0 && (
+          <TablePagination
+            page={specsPagination.page}
+            totalPages={specsPagination.totalPages}
+            totalItems={specsPagination.totalItems}
+            pageSize={specsPagination.pageSize}
+            onPageChange={specsPagination.setPage}
+            itemLabel="lĩnh vực"
+          />
         )}
       </Card>
 
@@ -3605,6 +3685,8 @@ function FeeConfigsTab() {
     setDialogOpen(true)
   }
 
+  const pricingPagination = useClientPagination(items, 10)
+
   const openEdit = (item) => {
     setEditingItem(item)
     setFormData({
@@ -3736,7 +3818,7 @@ function FeeConfigsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((cfg) => (
+              {pricingPagination.paginatedItems.map((cfg) => (
                 <TableRow key={cfg.id}>
                   <TableCell className="font-semibold text-on-surface">
                     {SESSION_TYPE_MAP[cfg.sessionType] || cfg.sessionType}
@@ -3794,6 +3876,16 @@ function FeeConfigsTab() {
               ))}
             </TableBody>
           </Table>
+        )}
+        {!loading && items.length > 0 && (
+          <TablePagination
+            page={pricingPagination.page}
+            totalPages={pricingPagination.totalPages}
+            totalItems={pricingPagination.totalItems}
+            pageSize={pricingPagination.pageSize}
+            onPageChange={pricingPagination.setPage}
+            itemLabel="khung phí"
+          />
         )}
       </Card>
 

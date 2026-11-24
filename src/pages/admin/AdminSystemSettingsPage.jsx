@@ -4,6 +4,7 @@ import { systemConfigService } from '@/services/systemConfigService'
 import { urlRuleService } from '@/services/urlRuleService'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 import { SystemConfigModal } from '@/components/admin/SystemConfigModal'
 import { ThresholdTesterModal } from '@/components/admin/ThresholdTesterModal'
 import { taxDocumentTypeService } from '@/services/taxDocumentTypeService'
@@ -495,6 +496,10 @@ export function AdminSystemSettingsPage() {
     }
   }
 
+  const configsPagination = useClientPagination(sortedConfigs, 10)
+  const domainsPagination = useClientPagination(filteredDomainRules, 10)
+  const docTypesPagination = useClientPagination(docTypes, 10)
+
   return (
     <div className="p-4 sm:p-6 lg:p-space-xl flex flex-col gap-space-lg max-w-6xl">
       {/* Toast thông báo */}
@@ -877,7 +882,7 @@ export function AdminSystemSettingsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-container-high/40">
-                    {sortedConfigs.map((c) => {
+                    {configsPagination.paginatedItems.map((c) => {
                       const meta = DATA_TYPE_META[c.data_type] || DATA_TYPE_META.STRING
                       const isDeleted = Boolean(c.is_deleted)
                       const isAct = Boolean(c.is_active)
@@ -1050,6 +1055,14 @@ export function AdminSystemSettingsPage() {
                     })}
                   </tbody>
                 </table>
+                <TablePagination
+                  page={configsPagination.page}
+                  totalPages={configsPagination.totalPages}
+                  totalItems={configsPagination.totalItems}
+                  pageSize={configsPagination.pageSize}
+                  onPageChange={configsPagination.setPage}
+                  itemLabel="tiêu chuẩn"
+                />
               </div>
             )}
           </div>
@@ -1131,7 +1144,7 @@ export function AdminSystemSettingsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-container-high/40">
-                    {filteredDomainRules.map((r) => {
+                    {domainsPagination.paginatedItems.map((r) => {
                       const isAct = r.isActive ?? r.is_active ?? true
                       return (
                         <tr key={r.id} className="hover:bg-surface-container-low/60 transition-colors">
@@ -1187,6 +1200,14 @@ export function AdminSystemSettingsPage() {
                     })}
                   </tbody>
                 </table>
+                <TablePagination
+                  page={domainsPagination.page}
+                  totalPages={domainsPagination.totalPages}
+                  totalItems={domainsPagination.totalItems}
+                  pageSize={domainsPagination.pageSize}
+                  onPageChange={domainsPagination.setPage}
+                  itemLabel="tên miền"
+                />
               </div>
             )}
           </div>
@@ -1475,7 +1496,7 @@ export function AdminSystemSettingsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-container-high/40 text-xs">
-                    {docTypes.map((item) => (
+                    {docTypesPagination.paginatedItems.map((item) => (
                       <tr key={item.code} className="hover:bg-surface-container-low/60 transition-colors">
                         <td className="py-3.5 px-4 font-semibold text-on-surface">
                           {item.name || formatDocTypeCode(item.code)}
@@ -1515,6 +1536,14 @@ export function AdminSystemSettingsPage() {
                     ))}
                   </tbody>
                 </table>
+                <TablePagination
+                  page={docTypesPagination.page}
+                  totalPages={docTypesPagination.totalPages}
+                  totalItems={docTypesPagination.totalItems}
+                  pageSize={docTypesPagination.pageSize}
+                  onPageChange={docTypesPagination.setPage}
+                  itemLabel="loại chứng từ"
+                />
               </div>
             )}
           </div>

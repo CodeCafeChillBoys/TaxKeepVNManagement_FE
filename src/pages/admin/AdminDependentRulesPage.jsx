@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { dependentRuleService } from '@/services/dependentRuleService'
 import { useDebounce } from '@/hooks/useDebounce'
 import { TableLoadingRow } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 
 export const TARGET_GROUP_LABELS = {
   CHILD_UNDER_18: 'Con dưới 18 tuổi',
@@ -189,6 +190,8 @@ export function AdminDependentRulesPage() {
     return matchGroup && matchSearch
   })
 
+  const rulesPagination = useClientPagination(filteredRules, 10)
+
   return (
     <div className="p-4 sm:p-6 lg:p-space-xl flex flex-col gap-space-lg">
       {/* Header */}
@@ -265,10 +268,10 @@ export function AdminDependentRulesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container-high/40">
-              {filteredRules.map((rule, idx) => (
+              {rulesPagination.paginatedItems.map((rule, idx) => (
                 <tr key={rule.ruleId || idx} className="hover:bg-surface-container-low/30 transition-colors">
                   <td className="py-3.5 px-4 text-center font-mono text-on-surface-variant font-medium">
-                    {String(idx + 1).padStart(2, '0')}
+                    {String((rulesPagination.page - 1) * rulesPagination.pageSize + idx + 1).padStart(2, '0')}
                   </td>
                   <td className="py-3.5 px-4 font-semibold text-on-surface leading-snug">
                     {formatTargetGroup(rule.targetGroup)}
@@ -330,6 +333,16 @@ export function AdminDependentRulesPage() {
             </tbody>
           </table>
         </div>
+        {!isLoading && filteredRules.length > 0 && (
+          <TablePagination
+            page={rulesPagination.page}
+            totalPages={rulesPagination.totalPages}
+            totalItems={rulesPagination.totalItems}
+            pageSize={rulesPagination.pageSize}
+            onPageChange={rulesPagination.setPage}
+            itemLabel="quy tắc"
+          />
+        )}
       </div>
     </div>
   )
