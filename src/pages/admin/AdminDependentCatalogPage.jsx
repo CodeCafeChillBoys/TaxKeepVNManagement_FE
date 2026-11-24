@@ -32,19 +32,6 @@ function StatusBadge({ active }) {
   )
 }
 
-function SourceBadge({ source }) {
-  const isAi = String(source).toUpperCase() === 'AI'
-  return (
-    <span
-      className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-        isAi ? 'bg-secondary/10 text-secondary border-secondary/20' : 'bg-surface-container text-on-surface-variant border-outline-variant/40'
-      }`}
-    >
-      {source || 'ADMIN'}
-    </span>
-  )
-}
-
 function Flag({ on }) {
   return on ? (
     <span className="material-symbols-outlined text-[18px] text-primary">check_circle</span>
@@ -320,7 +307,6 @@ export function AdminDependentCatalogPage() {
                   <th className={`${thCls} text-center`}>Level</th>
                   <th className={`${thCls} text-center`}>Thứ tự</th>
                   <th className={`${thCls} text-center`}>Trạng thái</th>
-                  <th className={`${thCls} text-center`}>Nguồn</th>
                   <th className={`${thCls} text-center w-[150px]`}>Thao tác</th>
                 </tr>
               </thead>
@@ -360,9 +346,6 @@ export function AdminDependentCatalogPage() {
                           <StatusBadge active={g.isActive} />
                         )}
                       </td>
-                      <td className={`${tdCls} text-center`}>
-                        <SourceBadge source={g.source} />
-                      </td>
                       <td className={`${tdCls} text-center whitespace-nowrap`}>
                         {pending && (
                           <button
@@ -388,10 +371,10 @@ export function AdminDependentCatalogPage() {
                     </tr>
                   )
                 })}
-                {isLoading && groups.length === 0 && <TableLoadingRow colSpan={10} title="Đang tải danh mục nhóm..." />}
+                {isLoading && groups.length === 0 && <TableLoadingRow colSpan={9} title="Đang tải danh mục nhóm..." />}
                 {!isLoading && visibleGroups.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-on-surface-variant text-xs">
+                    <td colSpan={9} className="py-12 text-center text-on-surface-variant text-xs">
                       {pendingOnly ? 'Không có nhóm nào đang chờ duyệt.' : 'Chưa có nhóm người phụ thuộc nào.'}
                     </td>
                   </tr>
