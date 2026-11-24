@@ -5,6 +5,7 @@ import { ConfirmDialog } from '@/components/ui/notification-dialog'
 import { SECTION_OPTIONS, sectionLabel, splitKeywords, filterCategories } from '@/utils/medicalCategoryUtils'
 import { useDebounce } from '@/hooks/useDebounce'
 import { TableLoadingRow } from '@/components/ui/loading'
+import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 
 const selectClass =
   'h-9 px-3 rounded-lg border border-outline-variant/40 text-xs font-semibold bg-surface-container-low focus:outline-none cursor-pointer'
@@ -38,6 +39,7 @@ export function MedicalCategoryTab({ onShowToast }) {
     [filters, debouncedSearch]
   )
   const visible = useMemo(() => filterCategories(items, debouncedFilters), [items, debouncedFilters])
+  const categoriesPagination = useClientPagination(visible, 10)
   const activeCount = items.filter((c) => !c.isDeleted).length
   const deletedCodes = useMemo(() => items.filter((c) => c.isDeleted).map((c) => c.categoryCode), [items])
   const setFilter = (key) => (e) => setFilters((f) => ({ ...f, [key]: e.target.value }))
@@ -145,7 +147,7 @@ export function MedicalCategoryTab({ onShowToast }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container-high/40">
-              {visible.map((c) => (
+              {categoriesPagination.paginatedItems.map((c) => (
                 <tr key={c.id} className={`hover:bg-surface-container-low/30 ${c.isDeleted ? 'opacity-60' : ''}`}>
                   <td className="py-3 px-4 max-w-xs">
                     <div className="font-semibold text-on-surface text-xs">{c.categoryName}</div>
@@ -223,6 +225,16 @@ export function MedicalCategoryTab({ onShowToast }) {
             </tbody>
           </table>
         </div>
+        {!isLoading && visible.length > 0 && (
+          <TablePagination
+            page={categoriesPagination.page}
+            totalPages={categoriesPagination.totalPages}
+            totalItems={categoriesPagination.totalItems}
+            pageSize={categoriesPagination.pageSize}
+            onPageChange={categoriesPagination.setPage}
+            itemLabel="danh mục"
+          />
+        )}
       </div>
 
       {modal && (

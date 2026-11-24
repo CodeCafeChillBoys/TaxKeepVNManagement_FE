@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { NotificationDialog } from '@/components/ui/notification-dialog'
 import { SectionLoading } from '@/components/ui/loading'
+import { TablePagination } from '@/components/ui/table-pagination'
 import {
   canExtend,
   canRefund,
@@ -155,9 +156,6 @@ export function SubscriptionUsersTab({ plans = [] }) {
       setIsSubmitting(false)
     }
   }
-
-  const rangeStart = paging.totalItems ? (paging.page - 1) * PAGE_SIZE + 1 : 0
-  const rangeEnd = Math.min(paging.page * PAGE_SIZE, paging.totalItems)
 
   return (
     <div className="flex flex-col gap-4">
@@ -358,36 +356,14 @@ export function SubscriptionUsersTab({ plans = [] }) {
             </Table>
 
             {/* Phân trang */}
-            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-outline-variant/30 text-xs">
-              <span className="text-on-surface-variant">
-                {rangeStart}–{rangeEnd} trên {paging.totalItems} lượt đăng ký
-              </span>
-              <div className="flex items-center gap-1.5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2.5 text-[11px]"
-                  disabled={paging.page <= 1}
-                  onClick={() => setPage(paging.page - 1)}
-                >
-                  Trang trước
-                </Button>
-                <span className="tabular-nums text-on-surface-variant">
-                  {paging.page}/{Math.max(1, paging.totalPages)}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2.5 text-[11px]"
-                  disabled={paging.page >= paging.totalPages}
-                  onClick={() => setPage(paging.page + 1)}
-                >
-                  Trang sau
-                </Button>
-              </div>
-            </div>
+            <TablePagination
+              page={paging.page}
+              totalPages={paging.totalPages}
+              totalItems={paging.totalItems}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+              itemLabel="lượt đăng ký"
+            />
           </>
         )}
       </Card>
