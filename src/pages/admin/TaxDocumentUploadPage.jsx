@@ -6,6 +6,7 @@ import { urlRuleService } from '@/services/urlRuleService'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading } from '@/components/ui/loading'
+import { resolveTaxRuleVerification } from '@/utils/taxRuleVerification'
 
 export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
   const { user } = useAuth()
@@ -17,7 +18,6 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
 
   // Danh mục quy tắc kiểm tra URL (tải từ API GET /api/url-rules)
   const [urlRules, setUrlRules] = useState([])
-  const [isLoadingRules, setIsLoadingRules] = useState(false)
 
   // Danh sách văn bản đã tải lên trong phiên làm việc hiện tại (In-Memory State, không dùng bộ nhớ tạm)
   const [recentDocs, setRecentDocs] = useState([])
@@ -61,14 +61,11 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
 
   const loadUrlRules = async () => {
     try {
-      setIsLoadingRules(true)
       const res = await urlRuleService.getRules(false)
       const data = res?.data || res || []
       setUrlRules(Array.isArray(data) ? data : (data.data || []))
     } catch {
       // Bỏ qua lỗi tải danh mục tên miền
-    } finally {
-      setIsLoadingRules(false)
     }
   }
 
@@ -392,17 +389,25 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
       }
 
       const rulesCount = extractedData.taxRules?.length || 0
-      const verification = extractedData.verification || null
-      const warningMsg =
-        response.warning ||
-        extractedData.warning ||
-        verification?.warningMessage ||
-        null
-      const isYearMismatched = verification?.isTaxYearMatched === false
+      const resolvedVerification = resolveTaxRuleVerification(extractedData, taxYear)
+      if (resolvedVerification) {
+        extractedData.verification = resolvedVerification
+        extractedData.warning = resolvedVerification.warningMessage || null
+      }
+      const targetPeriod = resolvedVerification?.inputTaxYear || taxYear
+      const isNotApplicable = resolvedVerification?.status === 'NOT_APPLICABLE'
+      const isUndetermined = resolvedVerification?.status === 'UNDETERMINED'
 
-      if (isYearMismatched || warningMsg) {
+      if (isNotApplicable) {
+        const reasonDetail = resolvedVerification?.mismatchReason
+          ? `: ${resolvedVerification.mismatchReason}`
+          : ''
         setProcessSubtitle(
-          `Đã bóc tách dữ liệu. Phát hiện cảnh báo đối soát năm áp dụng (${verification?.extractedTaxYear || 'văn bản'} so với ${verification?.inputTaxYear || taxYear}). Vui lòng thẩm định kỹ.`
+          `Đã bóc tách dữ liệu. Văn bản không áp dụng cho kỳ tính thuế ${targetPeriod}${reasonDetail}. Vui lòng thẩm định kỹ.`
+        )
+      } else if (isUndetermined) {
+        setProcessSubtitle(
+          `Đã bóc tách dữ liệu. Chưa xác định được văn bản có áp dụng cho kỳ tính thuế ${targetPeriod}. Vui lòng thẩm định kỹ.`
         )
       }
 
@@ -425,11 +430,19 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
 
       setTimeout(() => {
         setIsProcessing(false)
-        if (isYearMismatched || warningMsg) {
+        if (isNotApplicable) {
           showToast(
-            'Cảnh báo đối soát năm',
-            warningMsg ||
-              `Năm trong văn bản (${verification?.extractedTaxYear}) khác năm nhập (${verification?.inputTaxYear}). Vui lòng kiểm tra lại trong bước thẩm tra.`,
+            'Văn bản không áp dụng cho kỳ tính thuế',
+            resolvedVerification?.mismatchReason ||
+              resolvedVerification?.warningMessage ||
+              `Văn bản không áp dụng cho kỳ tính thuế ${targetPeriod}.`,
+            'warning'
+          )
+        } else if (isUndetermined) {
+          showToast(
+            'Chưa xác định được',
+            resolvedVerification?.warningMessage ||
+              `Chưa xác định được văn bản có áp dụng cho kỳ tính thuế ${targetPeriod}.`,
             'warning'
           )
         } else {
@@ -1114,16 +1127,31 @@ export function TaxDocumentUploadPage({ onUploadSuccess, onCancel }) {
                       >
                         {doc.status === 'ACTIVE' || doc.status === 'Active' ? 'Đã hiệu lực' : 'Bản nháp'}
                       </span>
-                      {(doc.extractedData?.verification?.isTaxYearMatched === false ||
-                        doc.extractedData?.warning) && (
+                      {doc.extractedData?.verification?.isTaxYearMatched === false ? (
                         <span
-                          className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/15 text-amber-800 border border-amber-500/30 flex items-center gap-0.5"
-                          title="Phát hiện năm tính thuế có thể lệch so với văn bản gốc"
+                          className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-error/10 text-error border border-error/25 flex items-center gap-0.5"
+                          title={
+                            doc.extractedData?.verification?.mismatchReason ||
+                            doc.extractedData?.warning ||
+                            'Văn bản không áp dụng cho kỳ tính thuế đã chọn'
+                          }
                         >
                           <span className="material-symbols-outlined text-[13px]">warning</span>
-                          <span>Lệch năm</span>
+                          <span>Không áp dụng</span>
                         </span>
-                      )}
+                      ) : doc.extractedData?.verification &&
+                        doc.extractedData.verification.isTaxYearMatched === null ? (
+                        <span
+                          className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/15 text-amber-800 border border-amber-500/30 flex items-center gap-0.5"
+                          title={
+                            doc.extractedData?.warning ||
+                            'Chưa xác định được văn bản có áp dụng cho kỳ tính thuế đã chọn'
+                          }
+                        >
+                          <span className="material-symbols-outlined text-[13px]">help</span>
+                          <span>Chưa xác định được</span>
+                        </span>
+                      ) : null}
                     </div>
 
                     {/* Bottom Row: Timestamp & Action */}
