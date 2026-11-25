@@ -8,9 +8,12 @@ import {
   isPendingGroup,
   filterPendingGroups,
   sortByDisplayOrder,
-  catalogName,
   formatAgeRange,
 } from '@/utils/dependentCatalogUtils'
+import {
+  formatVietnameseDependentGroup,
+  formatVietnameseRelationship,
+} from '@/utils/dependentRuleLabels'
 
 const thCls = 'py-3.5 px-4 whitespace-nowrap'
 const tdCls = 'py-3.5 px-4 align-middle'
@@ -254,7 +257,6 @@ export function AdminDependentCatalogPage() {
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-surface-container-low/50">
                 <tr className="border-b border-surface-container-high text-on-surface-variant text-[11px] uppercase tracking-wider font-bold">
-                  <th className={thCls}>Mã</th>
                   <th className={thCls}>Tên quan hệ</th>
                   <th className={`${thCls} text-center`}>Thứ tự</th>
                   <th className={`${thCls} text-center`}>Trạng thái</th>
@@ -264,8 +266,9 @@ export function AdminDependentCatalogPage() {
               <tbody className="divide-y divide-surface-container-high/40">
                 {relationships.map((r) => (
                   <tr key={r.code} className="hover:bg-surface-container-low/60 transition-colors">
-                    <td className={`${tdCls} font-mono text-[11px] text-on-surface-variant`}>{r.code}</td>
-                    <td className={`${tdCls} font-semibold text-on-surface`}>{r.name}</td>
+                    <td className={`${tdCls} font-semibold text-on-surface`}>
+                      {r.name || formatVietnameseRelationship(r.code, relationships)}
+                    </td>
                     <td className={`${tdCls} text-center tabular-nums`}>{r.displayOrder}</td>
                     <td className={`${tdCls} text-center`}>
                       <StatusBadge active={r.isActive} />
@@ -285,10 +288,10 @@ export function AdminDependentCatalogPage() {
                     </td>
                   </tr>
                 ))}
-                {isLoading && relationships.length === 0 && <TableLoadingRow colSpan={5} title="Đang tải danh mục quan hệ..." />}
+                {isLoading && relationships.length === 0 && <TableLoadingRow colSpan={4} title="Đang tải danh mục quan hệ..." />}
                 {!isLoading && relationships.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-on-surface-variant text-xs">
+                    <td colSpan={4} className="py-12 text-center text-on-surface-variant text-xs">
                       Chưa có quan hệ người phụ thuộc nào.
                     </td>
                   </tr>
@@ -304,8 +307,6 @@ export function AdminDependentCatalogPage() {
                   <th className={`${thCls} text-center`}>Tuổi</th>
                   <th className={`${thCls} text-center`}>Khuyết tật</th>
                   <th className={`${thCls} text-center`}>Đi học</th>
-                  <th className={`${thCls} text-center`}>Level</th>
-                  <th className={`${thCls} text-center`}>Thứ tự</th>
                   <th className={`${thCls} text-center`}>Trạng thái</th>
                   <th className={`${thCls} text-center w-[150px]`}>Thao tác</th>
                 </tr>
@@ -316,14 +317,13 @@ export function AdminDependentCatalogPage() {
                   return (
                     <tr key={g.code} className={`hover:bg-surface-container-low/60 transition-colors ${pending ? 'bg-amber-50/40' : ''}`}>
                       <td className={tdCls}>
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-on-surface leading-snug">{g.name}</span>
-                          <span className="font-mono text-[10px] text-on-surface-variant/80">{g.code}</span>
-                        </div>
+                        <span className="font-semibold text-on-surface leading-snug">
+                          {g.name || formatVietnameseDependentGroup(g.code, groups)}
+                        </span>
                       </td>
                       <td className={tdCls}>
                         {g.relationshipCode ? (
-                          catalogName(relationships, g.relationshipCode)
+                          formatVietnameseRelationship(g.relationshipCode, relationships)
                         ) : (
                           <span className="text-amber-700 font-semibold">Chưa gán</span>
                         )}
@@ -335,8 +335,6 @@ export function AdminDependentCatalogPage() {
                       <td className={`${tdCls} text-center`}>
                         <Flag on={g.requireStudying} />
                       </td>
-                      <td className={`${tdCls} text-center tabular-nums`}>{g.level}</td>
-                      <td className={`${tdCls} text-center tabular-nums`}>{g.displayOrder}</td>
                       <td className={`${tdCls} text-center whitespace-nowrap`}>
                         {pending ? (
                           <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-800 border border-amber-500/30">
@@ -371,10 +369,10 @@ export function AdminDependentCatalogPage() {
                     </tr>
                   )
                 })}
-                {isLoading && groups.length === 0 && <TableLoadingRow colSpan={9} title="Đang tải danh mục nhóm..." />}
+                {isLoading && groups.length === 0 && <TableLoadingRow colSpan={7} title="Đang tải danh mục nhóm..." />}
                 {!isLoading && visibleGroups.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-on-surface-variant text-xs">
+                    <td colSpan={7} className="py-12 text-center text-on-surface-variant text-xs">
                       {pendingOnly ? 'Không có nhóm nào đang chờ duyệt.' : 'Chưa có nhóm người phụ thuộc nào.'}
                     </td>
                   </tr>
