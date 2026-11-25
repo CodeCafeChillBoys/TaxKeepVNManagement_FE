@@ -1,5 +1,10 @@
 import { useState, useMemo } from 'react'
 import { buildGroupOptions, alternativeGroupSuggestions } from '@/utils/dependentCatalogUtils'
+import {
+  formatAlternativeGroupLabel,
+  formatVietnameseDependentGroup,
+  formatVietnameseDocType,
+} from '@/utils/dependentRuleLabels'
 
 const inputBase =
   'w-full h-10 px-3 rounded-lg border text-sm bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none'
@@ -24,11 +29,16 @@ export function DependentRuleModal({ mode = 'create', initialData = null, groups
   const [errors, setErrors] = useState({})
 
   const groupOptions = useMemo(
-    () => buildGroupOptions(groups, initialData?.targetGroup ? [initialData.targetGroup] : []),
+    () =>
+      buildGroupOptions(groups, initialData?.targetGroup ? [initialData.targetGroup] : []).map((opt) =>
+        opt.isUnknown ? { ...opt, label: formatVietnameseDependentGroup(opt.value, groups) } : opt
+      ),
     [groups, initialData]
   )
   const suggestions = useMemo(() => alternativeGroupSuggestions(rules, form.targetGroup), [rules, form.targetGroup])
-  const groupLabel = groupOptions.find((o) => o.value === form.targetGroup)?.label || form.targetGroup
+  const groupLabel =
+    groupOptions.find((o) => o.value === form.targetGroup)?.label ||
+    formatVietnameseDependentGroup(form.targetGroup, groups)
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
@@ -98,7 +108,9 @@ export function DependentRuleModal({ mode = 'create', initialData = null, groups
                 />
                 <datalist id="dependent-rule-doc-types">
                   {docTypeOptions.map((d) => (
-                    <option key={d} value={d} />
+                    <option key={d} value={d}>
+                      {formatVietnameseDocType(d)}
+                    </option>
                   ))}
                 </datalist>
                 {err('docType')}
@@ -107,7 +119,7 @@ export function DependentRuleModal({ mode = 'create', initialData = null, groups
           ) : (
             <div className="p-3 rounded-lg bg-surface-container-low/60 border border-outline-variant/20 text-xs flex flex-col gap-0.5">
               <span className="font-semibold text-on-surface">{groupLabel}</span>
-              <span className="font-mono text-on-surface-variant">{form.docType}</span>
+              <span className="text-on-surface-variant">{formatVietnameseDocType(form.docType, form.docName)}</span>
             </div>
           )}
 
@@ -117,7 +129,7 @@ export function DependentRuleModal({ mode = 'create', initialData = null, groups
           </div>
 
           <div className="flex flex-col gap-1.5">
-            {label('Nhóm "chọn 1 trong N" (alternativeGroup)')}
+            {label('Nhóm giấy tờ thay thế (chỉ cần nộp 1 loại)')}
             <input
               value={form.alternativeGroup}
               onChange={set('alternativeGroup')}
@@ -127,13 +139,16 @@ export function DependentRuleModal({ mode = 'create', initialData = null, groups
             />
             <datalist id="dependent-rule-alt-groups">
               {suggestions.map((s) => (
-                <option key={s} value={s} />
+                <option key={s} value={s}>
+                  {formatAlternativeGroupLabel(s)}
+                </option>
               ))}
             </datalist>
             {err('alternativeGroup')}
             <p className="text-[11px] text-on-surface-variant">
               {ALTERNATIVE_GROUP_NOTE}.
-              {suggestions.length > 0 && ` Đang dùng trong nhóm này: ${suggestions.join(', ')}.`}
+              {suggestions.length > 0 &&
+                ` Đang dùng trong nhóm này: ${suggestions.map((s) => formatAlternativeGroupLabel(s)).join(', ')}.`}
             </p>
           </div>
 

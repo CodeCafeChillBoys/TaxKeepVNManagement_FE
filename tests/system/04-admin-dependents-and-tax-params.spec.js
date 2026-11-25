@@ -18,6 +18,10 @@ test.describe('Module 4: Quy tắc Hồ sơ, Danh mục Người phụ thuộc &
     const searchInput = page.getByPlaceholder('Tìm theo nhóm đối tượng, loại giấy tờ, mô tả...')
     await expect(searchInput).toBeVisible()
 
+    // Đảm bảo đã bỏ cột Nguồn và không lộ mã thô trong bảng
+    await expect(page.locator('thead')).not.toContainText('Nguồn')
+    await expect(page.locator('tbody')).not.toContainText('RELATION_PROOF')
+
     // Đảm bảo quy chuẩn phân trang tối đa 10 dòng dữ liệu / trang khi bảng có dữ liệu
     const rows = page.locator('tbody tr')
     const rowCount = await rows.count()
@@ -67,10 +71,13 @@ test.describe('Module 4: Quy tắc Hồ sơ, Danh mục Người phụ thuộc &
     await expect(relationTab).toBeVisible()
     await expect(groupTab).toBeVisible()
     await expect(page.getByRole('button', { name: /Thêm quan hệ/i })).toBeVisible()
+    await expect(page.locator('thead')).not.toContainText('Mã')
 
-    // Chuyển sang Tab Nhóm và kiểm tra bộ lọc Tất cả / Chờ duyệt
+    // Chuyển sang Tab Nhóm và kiểm tra đã bỏ cột Level/Thứ tự cùng bộ lọc Tất cả / Chờ duyệt
     await groupTab.click()
     await expect(page.getByRole('button', { name: /Thêm nhóm/i })).toBeVisible()
+    await expect(page.locator('thead')).not.toContainText('Level')
+    await expect(page.locator('thead')).not.toContainText('Thứ tự')
     const pendingFilter = page.getByRole('button', { name: /Chờ duyệt \(\d+\)/i })
     const allFilter = page.getByRole('button', { name: /Tất cả \(\d+\)/i })
     await expect(pendingFilter).toBeVisible()

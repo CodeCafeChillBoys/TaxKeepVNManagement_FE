@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading } from '@/components/ui/loading'
 import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
-import { formatTargetGroup } from './AdminDependentRulesPage'
+import { formatVietnameseDependentGroup as formatTargetGroup } from '@/utils/dependentRuleLabels'
 import { useDependentGroups } from '@/hooks/useDependentGroups'
 import {
   Select,

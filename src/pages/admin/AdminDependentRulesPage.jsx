@@ -5,64 +5,22 @@ import { useDependentGroups } from '@/hooks/useDependentGroups'
 import { TableLoadingRow } from '@/components/ui/loading'
 import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 import { DependentRuleModal, ALTERNATIVE_GROUP_NOTE } from '@/components/admin/dependent-catalog/DependentRuleModal'
-import { buildGroupOptions, catalogName, findByCode, isPendingGroup, PENDING_SUFFIX } from '@/utils/dependentCatalogUtils'
+import { buildGroupOptions } from '@/utils/dependentCatalogUtils'
+import {
+  DOC_TYPE_VI_LABELS,
+  formatAlternativeGroupLabel,
+  formatVietnameseDependentGroup,
+  formatVietnameseDocType,
+} from '@/utils/dependentRuleLabels'
 
-export const DOC_TYPE_LABELS = {
-  BIRTH_CERTIFICATE: 'Giấy khai sinh',
-  BIRTH_CERT: 'Giấy khai sinh',
-  CITIZEN_ID: 'Căn cước công dân / CMND',
-  CCCD: 'Căn cước công dân / CMND',
-  ID_CARD: 'Căn cước công dân / CMND',
-  STUDENT_CARD: 'Thẻ sinh viên / Giấy xác nhận của nhà trường',
-  STUDENT_CERT: 'Giấy xác nhận sinh viên / Học sinh',
-  DISABILITY_CERTIFICATE: 'Giấy xác nhận khuyết tật / Hồ sơ giám định y khoa',
-  DISABILITY_CERT: 'Giấy xác nhận khuyết tật / Hồ sơ giám định y khoa',
-  MEDICAL_RECORD: 'Bệnh án / Giấy xác nhận của cơ quan y tế',
-  MEDICAL_CERTIFICATE: 'Giấy xác nhận của cơ quan y tế có thẩm quyền',
-  MARRIAGE_CERTIFICATE: 'Giấy chứng nhận đăng ký kết hôn',
-  MARRIAGE_CERT: 'Giấy chứng nhận đăng ký kết hôn',
-  RELATIONSHIP_CERTIFICATE: 'Giấy tờ xác nhận mối quan hệ gia đình',
-  RELATIONSHIP_CERT: 'Giấy tờ xác nhận mối quan hệ gia đình',
-  SUPPORT_COMMITMENT_FORM: 'Bản kê khai / Cam kết nuôi dưỡng (Mẫu 09/XN-NPT-TNCN)',
-  COMMITMENT_FORM: 'Bản cam kết nuôi dưỡng có xác nhận của UBND cấp xã',
-  FORM_09_XN_NPT: 'Bản kê khai về người phải trực tiếp nuôi dưỡng (Mẫu 09/XN-NPT-TNCN)',
-  RESIDENCE_CT07: 'Giấy xác nhận thông tin về cư trú (Mẫu CT07) / Sổ hộ khẩu',
-  RESIDENCE_CERTIFICATE: 'Giấy xác nhận thông tin về cư trú (Mẫu CT07)',
-  HOUSEHOLD_BOOK: 'Sổ hộ khẩu / Giấy xác nhận cư trú',
-  INCOME_DECLARATION: 'Tờ khai / Xác nhận thu nhập không quá quy định',
-  INCOME_CERT: 'Giấy xác nhận thu nhập',
-  LEGAL_GUARDIAN_DOC: 'Giấy tờ xác nhận nghĩa vụ nuôi dưỡng hợp pháp',
-  OTHER: 'Giấy tờ chứng minh khác',
+const DOC_TYPE_LABELS = DOC_TYPE_VI_LABELS
+
+function formatTargetGroup(group, groups = []) {
+  return formatVietnameseDependentGroup(group, groups)
 }
 
-/** Nhãn nhóm NPT lấy `name` từ danh mục; mã chưa có trong danh mục thì hiện nguyên mã */
-export function formatTargetGroup(group, groups = []) {
-  if (!group) return 'Người phụ thuộc'
-  const found = findByCode(groups, group)
-  if (!found) return String(group)
-  return `${catalogName(groups, group)}${isPendingGroup(found) ? PENDING_SUFFIX : ''}`
-}
-
-export function formatDocType(docType, docName) {
-  // Tên do admin cấu hình trong DB (doc_name) luôn được ưu tiên hơn nhãn dựng sẵn
-  if (docName?.trim()) return docName.trim()
-  if (!docType) return 'Giấy tờ chứng minh'
-  const key = String(docType).trim().toUpperCase()
-  if (DOC_TYPE_LABELS[key]) return DOC_TYPE_LABELS[key]
-
-  return String(docType)
-    .replace(/BIRTH_CERTIFICATE|BIRTH_CERT/gi, 'Giấy khai sinh')
-    .replace(/CITIZEN_ID|ID_CARD/gi, 'Căn cước công dân / CMND')
-    .replace(/STUDENT_CARD|STUDENT_CERT/gi, 'Thẻ sinh viên / Giấy xác nhận nhà trường')
-    .replace(/DISABILITY_CERTIFICATE|DISABILITY_CERT/gi, 'Giấy xác nhận khuyết tật / Y tế')
-    .replace(/MARRIAGE_CERTIFICATE|MARRIAGE_CERT/gi, 'Giấy chứng nhận kết hôn')
-    .replace(/RELATIONSHIP_CERTIFICATE|RELATIONSHIP_CERT/gi, 'Giấy tờ xác nhận quan hệ')
-    .replace(/SUPPORT_COMMITMENT_FORM|COMMITMENT_FORM/gi, 'Bản kê khai cam kết nuôi dưỡng')
-    .replace(/RESIDENCE_CT07|RESIDENCE_CERTIFICATE/gi, 'Giấy xác nhận thông tin cư trú (Mẫu CT07)')
-    .replace(/INCOME_DECLARATION|INCOME_CERT/gi, 'Tờ khai xác nhận thu nhập')
-    .replace(/MEDICAL_RECORD|MEDICAL_CERTIFICATE/gi, 'Hồ sơ bệnh án / Xác nhận y tế')
-    .replace(/OTHER/gi, 'Giấy tờ chứng minh khác')
-    .replace(/_/g, ' ')
+function formatDocType(docType, docName) {
+  return formatVietnameseDocType(docType, docName)
 }
 
 export function AdminDependentRulesPage() {
@@ -142,7 +100,12 @@ export function AdminDependentRulesPage() {
   }, [debouncedTargetGroup, debouncedSearch, reloadTick])
 
   const targetGroupOptions = useMemo(
-    () => buildGroupOptions(groups, rules.map((r) => r.targetGroup)),
+    () =>
+      buildGroupOptions(groups, rules.map((r) => r.targetGroup)).map((opt) =>
+        opt.isUnknown
+          ? { ...opt, label: formatVietnameseDependentGroup(opt.value, groups) }
+          : opt
+      ),
     [groups, rules]
   )
   const docTypeOptions = useMemo(
@@ -155,10 +118,12 @@ export function AdminDependentRulesPage() {
     const q = debouncedSearch.trim().toLowerCase()
     const vietGroup = formatTargetGroup(r.targetGroup, groups).toLowerCase()
     const vietDoc = formatDocType(r.docType, r.docName).toLowerCase()
+    const vietAlt = formatAlternativeGroupLabel(r.alternativeGroup).toLowerCase()
     const matchSearch =
       !q ||
       vietGroup.includes(q) ||
       vietDoc.includes(q) ||
+      vietAlt.includes(q) ||
       r.docType?.toLowerCase().includes(q) ||
       r.description?.toLowerCase().includes(q) ||
       r.targetGroup?.toLowerCase().includes(q) ||
@@ -279,95 +244,95 @@ export function AdminDependentRulesPage() {
                 <th className="py-3 px-4" title={ALTERNATIVE_GROUP_NOTE}>Chọn 1 trong</th>
                 <th className="py-3 px-4 text-center">Tính bắt buộc</th>
                 <th className="py-3 px-4 text-center">Trạng thái</th>
-                <th className="py-3 px-4 text-center" title="Rule nguồn AI sẽ bị tắt khi đồng bộ lại quy tắc từ AI">Nguồn</th>
                 <th className="py-3 px-4 text-center">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-container-high/40">
-              {rulesPagination.paginatedItems.map((rule, idx) => (
-                <tr key={rule.ruleId || idx} className="hover:bg-surface-container-low/30 transition-colors">
-                  <td className="py-3.5 px-4 text-center font-mono text-on-surface-variant font-medium">
-                    {String((rulesPagination.page - 1) * rulesPagination.pageSize + idx + 1).padStart(2, '0')}
-                  </td>
-                  <td className="py-3.5 px-4 font-semibold text-on-surface leading-snug">
-                    {formatTargetGroup(rule.targetGroup, groups)}
-                    <div className="font-mono text-[11px] font-normal text-on-surface-variant mt-0.5">{rule.targetGroup}</div>
-                  </td>
-                  <td className="py-3.5 px-4 font-medium text-on-surface leading-snug">
-                    {formatDocType(rule.docType, rule.docName)}
-                    <div className="font-mono text-[11px] text-on-surface-variant mt-0.5">{rule.docType}</div>
-                  </td>
-                  <td className="py-3.5 px-4 text-on-surface-variant max-w-md leading-relaxed text-xs">
-                    {rule.description}
-                  </td>
-                  <td className="py-3.5 px-4">
-                    {rule.alternativeGroup ? (
-                      <span className="px-2 py-0.5 rounded-md bg-primary/10 text-primary font-mono text-[11px] font-semibold whitespace-nowrap">
-                        {rule.alternativeGroup}
-                      </span>
-                    ) : (
-                      <span className="text-on-surface-variant/50 text-xs">—</span>
-                    )}
-                  </td>
-                  <td className="py-3.5 px-4 text-center">
-                    <span
-                      className={`text-xs whitespace-nowrap ${
-                        rule.isMandatory
-                          ? 'font-semibold text-on-surface'
-                          : 'font-normal text-on-surface-variant'
-                      }`}
-                    >
-                      {rule.isMandatory ? 'Bắt buộc' : 'Tùy chọn'}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4 text-center">
-                    <span
-                      className={`inline-flex items-center justify-center gap-1.5 text-xs font-medium whitespace-nowrap ${
-                        rule.isActive
-                          ? 'text-emerald-700'
-                          : 'text-on-surface-variant'
-                      }`}
-                    >
+              {rulesPagination.paginatedItems.map((rule, idx) => {
+                const primaryDocLabel = formatDocType(rule.docType, rule.docName)
+                const docCategoryLabel = formatDocType(rule.docType)
+                const showDocCategorySub =
+                  Boolean(rule.docName?.trim()) &&
+                  docCategoryLabel &&
+                  docCategoryLabel.toLowerCase() !== primaryDocLabel.toLowerCase()
+
+                return (
+                  <tr key={rule.ruleId || idx} className="hover:bg-surface-container-low/30 transition-colors">
+                    <td className="py-3.5 px-4 text-center font-mono text-on-surface-variant font-medium">
+                      {String((rulesPagination.page - 1) * rulesPagination.pageSize + idx + 1).padStart(2, '0')}
+                    </td>
+                    <td className="py-3.5 px-4 font-semibold text-on-surface leading-snug">
+                      {formatTargetGroup(rule.targetGroup, groups)}
+                    </td>
+                    <td className="py-3.5 px-4 font-medium text-on-surface leading-snug">
+                      {primaryDocLabel}
+                      {showDocCategorySub && (
+                        <div className="text-[11px] font-normal text-on-surface-variant mt-0.5">
+                          {docCategoryLabel}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 text-on-surface-variant max-w-md leading-relaxed text-xs">
+                      {rule.description || '—'}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      {rule.alternativeGroup ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-primary/10 text-primary text-[11px] font-semibold whitespace-nowrap">
+                          {formatAlternativeGroupLabel(rule.alternativeGroup)}
+                        </span>
+                      ) : (
+                        <span className="text-on-surface-variant/50 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
                       <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          rule.isActive ? 'bg-emerald-600' : 'bg-outline-variant'
+                        className={`text-xs whitespace-nowrap ${
+                          rule.isMandatory
+                            ? 'font-semibold text-on-surface'
+                            : 'font-normal text-on-surface-variant'
                         }`}
-                      />
-                      {rule.isActive ? 'Hiệu lực' : 'Chưa áp dụng'}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4 text-center">
-                    <span
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                        String(rule.source).toUpperCase() === 'AI'
-                          ? 'bg-secondary/10 text-secondary border-secondary/20'
-                          : 'bg-surface-container text-on-surface-variant border-outline-variant/40'
-                      }`}
-                    >
-                      {rule.source || 'ADMIN'}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4 text-center">
-                    <button
-                      type="button"
-                      title="Sửa quy tắc"
-                      onClick={() => setRuleModal({ mode: 'edit', item: rule })}
-                      className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container cursor-pointer transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">edit</span>
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      >
+                        {rule.isMandatory ? 'Bắt buộc' : 'Tùy chọn'}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <span
+                        className={`inline-flex items-center justify-center gap-1.5 text-xs font-medium whitespace-nowrap ${
+                          rule.isActive
+                            ? 'text-emerald-700'
+                            : 'text-on-surface-variant'
+                        }`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            rule.isActive ? 'bg-emerald-600' : 'bg-outline-variant'
+                          }`}
+                        />
+                        {rule.isActive ? 'Hiệu lực' : 'Chưa áp dụng'}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <button
+                        type="button"
+                        title="Sửa quy tắc"
+                        onClick={() => setRuleModal({ mode: 'edit', item: rule })}
+                        className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container cursor-pointer transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">edit</span>
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
               {isLoading && (
                 <TableLoadingRow
-                  colSpan={9}
+                  colSpan={8}
                   title="Đang tải danh mục quy tắc hồ sơ người phụ thuộc..."
                 />
               )}
               {!isLoading && filteredRules.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-on-surface-variant text-xs">
+                  <td colSpan={8} className="py-12 text-center text-on-surface-variant text-xs">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <span className="material-symbols-outlined text-[32px] text-outline">
                         rule_folder
