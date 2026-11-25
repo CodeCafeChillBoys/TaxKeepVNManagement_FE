@@ -1,5 +1,11 @@
 import { apiClient } from './apiClient'
 
+// Rule cùng targetGroup và cùng alternativeGroup: người dùng chỉ cần nộp 1 trong số đó
+export const normalizeAlternativeGroup = (value) => {
+  const v = String(value ?? '').trim().toUpperCase().replace(/\s+/g, '_')
+  return v || null
+}
+
 /**
  * Service thao tác với Quy tắc hồ sơ người phụ thuộc (Dependent Rules)
  * Routing qua ApiGateway: http://localhost:5000/api/v1/dependent-rules
@@ -25,7 +31,7 @@ export const dependentRuleService = {
 
   /**
    * Thêm mới quy tắc hồ sơ người phụ thuộc
-   * @param {Object} data - { targetGroup, docType, docName, isMandatory, description, isActive }
+   * @param {Object} data - { targetGroup, docType, docName, isMandatory, description, alternativeGroup, source, isActive }
    */
   create: async (data) => {
     const payload = {
@@ -35,6 +41,8 @@ export const dependentRuleService = {
       docName: data.docName?.trim() || null,
       isMandatory: data.isMandatory !== undefined ? Boolean(data.isMandatory) : true,
       description: data.description?.trim() || null,
+      alternativeGroup: normalizeAlternativeGroup(data.alternativeGroup),
+      source: data.source?.trim() || 'ADMIN',
       isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
     }
     const res = await apiClient.post('/api/v1/dependent-rules', payload)
@@ -44,7 +52,7 @@ export const dependentRuleService = {
   /**
    * Cập nhật quy tắc hồ sơ người phụ thuộc
    * @param {string} id - UUID của quy tắc
-   * @param {Object} data - { docName, isMandatory, description, isActive }
+   * @param {Object} data - { docName, isMandatory, description, alternativeGroup, source, isActive }
    */
   update: async (id, data) => {
     const payload = {
@@ -52,6 +60,10 @@ export const dependentRuleService = {
       docName: data.docName !== undefined ? data.docName?.trim() || null : undefined,
       isMandatory: data.isMandatory !== undefined ? Boolean(data.isMandatory) : true,
       description: data.description?.trim() || null,
+      // BE: null = giữ nguyên, chuỗi rỗng = xóa nhóm "chọn 1"
+      alternativeGroup:
+        data.alternativeGroup === undefined ? undefined : normalizeAlternativeGroup(data.alternativeGroup) ?? '',
+      source: data.source?.trim() || undefined,
       isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
     }
     const res = await apiClient.put(`/api/v1/dependent-rules/${id}`, payload)

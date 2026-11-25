@@ -23,17 +23,6 @@ export const dependentService = {
    * @param {Object} data - { fullName, relationship, currentGroup, birthDate, citizenId, birthCertNumber, taxIdNumber, effectiveFromMonth, effectiveToMonth, note }
    */
   create: async (data) => {
-    // Tự động phân giải currentGroup theo relationship nếu caller không truyền
-    const defaultGroup =
-      data.currentGroup ||
-      (data.relationship === 'CHILD'
-        ? 'CHILD_UNDER_18'
-        : data.relationship === 'SPOUSE'
-        ? 'SPOUSE_DISABLED'
-        : data.relationship === 'PARENT'
-        ? 'PARENT_DISABLED'
-        : 'OTHER_HELPLESS')
-
     // Tự động chuẩn hóa format tháng YYYY-MM
     const currentYear = new Date().getFullYear()
     const fromMonth =
@@ -46,7 +35,8 @@ export const dependentService = {
     const payload = {
       fullName: data.fullName?.trim(),
       relationship: data.relationship || 'CHILD',
-      currentGroup: defaultGroup,
+      // Mã nhóm lấy từ catalog (GET /api/v1/dependents/catalog) do caller chọn; không đoán theo quan hệ
+      currentGroup: data.currentGroup || null,
       birthDate: data.birthDate || data.dateOfBirth,
       citizenId: data.citizenId?.trim() || null,
       birthCertNumber: data.birthCertNumber?.trim() || null,

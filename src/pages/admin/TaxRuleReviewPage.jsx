@@ -1,12 +1,21 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams, useParams, useNavigate } from 'react-router-dom'
 import { taxRuleService } from '@/services/taxRuleService'
-import { dependentService } from '@/services/dependentService'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading } from '@/components/ui/loading'
 import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
 import { formatTargetGroup, formatDocType } from './AdminDependentRulesPage'
+import { useDependentGroups } from '@/hooks/useDependentGroups'
+import { dependentCatalogService } from '@/services/dependentCatalogService'
+import { normalizeAlternativeGroup } from '@/services/dependentRuleService'
+import { ALTERNATIVE_GROUP_NOTE } from '@/components/admin/dependent-catalog/DependentRuleModal'
+import {
+  buildDependentTypeOptions,
+  documentAlternativeSuggestions,
+  catalogName,
+  sortByDisplayOrder,
+} from '@/utils/dependentCatalogUtils'
 
 /**
  * Trích xuất năm văn bản từ ngày hiệu lực hoặc tên văn bản quy phạm
@@ -30,18 +39,6 @@ function extractYearFromTextOrDate(effectiveFrom, name, fallbackRules = []) {
   }
   return null
 }
-
-// Danh sách nhóm đối tượng chi tiết chuẩn hóa từ BE (fallback nếu API GET /api/v1/dependents/groups chưa phản hồi)
-const FALLBACK_DEPENDENT_GROUPS = [
-  'CHILD_UNDER_18',
-  'CHILD_OVER_18_STUDYING',
-  'CHILD_OVER_18_DISABLED',
-  'SPOUSE_RETIRED',
-  'SPOUSE_DISABLED',
-  'PARENT_RETIRED',
-  'PARENT_DISABLED',
-  'OTHER_HELPLESS',
-]
 
 const REQUIRED_DOCUMENT_TYPE_VALUES = [
   'BIRTH_CERTIFICATE',
@@ -189,8 +186,22 @@ export function TaxRuleReviewPage({
   // Trạng thái xác nhận xóa tiêu chí người phụ thuộc
   const [deletingDependent, setDeletingDependent] = useState(null)
   const [isDeletingDependent, setIsDeletingDependent] = useState(false)
-  // Danh sách nhóm đối tượng tải động từ BE (GET /api/v1/dependents/groups)
-  const [apiDependentGroups, setApiDependentGroups] = useState([])
+
+  // Danh mục nhóm/quan hệ NPT cho dropdown loại NPT và quan hệ
+  const { groups: dependentGroups, error: dependentGroupsError, reload: reloadDependentGroups } = useDependentGroups()
+  const [dependentRelationships, setDependentRelationships] = useState([])
+  useEffect(() => {
+    let alive = true
+    dependentCatalogService
+      .listRelationships()
+      .then((list) => {
+        if (alive) setDependentRelationships(sortByDisplayOrder(list || []))
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
 
   // 1. Đồng bộ prop extractedData từ trang Upload chỉ khi khớp với bộ quy tắc đang xem
   useEffect(() => {
@@ -226,16 +237,6 @@ export function TaxRuleReviewPage({
       })
       .catch(() => {
         // Bỏ qua lỗi tải danh mục bộ quy tắc thuế
-      })
-    dependentService
-      .getGroups()
-      .then((groups) => {
-        if (isMounted && Array.isArray(groups) && groups.length > 0) {
-          setApiDependentGroups(groups)
-        }
-      })
-      .catch(() => {
-        // Fallback sang danh sách nhóm chuẩn hóa nếu không gọi được API
       })
     return () => {
       isMounted = false
@@ -523,31 +524,6 @@ export function TaxRuleReviewPage({
   )
   const dependents = rawDependentRules.map(normalizeDependentRule).filter(Boolean)
 
-  // Danh sách nhóm đối tượng sinh động từ API BE (GET /api/v1/dependents/groups),
-  // bổ sung thêm nhóm chuẩn hóa còn thiếu (nếu DB chưa sync đủ) và giữ giá trị hiện tại khi mở sửa
-  const dependentGroupOptions = (() => {
-    const seen = new Set()
-    const ordered = []
-    const addGroup = (val) => {
-      if (!val) return
-      const key = String(val).trim().toUpperCase()
-      if (!key || seen.has(key)) return
-      seen.add(key)
-      ordered.push({ value: key, label: formatTargetGroup(key) })
-    }
-
-    const baseGroups =
-      apiDependentGroups.length > 0 ? apiDependentGroups : FALLBACK_DEPENDENT_GROUPS
-    baseGroups.forEach(addGroup)
-    FALLBACK_DEPENDENT_GROUPS.forEach(addGroup)
-
-    if (editingRule?.type === 'DEPENDENT_RULE' && editingRule.form?.dependentType) {
-      addGroup(editingRule.form.dependentType)
-    }
-
-    return ordered
-  })()
-
   const requiredDocumentTypeOptions = REQUIRED_DOCUMENT_TYPE_VALUES.map((val) => ({
     value: val,
     label: formatDocType(val),
@@ -797,7 +773,8 @@ export function TaxRuleReviewPage({
         form: {
           ruleId: normalized.ruleId || '',
           name: normalized.name || '',
-          dependentType: normalized.dependentType || 'CHILD_UNDER_18',
+          dependentType: normalized.dependentType || '',
+          relationship: normalized.relationship || '',
           maxAge:
             normalized.maxAge !== undefined && normalized.maxAge !== null
               ? String(normalized.maxAge)
@@ -837,7 +814,8 @@ export function TaxRuleReviewPage({
         form: {
           ruleId: defaultParentRuleId,
           name: '',
-          dependentType: 'CHILD_UNDER_18',
+          dependentType: '',
+          relationship: '',
           maxAge: '',
           maxMonthlyIncome: '',
           isStudying: false,
@@ -1018,6 +996,7 @@ export function TaxRuleReviewPage({
             name: doc.name.trim(),
             isMandatory: doc.isMandatory !== false,
             description: doc.description?.trim() || null,
+            alternativeGroup: normalizeAlternativeGroup(doc.alternativeGroup),
           }
           if (!isNew && isValidUuid(doc.id)) {
             docPayload.id = doc.id
@@ -1028,6 +1007,7 @@ export function TaxRuleReviewPage({
         const depPayload = {
           dependentType: form.dependentType,
           name: form.name.trim(),
+          relationship: form.relationship || null,
           maxAge: form.maxAge !== '' ? parseInt(form.maxAge, 10) : null,
           maxMonthlyIncome: form.maxMonthlyIncome !== '' ? parseFloat(form.maxMonthlyIncome) : null,
           isStudying: Boolean(form.isStudying),
@@ -1255,7 +1235,7 @@ export function TaxRuleReviewPage({
   }
 
   const mapDependentType = (type) => {
-    return formatTargetGroup(type)
+    return formatTargetGroup(type, dependentGroups)
   }
 
   const mapDocType = (docType) => {
@@ -1409,6 +1389,7 @@ export function TaxRuleReviewPage({
         name: d.name || formatDocType(normalizedDocType),
         docType: normalizedDocType,
         isMandatory: (d.isMandatory ?? d.is_mandatory) !== false,
+        alternativeGroup: d.alternativeGroup || d.alternative_group || '',
         description: d.description || '',
       }
     })
@@ -2012,7 +1993,7 @@ export function TaxRuleReviewPage({
                           : 'group'}
                       </span>
                       <h4 className="font-title-sm text-title-sm font-bold text-on-surface">
-                        {dep.name || formatTargetGroup(dep.dependentType)}
+                        {dep.name || formatTargetGroup(dep.dependentType || dep.targetGroup, dependentGroups)}
                       </h4>
                     </div>
                     <p className="font-body-sm text-body-sm text-on-surface-variant">
@@ -2076,6 +2057,11 @@ export function TaxRuleReviewPage({
                             >
                               <span className="text-on-surface truncate">
                                 • {doc.name}
+                                {doc.alternativeGroup && (
+                                  <span className="ml-1 font-mono text-[10px] text-primary" title={ALTERNATIVE_GROUP_NOTE}>
+                                    [{doc.alternativeGroup}]
+                                  </span>
+                                )}
                               </span>
                               <span
                                 className={`text-[11px] shrink-0 ${
@@ -2592,7 +2578,11 @@ export function TaxRuleReviewPage({
                         editingRule.errors?.dependentType ? 'border-error' : 'border-outline-variant/30'
                       }`}
                     >
-                      {dependentGroupOptions.map((opt) => (
+                      <option value="">-- Chọn nhóm đối tượng --</option>
+                      {buildDependentTypeOptions(
+                        dependentGroups,
+                        editingRule.original?.dependentType || editingRule.form.dependentType
+                      ).map((opt) => (
                         <option key={opt.value} value={opt.value}>
                           {opt.label}
                         </option>
@@ -2601,7 +2591,43 @@ export function TaxRuleReviewPage({
                     {editingRule.errors?.dependentType && (
                       <span className="text-xs text-error">{editingRule.errors.dependentType}</span>
                     )}
+                    {dependentGroupsError && (
+                      <span className="text-xs text-error flex items-center gap-1">
+                        {dependentGroupsError}
+                        <button type="button" onClick={reloadDependentGroups} className="underline font-semibold cursor-pointer">
+                          Thử lại
+                        </button>
+                      </span>
+                    )}
                   </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-label-md font-semibold text-on-surface">Quan hệ với người nộp thuế</label>
+                  <select
+                    value={editingRule.form.relationship}
+                    onChange={(e) =>
+                      setEditingRule((prev) => ({
+                        ...prev,
+                        form: { ...prev.form, relationship: e.target.value },
+                      }))
+                    }
+                    className="w-full h-11 px-3 rounded-lg text-on-surface text-body-md bg-surface-container-low focus:bg-surface-container-lowest focus:outline-none transition-all shadow-inner border border-outline-variant/30 cursor-pointer"
+                  >
+                    <option value="">-- Chưa xác định --</option>
+                    {dependentRelationships.map((r) => (
+                      <option key={r.code} value={r.code}>
+                        {r.name}
+                      </option>
+                    ))}
+                    {editingRule.form.relationship &&
+                      !dependentRelationships.some((r) => r.code === editingRule.form.relationship) && (
+                        <option value={editingRule.form.relationship}>{editingRule.form.relationship}</option>
+                      )}
+                  </select>
+                  <span className="text-[11px] text-on-surface-variant">
+                    Quan hệ dùng khi duyệt nhóm mới do AI đề xuất và khi lọc nhóm trên ứng dụng.
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-md">
@@ -2738,6 +2764,7 @@ export function TaxRuleReviewPage({
                                 docType: REQUIRED_DOCUMENT_TYPE_VALUES[0],
                                 name: '',
                                 isMandatory: true,
+                                alternativeGroup: '',
                                 description: '',
                               },
                             ],
@@ -2750,6 +2777,13 @@ export function TaxRuleReviewPage({
                       <span>Thêm giấy tờ</span>
                     </button>
                   </div>
+
+                  <p className="text-[11px] text-on-surface-variant">{ALTERNATIVE_GROUP_NOTE}.</p>
+                  <datalist id="review-doc-alt-groups">
+                    {documentAlternativeSuggestions(editingRule.form.requiredDocuments).map((s) => (
+                      <option key={s} value={s} />
+                    ))}
+                  </datalist>
 
                   {(!editingRule.form.requiredDocuments || editingRule.form.requiredDocuments.length === 0) && (
                     <p className="text-xs text-on-surface-variant italic py-1">
@@ -2876,6 +2910,27 @@ export function TaxRuleReviewPage({
                               }}
                               className="w-full h-8 px-2.5 rounded text-xs bg-surface-container-low border border-outline-variant/30 focus:outline-none"
                               placeholder="VD: Bản sao công chứng, nộp kèm bản chính đối chiếu..."
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[11px] font-semibold text-on-surface-variant" title={ALTERNATIVE_GROUP_NOTE}>
+                              Nhóm "chọn 1" (alternativeGroup)
+                            </span>
+                            <input
+                              type="text"
+                              value={docItem.alternativeGroup || ''}
+                              list="review-doc-alt-groups"
+                              onChange={(e) => {
+                                const val = e.target.value
+                                setEditingRule((prev) => {
+                                  const updated = [...(prev.form.requiredDocuments || [])]
+                                  updated[dIndex] = { ...updated[dIndex], alternativeGroup: val }
+                                  return { ...prev, form: { ...prev.form, requiredDocuments: updated } }
+                                })
+                              }}
+                              className="w-full h-8 px-2.5 rounded text-xs font-mono bg-surface-container-low border border-outline-variant/30 focus:outline-none"
+                              placeholder="VD: RELATION_PROOF"
                             />
                           </div>
                         </div>
@@ -3094,6 +3149,12 @@ export function TaxRuleReviewPage({
                     <span className="text-title-sm font-bold text-primary mt-0.5">
                       {mapDependentType(selectedDetail.data.dependentType)}
                     </span>
+                    <span className="text-xs text-on-surface-variant">
+                      Quan hệ:{' '}
+                      {selectedDetail.data.relationship
+                        ? catalogName(dependentRelationships, selectedDetail.data.relationship)
+                        : 'Chưa xác định'}
+                    </span>
                   </div>
 
                   <div className="p-space-md rounded-xl bg-surface-container-low/60 flex flex-col gap-1 border border-outline-variant/20">
@@ -3219,6 +3280,14 @@ export function TaxRuleReviewPage({
                                 <span className="text-on-surface-variant">
                                   {mapDocType(doc.docType)}
                                 </span>
+                                {doc.alternativeGroup && (
+                                  <>
+                                    <span className="text-outline-variant">•</span>
+                                    <span className="font-mono text-primary" title={ALTERNATIVE_GROUP_NOTE}>
+                                      Chọn 1: {doc.alternativeGroup}
+                                    </span>
+                                  </>
+                                )}
                                 <span className="text-outline-variant">•</span>
                                 <span
                                   className={
@@ -3293,7 +3362,7 @@ export function TaxRuleReviewPage({
                 <p className="text-body-sm text-on-surface-variant leading-relaxed">
                   Bạn có chắc chắn muốn xóa tiêu chí{' '}
                   <strong className="text-on-surface">
-                    {formatTargetGroup(deletingDependent.name || deletingDependent.dependentType)}
+                    {formatTargetGroup(deletingDependent.name || deletingDependent.dependentType, dependentGroups)}
                   </strong>{' '}
                   cùng toàn bộ danh mục giấy tờ yêu cầu thuộc tiêu chí này?
                 </p>
