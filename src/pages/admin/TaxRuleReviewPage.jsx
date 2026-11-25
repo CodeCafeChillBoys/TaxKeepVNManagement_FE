@@ -1,11 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useSearchParams, useParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useParams } from 'react-router-dom'
 import { taxRuleService } from '@/services/taxRuleService'
 import { useAuth } from '@/hooks/useAuth'
 import { useDebounce } from '@/hooks/useDebounce'
 import { SectionLoading } from '@/components/ui/loading'
 import { TablePagination, useClientPagination } from '@/components/ui/table-pagination'
-import { formatTargetGroup, formatDocType } from './AdminDependentRulesPage'
 import { useDependentGroups } from '@/hooks/useDependentGroups'
 import { dependentCatalogService } from '@/services/dependentCatalogService'
 import { normalizeAlternativeGroup } from '@/services/dependentRuleService'
@@ -13,32 +12,20 @@ import { ALTERNATIVE_GROUP_NOTE } from '@/components/admin/dependent-catalog/Dep
 import {
   buildDependentTypeOptions,
   documentAlternativeSuggestions,
-  catalogName,
   sortByDisplayOrder,
 } from '@/utils/dependentCatalogUtils'
-
-/**
- * Trích xuất năm văn bản từ ngày hiệu lực hoặc tên văn bản quy phạm
- */
-function extractYearFromTextOrDate(effectiveFrom, name, fallbackRules = []) {
-  if (effectiveFrom) {
-    const match = String(effectiveFrom).match(/(?:19|20)\d{2}/)
-    if (match) return parseInt(match[0], 10)
-  }
-  if (fallbackRules && fallbackRules.length > 0) {
-    for (const rule of fallbackRules) {
-      if (rule.effectiveFrom) {
-        const match = String(rule.effectiveFrom).match(/(?:19|20)\d{2}/)
-        if (match) return parseInt(match[0], 10)
-      }
-    }
-  }
-  if (name) {
-    const match = String(name).match(/(?:năm|luật|nghị quyết|thông tư|qđ|tt)?\s*([12]\d{3})/i)
-    if (match) return parseInt(match[1], 10)
-  }
-  return null
-}
+import {
+  evaluateApplicabilityByDates,
+  extractEffectiveStartYear,
+  resolveTaxRuleVerification,
+} from '@/utils/taxRuleVerification'
+import {
+  formatAlternativeGroupLabel,
+  formatVietnameseDependentGroup,
+  formatVietnameseDocType,
+  formatVietnameseRelationship,
+  formatVietnameseRuleStatus,
+} from '@/utils/dependentRuleLabels'
 
 const REQUIRED_DOCUMENT_TYPE_VALUES = [
   'BIRTH_CERTIFICATE',
@@ -52,15 +39,6 @@ const REQUIRED_DOCUMENT_TYPE_VALUES = [
   'OTHER',
 ]
 
-const REQUIRED_DOCUMENT_TYPE_SET = new Set(REQUIRED_DOCUMENT_TYPE_VALUES)
-
-const TAX_RULE_STATUS_LABELS = {
-  Draft: 'Bản nháp',
-  Active: 'Đang áp dụng',
-  Expired: 'Hết hiệu lực',
-  Archived: 'Đã lưu trữ',
-}
-
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -68,17 +46,19 @@ function isValidUuid(val) {
   return typeof val === 'string' && UUID_REGEX.test(val.trim())
 }
 
-// Khớp normalize_document_type ở TaxAIService (app/mappers/tax_rule/tax_rule_mapper.py)
+// Khớp normalize_document_type ở TaxAIService (app/mappers/tax_rule/tax_rule_mapper.py):
+// Giữ nguyên cả các mã chứng từ đặc thù UPPER_SNAKE_CASE do AI/Admin cấu hình.
 function normalizeRequiredDocType(rawType) {
   if (!rawType) return 'OTHER'
-  const cleaned = String(rawType).trim().toUpperCase()
+  const cleaned = String(rawType).trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  if (!cleaned) return 'OTHER'
   if (['CCCD', 'CMND', 'CCCD_FRONT', 'CCCD_BACK', 'CCCD_BOTH'].includes(cleaned)) {
     return 'CITIZEN_ID'
   }
   if (cleaned === 'DISABILITY_CERT') {
     return 'DISABILITY_CERTIFICATE'
   }
-  return REQUIRED_DOCUMENT_TYPE_SET.has(cleaned) ? cleaned : 'OTHER'
+  return cleaned
 }
 
 function unwrapRuleSetPayload(res) {
@@ -123,8 +103,7 @@ function formatDependentConditionSummary(isStudying, isDisabled) {
 }
 
 function formatRuleStatusLabel(status) {
-  if (!status) return TAX_RULE_STATUS_LABELS.Draft
-  return TAX_RULE_STATUS_LABELS[status] || status
+  return formatVietnameseRuleStatus(status)
 }
 
 export function TaxRuleReviewPage({
@@ -135,7 +114,6 @@ export function TaxRuleReviewPage({
   onDataLoaded,
 }) {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { id: paramId } = useParams()
 
@@ -179,7 +157,6 @@ export function TaxRuleReviewPage({
   })
   const [isSaving, setIsSaving] = useState(false)
   const [editErrors, setEditErrors] = useState({})
-  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Trạng thái modal và form chỉnh sửa từng quy tắc riêng lẻ
   const [editingRule, setEditingRule] = useState(null)
@@ -308,43 +285,11 @@ export function TaxRuleReviewPage({
           ? resData
           : (resData.data?.taxRuleSet ? resData.data : resData)
         if (actual.taxRuleSet || actual.taxRules) {
-          const ruleSet = actual.taxRuleSet || {}
-          const rules = actual.taxRules || []
-          const registeredYear = parseInt(ruleSet.taxYear, 10)
-
-          let mergedVerification = actual.verification || null
-          let mergedWarning = actual.warning || null
-
-          if (!mergedVerification && registeredYear) {
-            const docYear = extractYearFromTextOrDate(
-              ruleSet.effectiveFrom,
-              ruleSet.name,
-              rules
-            )
-            if (docYear && docYear !== registeredYear) {
-              mergedVerification = {
-                inputTaxYear: registeredYear,
-                extractedTaxYear: docYear,
-                isTaxYearMatched: false,
-                mismatchReason: `Năm áp dụng văn bản nhận diện được là ${docYear}, khác với năm tính thuế đăng ký ${registeredYear}.`,
-                warningMessage: `Văn bản quy định áp dụng từ năm ${docYear}, chưa hoàn toàn khớp với năm tính thuế ${registeredYear}.`,
-              }
-              mergedWarning = mergedVerification.warningMessage
-            } else if (docYear && docYear === registeredYear) {
-              mergedVerification = {
-                inputTaxYear: registeredYear,
-                extractedTaxYear: docYear,
-                isTaxYearMatched: true,
-                mismatchReason: null,
-                warningMessage: null,
-              }
-            }
-          }
-
+          const resolvedVerification = resolveTaxRuleVerification(actual)
           const completeData = {
             ...actual,
-            verification: mergedVerification,
-            warning: mergedWarning || mergedVerification?.warningMessage || null,
+            verification: resolvedVerification,
+            warning: resolvedVerification?.warningMessage || actual.warning || null,
           }
 
           setCurrentData(completeData)
@@ -376,41 +321,32 @@ export function TaxRuleReviewPage({
     setTimeout(() => setToast(null), 5000)
   }
 
-  // Tự động bảo toàn và kiểm tra đối soát năm tính thuế (Hooks luôn đặt trên cùng trước return sớm)
+  // Kiểm tra khả năng áp dụng văn bản cho kỳ tính thuế đã chọn (khớp logic BE & AI, không so sánh cứng extractedTaxYear === taxYear)
   const verification = useMemo(() => {
     if (!currentData) return null
-    if (currentData.verification) return currentData.verification
-    if (currentData.taxRuleSet?.verification) return currentData.taxRuleSet.verification
-    if (extractedData?.verification) return extractedData.verification
+    const loadedId =
+      currentData?.taxRuleSet?.ruleSetId ||
+      currentData?.ruleSetId ||
+      currentData?.id ||
+      ''
+    const exId =
+      extractedData?.taxRuleSet?.ruleSetId ||
+      extractedData?.ruleSetId ||
+      extractedData?.id ||
+      ''
+    const fallbackVerification =
+      !currentData.verification &&
+      !currentData.taxRuleSet?.verification &&
+      extractedData?.verification &&
+      (!loadedId || !exId || String(loadedId) === String(exId))
+        ? extractedData.verification
+        : null
 
-    const ruleSet = currentData.taxRuleSet || {}
-    const rules = currentData.taxRules || []
-    const registeredYear = parseInt(ruleSet.taxYear, 10)
-    if (registeredYear) {
-      const docYear = extractYearFromTextOrDate(
-        ruleSet.effectiveFrom,
-        ruleSet.name,
-        rules
-      )
-      if (docYear && docYear !== registeredYear) {
-        return {
-          inputTaxYear: registeredYear,
-          extractedTaxYear: docYear,
-          isTaxYearMatched: false,
-          mismatchReason: `Năm áp dụng văn bản nhận diện được là ${docYear}, khác với năm tính thuế đăng ký ${registeredYear}.`,
-          warningMessage: `Văn bản quy định áp dụng từ năm ${docYear}, không khớp với năm tính thuế đăng ký ${registeredYear}.`,
-        }
-      } else if (docYear && docYear === registeredYear) {
-        return {
-          inputTaxYear: registeredYear,
-          extractedTaxYear: docYear,
-          isTaxYearMatched: true,
-          mismatchReason: null,
-          warningMessage: null,
-        }
-      }
-    }
-    return null
+    return resolveTaxRuleVerification(
+      fallbackVerification
+        ? { ...currentData, verification: fallbackVerification, warning: currentData.warning || extractedData?.warning }
+        : currentData
+    )
   }, [currentData, extractedData])
 
   // Phân trang tối đa 10 dòng/trang cho 3 bảng quy tắc thuế (khai báo trước mọi return sớm)
@@ -494,8 +430,9 @@ export function TaxRuleReviewPage({
   const taxRuleSet = currentData.taxRuleSet || {}
   const rawTaxRules = currentData.taxRules || []
   const rawDependentRules = currentData.dependentRules || []
-  const warning = currentData.warning || verification?.warningMessage || null
-  const hasMismatch = verification && verification.isTaxYearMatched === false
+  const warning = verification?.warningMessage || currentData.warning || null
+  const isNotApplicable = verification?.isTaxYearMatched === false
+  const isUndetermined = verification !== null && verification.isTaxYearMatched === null
 
   // Extract ruleSetId từ taxRuleSet hoặc fallback từ currentRuleSetId / dependentRules
   const ruleSetId =
@@ -526,7 +463,7 @@ export function TaxRuleReviewPage({
 
   const requiredDocumentTypeOptions = REQUIRED_DOCUMENT_TYPE_VALUES.map((val) => ({
     value: val,
-    label: formatDocType(val),
+    label: formatVietnameseDocType(val),
   }))
 
   const totalRulesCount = rawTaxRules.length
@@ -615,40 +552,22 @@ export function TaxRuleReviewPage({
       const resData = res?.data || res || {}
       const newRuleSet = resData.taxRuleSet || {}
 
-      // Luôn kiểm tra và đối soát lại năm tính thuế mới với năm của văn bản
-      const docYear =
-        currentData?.verification?.extractedTaxYear ||
-        verification?.extractedTaxYear ||
-        extractYearFromTextOrDate(
-          payload.effectiveFrom || taxRuleSet.effectiveFrom,
-          payload.name,
-          rawTaxRules
-        )
+      // Đánh giá lại khả năng áp dụng cho kỳ tính thuế nếu Admin thay đổi kỳ tính thuế hoặc ngày hiệu lực
+      const isPeriodOrDateChanged =
+        Number(taxRuleSet.taxYear) !== parsedYear ||
+        (taxRuleSet.effectiveFrom || null) !== payload.effectiveFrom ||
+        (taxRuleSet.effectiveTo || null) !== payload.effectiveTo
 
-      let updatedVerification = null
-      if (docYear) {
-        const isMatched = parsedYear === docYear
-        updatedVerification = {
-          inputTaxYear: parsedYear,
-          extractedTaxYear: docYear,
-          isTaxYearMatched: isMatched,
-          mismatchReason: isMatched
-            ? null
-            : `Năm áp dụng văn bản nhận diện được là ${docYear}, khác với năm tính thuế đăng ký ${parsedYear}.`,
-          warningMessage: isMatched
-            ? null
-            : `Văn bản quy định áp dụng từ năm ${docYear}, không khớp với năm tính thuế đăng ký ${parsedYear}.`,
-        }
-      } else if (currentData.verification) {
-        const isMatched = parsedYear === currentData.verification.extractedTaxYear
-        updatedVerification = {
-          ...currentData.verification,
-          inputTaxYear: parsedYear,
-          isTaxYearMatched: isMatched,
-          mismatchReason: isMatched ? null : currentData.verification.mismatchReason,
-          warningMessage: isMatched ? null : currentData.verification.warningMessage,
-        }
-      }
+      const updatedVerification = isPeriodOrDateChanged
+        ? evaluateApplicabilityByDates({
+            taxYear: parsedYear,
+            effectiveFrom: payload.effectiveFrom,
+            effectiveTo: payload.effectiveTo,
+            taxRules: rawTaxRules,
+            extractedTaxYear: verification?.extractedTaxYear ?? null,
+            isApproved: false,
+          })
+        : verification
 
       const updatedAll = {
         ...currentData,
@@ -662,9 +581,7 @@ export function TaxRuleReviewPage({
           effectiveTo: payload.effectiveTo,
         },
         verification: updatedVerification,
-        warning: updatedVerification?.isTaxYearMatched
-          ? null
-          : (updatedVerification?.warningMessage || currentData.warning || null),
+        warning: updatedVerification?.warningMessage || null,
       }
 
       setCurrentData(updatedAll)
@@ -677,41 +594,6 @@ export function TaxRuleReviewPage({
       })
     } finally {
       setIsSaving(false)
-    }
-  }
-
-  const handleRefreshDetail = async () => {
-    if (!ruleSetId) return
-    setIsRefreshing(true)
-    try {
-      const res = await taxRuleService.getRuleSetDetail(ruleSetId)
-      const resData = res?.data || res || {}
-      const actual = resData.taxRuleSet ? resData : (resData.data?.taxRuleSet ? resData.data : resData)
-      if (actual.taxRuleSet || actual.taxRules) {
-        const merged = {
-          ...currentData,
-          ...actual,
-        }
-        setCurrentData(merged)
-        showToast('Đã làm mới', 'Đã đồng bộ thông tin mới nhất từ máy chủ.', 'success')
-      }
-    } catch (err) {
-      if (
-        err.status === 404 ||
-        err.rawMessage?.includes('not found') ||
-        err.message?.includes('không tồn tại')
-      ) {
-        setCurrentData(null)
-        showToast(
-          'Không tìm thấy dữ liệu',
-          'Bộ quy tắc thuế này không tồn tại hoặc đã bị xóa khỏi cơ sở dữ liệu.',
-          'warning'
-        )
-        return
-      }
-      showToast('Không thể làm mới', err.message || 'Lỗi khi tải dữ liệu mới nhất.', 'error')
-    } finally {
-      setIsRefreshing(false)
     }
   }
 
@@ -1235,11 +1117,11 @@ export function TaxRuleReviewPage({
   }
 
   const mapDependentType = (type) => {
-    return formatTargetGroup(type, dependentGroups)
+    return formatVietnameseDependentGroup(type, dependentGroups)
   }
 
   const mapDocType = (docType) => {
-    return formatDocType(docType)
+    return formatVietnameseDocType(docType)
   }
 
   const mapSubject = (subject) => {
@@ -1386,7 +1268,7 @@ export function TaxRuleReviewPage({
       return {
         id: d.id || null,
         dependentRuleId: d.dependentRuleId || d.dependent_rule_id || null,
-        name: d.name || formatDocType(normalizedDocType),
+        name: d.name || formatVietnameseDocType(normalizedDocType),
         docType: normalizedDocType,
         isMandatory: (d.isMandatory ?? d.is_mandatory) !== false,
         alternativeGroup: d.alternativeGroup || d.alternative_group || '',
@@ -1490,54 +1372,84 @@ export function TaxRuleReviewPage({
         </div>
       </div>
 
-      {/* Year Verification & Warning Alert Banner */}
-      {(hasMismatch || warning) && (
-        <div className="w-full p-space-md rounded-xl bg-amber-500/10 border border-amber-500/35 text-on-surface flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md shadow-xs animate-in fade-in duration-300">
+      {/* Applicability Verification Alert Banner */}
+      {(isNotApplicable || (isUndetermined && !isSetApproved)) && (
+        <div
+          className={`w-full p-space-md rounded-xl border text-on-surface flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md shadow-xs animate-in fade-in duration-300 ${
+            isNotApplicable
+              ? 'bg-error-container/20 border-error/40'
+              : 'bg-amber-500/10 border-amber-500/35'
+          }`}
+        >
           <div className="flex items-start gap-space-sm">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
-              <span className="material-symbols-outlined text-[24px]">rule_folder</span>
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 shadow-2xs ${
+                isNotApplicable ? 'bg-error/15 text-error' : 'bg-amber-500/20 text-amber-800'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[24px]">
+                {isNotApplicable ? 'gpp_maybe' : 'help'}
+              </span>
             </div>
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-title-sm text-title-sm font-bold text-amber-900">
-                  Cảnh báo đối soát năm áp dụng văn bản quy phạm
+                <span
+                  className={`font-title-sm text-title-sm font-bold ${
+                    isNotApplicable ? 'text-error' : 'text-amber-900'
+                  }`}
+                >
+                  {isNotApplicable
+                    ? `Văn bản không áp dụng cho kỳ tính thuế ${verification?.inputTaxYear || taxRuleSet.taxYear || ''}`
+                    : 'Chưa xác định được'}
                 </span>
               </div>
               <p className="font-body-md text-body-md text-on-surface font-medium leading-relaxed">
-                {hasMismatch ? (
-                  <>
-                    Năm tính thuế đăng ký (
-                    <strong className="text-amber-900 font-bold">
-                      {verification?.inputTaxYear || taxRuleSet.taxYear}
-                    </strong>
-                    ) không khớp với năm ban hành/hiệu lực nhận diện được trong văn bản (
-                    <strong className="text-amber-900 font-bold">
-                      {verification?.extractedTaxYear || 'Khác biệt'}
-                    </strong>
-                    ). {verification?.mismatchReason || warning}
-                  </>
-                ) : (
-                  warning
-                )}
+                {isNotApplicable
+                  ? verification?.mismatchReason ||
+                    warning ||
+                    `Văn bản không áp dụng cho kỳ tính thuế ${verification?.inputTaxYear || taxRuleSet.taxYear || ''}.`
+                  : warning ||
+                    `Chưa xác định được văn bản có áp dụng cho kỳ tính thuế ${verification?.inputTaxYear || taxRuleSet.taxYear || ''}.`}
               </p>
               <div className="flex items-center gap-3 text-xs text-on-surface-variant mt-0.5 flex-wrap">
-                <span>Năm đăng ký: <strong>{verification?.inputTaxYear || taxRuleSet.taxYear || '—'}</strong></span>
+                <span>
+                  Kỳ tính thuế đã chọn:{' '}
+                  <strong>{verification?.inputTaxYear || taxRuleSet.taxYear || '—'}</strong>
+                </span>
                 <span>•</span>
-                <span>Năm bóc tách từ văn bản: <strong>{verification?.extractedTaxYear || '—'}</strong></span>
+                <span>
+                  Năm bắt đầu hiệu lực:{' '}
+                  <strong>
+                    {verification?.extractedTaxYear ||
+                      extractEffectiveStartYear(taxRuleSet.effectiveFrom, rawTaxRules) ||
+                      'Chưa xác định được'}
+                  </strong>
+                </span>
+                <span>•</span>
+                <span>
+                  Kết quả kiểm tra:{' '}
+                  <strong>{isNotApplicable ? 'Không áp dụng' : 'Chưa xác định được'}</strong>
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-            <button
-              type="button"
-              onClick={handleOpenEditModal}
-              className="px-space-md py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-title-sm text-title-sm font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[18px]">edit_calendar</span>
-              <span>Điều chỉnh năm &amp; thông tin</span>
-            </button>
-          </div>
+          {!isSetApproved && (
+            <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+              <button
+                type="button"
+                onClick={handleOpenEditModal}
+                className={`px-space-md py-2 rounded-lg text-white font-title-sm text-title-sm font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                  isNotApplicable
+                    ? 'bg-error hover:opacity-90'
+                    : 'bg-amber-600 hover:bg-amber-700'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[18px]">edit_calendar</span>
+                <span>Điều chỉnh kỳ tính thuế &amp; hiệu lực</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1594,7 +1506,7 @@ export function TaxRuleReviewPage({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-space-md pt-space-xs">
           <div className="flex flex-col bg-surface-container-low/50 p-space-md rounded-lg">
             <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">
-              Năm
+              Kỳ tính thuế
             </span>
             <div className="flex items-baseline gap-space-xs mt-1">
               <span className="font-headline-md text-headline-md font-bold text-on-surface">
@@ -1610,7 +1522,7 @@ export function TaxRuleReviewPage({
             <div className="flex items-center gap-space-xs mt-1">
               <span className="material-symbols-outlined text-secondary text-[18px]">event_available</span>
               <span className="font-title-sm text-title-sm font-bold text-on-surface">
-                {taxRuleSet.effectiveFrom || 'Chưa xác định'}
+                {taxRuleSet.effectiveFrom || 'Chưa xác định được'}
               </span>
             </div>
           </div>
@@ -1622,7 +1534,7 @@ export function TaxRuleReviewPage({
             <div className="flex items-center gap-space-xs mt-1">
               <span className="material-symbols-outlined text-outline text-[18px]">all_inclusive</span>
               <span className="font-title-sm text-title-sm font-medium text-on-surface-variant">
-                {taxRuleSet.effectiveTo || 'Chưa xác định'}
+                {taxRuleSet.effectiveTo || 'Chưa xác định được'}
               </span>
             </div>
           </div>
@@ -1993,7 +1905,7 @@ export function TaxRuleReviewPage({
                           : 'group'}
                       </span>
                       <h4 className="font-title-sm text-title-sm font-bold text-on-surface">
-                        {dep.name || formatTargetGroup(dep.dependentType || dep.targetGroup, dependentGroups)}
+                        {dep.name || formatVietnameseDependentGroup(dep.dependentType || dep.targetGroup, dependentGroups)}
                       </h4>
                     </div>
                     <p className="font-body-sm text-body-sm text-on-surface-variant">
@@ -2048,25 +1960,30 @@ export function TaxRuleReviewPage({
                             <span>Giấy tờ cần nộp ({reqDocs.length}):</span>
                           </span>
                         </div>
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-1.5">
                           {reqDocs.map((doc, dIdx) => (
                             <div
                               key={dIdx}
-                              className="flex items-center justify-between gap-2 text-xs py-0.5"
+                              className="flex items-start justify-between gap-2 text-xs py-0.5"
                               title={doc.description || doc.name}
                             >
-                              <span className="text-on-surface truncate">
-                                • {doc.name}
+                              <div className="min-w-0 flex-1">
+                                <span className="text-on-surface font-medium block truncate">
+                                  • {doc.name || mapDocType(doc.docType)}
+                                </span>
                                 {doc.alternativeGroup && (
-                                  <span className="ml-1 font-mono text-[10px] text-primary" title={ALTERNATIVE_GROUP_NOTE}>
-                                    [{doc.alternativeGroup}]
+                                  <span
+                                    className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-900 text-[10px] font-medium"
+                                    title={ALTERNATIVE_GROUP_NOTE}
+                                  >
+                                    Chọn 1: {formatAlternativeGroupLabel(doc.alternativeGroup)}
                                   </span>
                                 )}
-                              </span>
+                              </div>
                               <span
                                 className={`text-[11px] shrink-0 ${
                                   doc.isMandatory
-                                    ? 'font-semibold text-on-surface'
+                                    ? 'font-semibold text-primary'
                                     : 'text-on-surface-variant'
                                 }`}
                               >
@@ -2855,6 +2772,14 @@ export function TaxRuleReviewPage({
                                     {opt.label}
                                   </option>
                                 ))}
+                                {docItem.docType &&
+                                  !REQUIRED_DOCUMENT_TYPE_VALUES.includes(
+                                    normalizeRequiredDocType(docItem.docType)
+                                  ) && (
+                                    <option value={normalizeRequiredDocType(docItem.docType)}>
+                                      {formatVietnameseDocType(docItem.docType)}
+                                    </option>
+                                  )}
                               </select>
                             </div>
 
@@ -2915,7 +2840,7 @@ export function TaxRuleReviewPage({
 
                           <div className="flex flex-col gap-0.5">
                             <span className="text-[11px] font-semibold text-on-surface-variant" title={ALTERNATIVE_GROUP_NOTE}>
-                              Nhóm "chọn 1" (alternativeGroup)
+                              Nhóm giấy tờ thay thế (chọn 1 trong nhóm)
                             </span>
                             <input
                               type="text"
@@ -2930,8 +2855,13 @@ export function TaxRuleReviewPage({
                                 })
                               }}
                               className="w-full h-8 px-2.5 rounded text-xs font-mono bg-surface-container-low border border-outline-variant/30 focus:outline-none"
-                              placeholder="VD: RELATION_PROOF"
+                              placeholder="VD: RELATION_PROOF (để trống nếu bắt buộc độc lập)"
                             />
+                            {docItem.alternativeGroup?.trim() && (
+                              <span className="text-[11px] text-primary font-medium">
+                                Hiển thị tiếng Việt: {formatAlternativeGroupLabel(docItem.alternativeGroup)}
+                              </span>
+                            )}
                           </div>
                         </div>
                       )
@@ -3151,9 +3081,7 @@ export function TaxRuleReviewPage({
                     </span>
                     <span className="text-xs text-on-surface-variant">
                       Quan hệ:{' '}
-                      {selectedDetail.data.relationship
-                        ? catalogName(dependentRelationships, selectedDetail.data.relationship)
-                        : 'Chưa xác định'}
+                      {formatVietnameseRelationship(selectedDetail.data.relationship, dependentRelationships)}
                     </span>
                   </div>
 
@@ -3227,90 +3155,121 @@ export function TaxRuleReviewPage({
                 </div>
 
                 {/* Danh mục giấy tờ cần nộp để chứng minh (requiredDocuments) */}
-                <div className="p-space-md rounded-xl bg-surface-container-low/60 flex flex-col gap-2.5 border border-outline-variant/20">
-                  <div className="flex items-center justify-between text-secondary font-bold text-title-sm">
-                    <div className="flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[18px]">folder_shared</span>
-                      <span>Danh mục Giấy tờ cần nộp để chứng minh</span>
-                    </div>
-                    {(() => {
-                      const docs = parseRequiredDocuments(
-                        selectedDetail.data.requiredDocuments || selectedDetail.data.required_documents,
-                        selectedDetail.data.dependentType,
-                        rawTaxRules
-                      )
-                      return (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+                {(() => {
+                  const docs = parseRequiredDocuments(
+                    selectedDetail.data.requiredDocuments || selectedDetail.data.required_documents,
+                    selectedDetail.data.dependentType,
+                    rawTaxRules
+                  )
+                  const altGroupCounts = docs.reduce((acc, item) => {
+                    const key = item.alternativeGroup ? String(item.alternativeGroup).trim().toUpperCase() : ''
+                    if (key) acc[key] = (acc[key] || 0) + 1
+                    return acc
+                  }, {})
+                  const hasAlternativeGroups = Object.keys(altGroupCounts).length > 0
+
+                  return (
+                    <div className="p-space-md rounded-xl bg-surface-container-low/60 flex flex-col gap-3 border border-outline-variant/20">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-secondary font-bold text-title-sm">
+                          <span className="material-symbols-outlined text-[18px]">folder_shared</span>
+                          <span>Danh mục Giấy tờ cần nộp để chứng minh</span>
+                        </div>
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-primary/10 text-primary font-semibold shrink-0">
                           {docs.length} loại giấy tờ
                         </span>
-                      )
-                    })()}
-                  </div>
+                      </div>
 
-                  {(() => {
-                    const docs = parseRequiredDocuments(
-                      selectedDetail.data.requiredDocuments || selectedDetail.data.required_documents,
-                      selectedDetail.data.dependentType,
-                      rawTaxRules
-                    )
-                    if (docs.length === 0) {
-                      return (
+                      {hasAlternativeGroups && (
+                        <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/25 flex items-start gap-2 text-xs text-amber-950 leading-relaxed">
+                          <span className="material-symbols-outlined text-amber-700 text-[16px] shrink-0 mt-0.5">
+                            info
+                          </span>
+                          <span>
+                            Các mục gắn nhãn <strong>Nhóm giấy tờ thay thế (chọn 1)</strong> cho phép người nộp thuế chỉ cần cung cấp <strong>01 loại giấy tờ hợp lệ</strong> tương đương thuộc nhóm đó.
+                          </span>
+                        </div>
+                      )}
+
+                      {docs.length === 0 ? (
                         <div className="p-3 rounded-lg bg-surface-container-lowest border border-outline-variant/30 text-body-sm text-on-surface-variant italic">
                           Chưa có quy định chi tiết về hồ sơ giấy tờ cần nộp cho nhóm này.
                         </div>
-                      )
-                    }
-                    return (
-                      <div className="flex flex-col gap-2">
-                        {docs.map((doc, dIdx) => (
-                          <div
-                            key={dIdx}
-                            className="p-3 rounded-lg bg-surface-container-lowest border border-outline-variant/30 flex flex-col gap-1.5 hover:border-primary/40 transition-colors"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <span className="material-symbols-outlined text-primary text-[18px] shrink-0">
-                                  {doc.isMandatory ? 'assignment' : 'pending_actions'}
-                                </span>
-                                <span className="font-title-sm text-title-sm font-bold text-on-surface">
-                                  {doc.name}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0 text-xs">
-                                <span className="text-on-surface-variant">
-                                  {mapDocType(doc.docType)}
-                                </span>
-                                {doc.alternativeGroup && (
-                                  <>
-                                    <span className="text-outline-variant">•</span>
-                                    <span className="font-mono text-primary" title={ALTERNATIVE_GROUP_NOTE}>
-                                      Chọn 1: {doc.alternativeGroup}
+                      ) : (
+                        <div className="flex flex-col gap-2.5">
+                          {docs.map((doc, dIdx) => {
+                            const altKey = doc.alternativeGroup
+                              ? String(doc.alternativeGroup).trim().toUpperCase()
+                              : ''
+                            const altLabel = altKey ? formatAlternativeGroupLabel(altKey) : ''
+                            const altCount = altKey ? altGroupCounts[altKey] || 1 : 0
+                            const docCategoryLabel = mapDocType(doc.docType)
+                            const docTitle = doc.name ? String(doc.name).trim() : docCategoryLabel
+
+                            return (
+                              <div
+                                key={dIdx}
+                                className="p-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant/35 flex flex-col gap-2 hover:border-primary/40 transition-colors shadow-2xs"
+                              >
+                                {/* Hàng 1: Số thứ tự + Tên giấy tờ đầy đủ (không bị ép hẹp) + Nhãn Bắt buộc/Tùy chọn */}
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                    <span className="w-6 h-6 rounded-md bg-primary/10 text-primary font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                                      {dIdx + 1}
                                     </span>
-                                  </>
+                                    <span className="font-title-sm text-title-sm font-bold text-on-surface leading-snug break-words">
+                                      {docTitle}
+                                    </span>
+                                  </div>
+
+                                  <span
+                                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold shrink-0 border ${
+                                      doc.isMandatory
+                                        ? 'bg-primary/10 text-primary border-primary/25'
+                                        : 'bg-surface-container text-on-surface-variant border-outline-variant/40'
+                                    }`}
+                                  >
+                                    {doc.isMandatory ? 'Bắt buộc nộp' : 'Tùy chọn (nếu có)'}
+                                  </span>
+                                </div>
+
+                                {/* Hàng 2: Các thẻ phân loại chứng từ & nhóm thay thế (100% tiếng Việt) */}
+                                <div className="flex items-center gap-2 flex-wrap pl-8">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-surface-container-low text-on-surface-variant border border-outline-variant/30 text-xs font-medium">
+                                    <span className="material-symbols-outlined text-[14px] text-secondary">
+                                      description
+                                    </span>
+                                    <span>Phân loại: {docCategoryLabel}</span>
+                                  </span>
+
+                                  {altLabel && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-500/12 text-amber-900 border border-amber-500/30 text-xs font-semibold">
+                                      <span className="material-symbols-outlined text-[14px] text-amber-700">
+                                        alt_route
+                                      </span>
+                                      <span>
+                                        {altCount > 1
+                                          ? `Chọn 1 trong ${altCount} giấy tờ • Nhóm: ${altLabel}`
+                                          : `Chỉ cần nộp 1 giấy tờ tương đương • Nhóm: ${altLabel}`}
+                                      </span>
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Hàng 3: Mô tả chi tiết / hướng dẫn giấy tờ hợp lệ */}
+                                {doc.description && (
+                                  <div className="ml-8 px-3 py-2 rounded-lg bg-surface-container-low/65 border-l-2 border-primary/40 text-xs text-on-surface-variant leading-relaxed">
+                                    {doc.description}
+                                  </div>
                                 )}
-                                <span className="text-outline-variant">•</span>
-                                <span
-                                  className={
-                                    doc.isMandatory
-                                      ? 'font-semibold text-primary'
-                                      : 'text-on-surface-variant'
-                                  }
-                                >
-                                  {doc.isMandatory ? 'Bắt buộc nộp' : 'Tùy chọn'}
-                                </span>
                               </div>
-                            </div>
-                            {doc.description && (
-                              <p className="text-body-sm text-on-surface-variant text-xs leading-relaxed pl-6.5">
-                                {doc.description}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )
-                  })()}
-                </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
             )}
 
@@ -3362,7 +3321,7 @@ export function TaxRuleReviewPage({
                 <p className="text-body-sm text-on-surface-variant leading-relaxed">
                   Bạn có chắc chắn muốn xóa tiêu chí{' '}
                   <strong className="text-on-surface">
-                    {formatTargetGroup(deletingDependent.name || deletingDependent.dependentType, dependentGroups)}
+                    {deletingDependent.name || formatVietnameseDependentGroup(deletingDependent.dependentType, dependentGroups)}
                   </strong>{' '}
                   cùng toàn bộ danh mục giấy tờ yêu cầu thuộc tiêu chí này?
                 </p>
@@ -3419,7 +3378,7 @@ export function TaxRuleReviewPage({
                 <span className="font-bold text-on-surface">{taxRuleSet.name || (taxRuleSet.taxYear ? `Quy tắc thuế năm ${taxRuleSet.taxYear}` : '—')}</span>
               </div>
               <div className="flex justify-between items-center text-body-sm">
-                <span className="text-on-surface-variant">Năm:</span>
+                <span className="text-on-surface-variant">Kỳ tính thuế:</span>
                 <span className="font-bold text-primary">{taxRuleSet.taxYear || '—'}</span>
               </div>
               <div className="flex justify-between items-center text-body-sm">
@@ -3527,7 +3486,7 @@ export function TaxRuleReviewPage({
               {/* Tax Year */}
               <div className="flex flex-col gap-1">
                 <label className="text-label-md font-semibold text-on-surface" htmlFor="editYearInput">
-                  Năm tính thuế áp dụng <span className="text-error">*</span>
+                  Kỳ tính thuế áp dụng <span className="text-error">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -3554,11 +3513,12 @@ export function TaxRuleReviewPage({
                   </span>
                 )}
 
-                {/* Quick suggestion if year differs from verification.extractedTaxYear */}
-                {verification?.extractedTaxYear &&
-                  Number(editForm.taxYear) !== verification.extractedTaxYear && (
+                {/* Chỉ gợi ý đổi kỳ tính thuế khi văn bản được xác định không áp dụng (isTaxYearMatched === false) */}
+                {verification?.isTaxYearMatched === false &&
+                  verification?.extractedTaxYear &&
+                  Number(editForm.taxYear) !== Number(verification.extractedTaxYear) && (
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-on-surface-variant">Gợi ý từ văn bản:</span>
+                      <span className="text-xs text-on-surface-variant">Gợi ý kỳ bắt đầu áp dụng từ văn bản:</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -3567,7 +3527,7 @@ export function TaxRuleReviewPage({
                         }}
                         className="px-2 py-0.5 text-xs font-semibold rounded bg-primary/10 text-primary hover:bg-primary hover:text-on-primary transition-all cursor-pointer shadow-2xs"
                       >
-                        Năm {verification.extractedTaxYear}
+                        Kỳ {verification.extractedTaxYear}
                       </button>
                     </div>
                   )}
