@@ -2464,15 +2464,24 @@ function DisputesTab({ onBadgeRefresh }) {
                       <div className="flex flex-col gap-1.5">
                         <Label>Tỷ lệ hoàn cho khách (%)</Label>
                         <Input
-                          type="number"
-                          min={1}
-                          max={99}
-                          value={resolveForm.refundPercent}
-                          onChange={(e) =>
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="1–99"
+                          value={String(resolveForm.refundPercent ?? '')}
+                          onChange={(e) => {
+                            const digits = e.target.value.replace(/\D/g, '').slice(0, 2)
                             setResolveForm((prev) => ({
                               ...prev,
-                              refundPercent: Number(e.target.value) || 50,
+                              refundPercent: digits === '' ? '' : Number(digits),
                             }))
+                          }}
+                          onBlur={() =>
+                            setResolveForm((prev) => {
+                              const n = Number(prev.refundPercent)
+                              const clamped =
+                                !Number.isFinite(n) || n < 1 ? 1 : n > 99 ? 99 : n
+                              return { ...prev, refundPercent: clamped }
+                            })
                           }
                         />
                       </div>
@@ -4212,9 +4221,6 @@ function PlatformPolicyTab() {
                 value={policy.platformCommissionRatePercent}
                 onChange={(e) => handleChange('platformCommissionRatePercent', e.target.value)}
               />
-              <span className="text-[11px] text-on-surface-variant">
-                Chuyên gia nhận {100 - Number(policy.platformCommissionRatePercent || 0)}% phí ca tư vấn
-              </span>
             </div>
 
             <div className="flex flex-col gap-1">
@@ -4226,9 +4232,6 @@ function PlatformPolicyTab() {
                 value={policy.expertMinWithdrawalVnd}
                 onChange={(e) => handleChange('expertMinWithdrawalVnd', e.target.value)}
               />
-              <span className="text-[11px] text-on-surface-variant font-mono">
-                {formatCurrency(policy.expertMinWithdrawalVnd)} / lần rút
-              </span>
             </div>
 
             <div className="flex flex-col gap-1">

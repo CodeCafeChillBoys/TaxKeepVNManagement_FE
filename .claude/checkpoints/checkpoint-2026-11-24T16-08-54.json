@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-11-24T16:08:54.917Z",
+  "projectRoot": "E:\\ChuyenNha\\DoAn\\FE_web",
+  "instincts": {
+    "instincts": [],
+    "version": "1.0",
+    "lastUpdated": null
+  },
+  "gitBranch": "feature/admin-medical-categories",
+  "lastFiles": [
+    "package-lock.json",
+    "package.json",
+    "src/components/admin/AiKeyManagementTab.jsx",
+    "src/components/admin/AiPromptTemplateTab.jsx",
+    "src/components/admin/ExpertCertificateConfigTab.jsx",
+    "src/components/admin/ExpertSearchConfigTab.jsx",
+    "src/components/admin/MedicalCategoryTab.jsx",
+    "src/components/admin/SubscriptionRevenueTab.jsx",
+    "src/components/admin/SubscriptionUsersTab.jsx",
+    "src/components/admin/SystemConfigV1Tab.jsx",
+    "src/components/admin/dependent-catalog/DependentGroupModal.jsx",
+    "src/components/admin/dependent-catalog/DependentRelationshipModal.jsx",
+    "src/components/admin/dependent-catalog/DependentRuleModal.jsx",
+    "src/components/admin/tax-parameters/BracketsEditor.jsx",
+    "src/components/admin/tax-parameters/ConfirmDeactivateModal.jsx",
+    "src/components/admin/tax-parameters/Pagination.jsx",
+    "src/components/admin/tax-parameters/TaxParamDetailDrawer.jsx",
+    "src/components/admin/tax-parameters/TaxParamFormModal.jsx",
+    "src/components/admin/tax-parameters/TaxParamTable.jsx",
+    "src/components/admin/tax-parameters/TaxParamValueDisplay.jsx"
+  ]
+}

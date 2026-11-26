@@ -57,7 +57,8 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-xl border border-outline-variant/50 bg-surface-container-lowest text-on-surface shadow-lg animate-in fade-in-0 zoom-in-95",
+        // z-[200] > Dialog z-[100] — dropdown trong modal mới hiện/click được
+        "relative z-[200] max-h-96 min-w-[8rem] overflow-hidden rounded-xl border border-outline-variant/50 bg-surface-container-lowest text-on-surface shadow-lg animate-in fade-in-0 zoom-in-95",
         position === "popper" &&
           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
         className
@@ -69,8 +70,9 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
       <SelectPrimitive.Viewport
         className={cn(
           "p-1",
+          // min-h (không dùng h cố định) để danh sách không bị cắt còn ~chiều cao trigger
           position === "popper" &&
-            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
+            "min-h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
         )}
       >
         {children}
